@@ -91,6 +91,30 @@ abstract class GenerateRuntimeConfigsTask : DefaultTask() {
     }
 }
 
+abstract class RenameReleaseDmgTask : DefaultTask() {
+    @get:Input
+    abstract val versionName: Property<String>
+
+    @get:OutputDirectory
+    abstract val dmgDirectory: DirectoryProperty
+
+    @TaskAction
+    fun renameArtifact() {
+        val dmgDir = dmgDirectory.get().asFile
+        val targetFile = dmgDir.resolve("Nuvio-${versionName.get()}.dmg")
+        val sourceFile = dmgDir.listFiles()
+            ?.filter { it.extension == "dmg" && it.name.startsWith("Nuvio-") }
+            ?.maxByOrNull { it.lastModified() }
+            ?: error("No DMG output found in ${dmgDir.path}")
+
+        if (sourceFile.absolutePath != targetFile.absolutePath) {
+            targetFile.delete()
+            sourceFile.copyTo(targetFile, overwrite = true)
+            sourceFile.delete()
+        }
+    }
+}
+
 fun readXcconfigValue(file: File, key: String): String? {
     if (!file.exists()) return null
     return file.readLines()
@@ -281,8 +305,16 @@ dependencies {
 compose.desktop {
     application {
         mainClass = "com.nuvio.app.DesktopAppKt"
+        buildTypes.release.proguard {
+            configurationFiles.from(project.file("desktop-proguard-rules.pro"))
+        }
         nativeDistributions {
+            packageName = "Nuvio"
+            modules("java.net.http")
+            targetFormats(org.jetbrains.compose.desktop.application.dsl.TargetFormat.Dmg)
             macOS {
+                dockName = "Nuvio"
+                iconFile.set(project.file("desktop-icons/nuvio.icns"))
                 infoPlist {
                     extraKeysRawXml = """
                         <key>NSRequiresAquaSystemAppearance</key>
@@ -292,6 +324,15 @@ compose.desktop {
             }
         }
     }
+}
+
+val renameReleaseDmgArtifact = tasks.register<RenameReleaseDmgTask>("renameReleaseDmgArtifact") {
+    versionName.set(releaseAppVersionName)
+    dmgDirectory.set(layout.buildDirectory.dir("compose/binaries/main-release/dmg"))
+}
+
+tasks.matching { it.name == "packageReleaseDistributionForCurrentOS" || it.name == "packageReleaseDmg" }.configureEach {
+    finalizedBy(renameReleaseDmgArtifact)
 }
 
 configurations.all {
