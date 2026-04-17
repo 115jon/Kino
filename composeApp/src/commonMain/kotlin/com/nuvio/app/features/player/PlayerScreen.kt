@@ -1180,6 +1180,30 @@ fun PlayerScreen(
             }
         }
 
+        LaunchedEffect(activeSkipInterval, skipIntervalDismissed) {
+            val interval = activeSkipInterval
+            if (interval != null && !skipIntervalDismissed) {
+                playerController?.showSkipButton(interval.type, (interval.endTime * 1000).toLong())
+            } else {
+                playerController?.hideSkipButton()
+            }
+        }
+
+        LaunchedEffect(showNextEpisodeCard, nextEpisodeInfo) {
+            val info = nextEpisodeInfo
+            if (showNextEpisodeCard && info != null) {
+                playerController?.showNextEpisode(
+                    season = info.season,
+                    episode = info.episode,
+                    title = info.title ?: "",
+                    thumbnail = info.thumbnail,
+                    hasAired = info.hasAired,
+                )
+            } else {
+                playerController?.hideNextEpisode()
+            }
+        }
+
         // Resolve next episode info when episodes list or current episode changes
         LaunchedEffect(allEpisodes, activeSeasonNumber, activeEpisodeNumber) {
             if (!isSeries || allEpisodes.isEmpty()) {
@@ -1407,6 +1431,15 @@ fun PlayerScreen(
                 onControllerReady = { controller ->
                     playerController = controller
                     playerControllerSourceUrl = activeSourceUrl
+                    controller.setMetadata(
+                        title = title,
+                        streamTitle = activeStreamTitle,
+                        providerName = activeProviderName,
+                        seasonNumber = activeSeasonNumber,
+                        episodeNumber = activeEpisodeNumber,
+                        episodeTitle = activeEpisodeTitle,
+                    )
+                    controller.setOnCloseCallback { onBackWithProgress() }
                 },
                 onSnapshot = { snapshot ->
                     playbackSnapshot = snapshot

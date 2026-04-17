@@ -18,6 +18,25 @@ interface PlayerEngineController {
     fun clearExternalSubtitle()
     fun clearExternalSubtitleAndSelect(trackIndex: Int)
     fun applySubtitleStyle(style: SubtitleStyleState) {}
+    fun setMetadata(
+        title: String,
+        streamTitle: String,
+        providerName: String,
+        seasonNumber: Int? = null,
+        episodeNumber: Int? = null,
+        episodeTitle: String? = null,
+    ) {}
+    fun showSkipButton(type: String, endTimeMs: Long) {}
+    fun hideSkipButton() {}
+    fun showNextEpisode(
+        season: Int,
+        episode: Int,
+        title: String,
+        thumbnail: String? = null,
+        hasAired: Boolean = true,
+    ) {}
+    fun hideNextEpisode() {}
+    fun setOnCloseCallback(callback: () -> Unit) {}
 }
 
 internal fun sanitizePlaybackHeaders(headers: Map<String, String>?): Map<String, String> {

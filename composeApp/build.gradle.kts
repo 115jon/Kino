@@ -213,6 +213,7 @@ kotlin {
                 implementation(compose.desktop.currentOs)
                 implementation(libs.ktor.client.java)
                 implementation(libs.kotlinx.coroutines.swing)
+                implementation(libs.jna)
             }
         }
         androidMain.dependencies {

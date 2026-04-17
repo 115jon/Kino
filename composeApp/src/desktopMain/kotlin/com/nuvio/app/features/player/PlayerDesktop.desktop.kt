@@ -3,13 +3,16 @@ package com.nuvio.app.features.player
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.IntSize
-import androidx.compose.material3.Text
 import com.nuvio.app.core.storage.ProfileScopedKey
 import com.nuvio.app.core.sync.decodeSyncBoolean
 import com.nuvio.app.core.sync.decodeSyncFloat
@@ -22,7 +25,9 @@ import com.nuvio.app.core.sync.encodeSyncInt
 import com.nuvio.app.core.sync.encodeSyncString
 import com.nuvio.app.core.sync.encodeSyncStringSet
 import com.nuvio.app.desktop.DesktopPreferences
+import com.sun.jna.Pointer
 import java.util.Locale
+import kotlinx.coroutines.delay
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -42,52 +47,196 @@ actual fun PlatformPlayerSurface(
     onSnapshot: (PlayerPlaybackSnapshot) -> Unit,
     onError: (String?) -> Unit,
 ) {
-    val controller = remember {
+    val bridge = remember { DesktopMPVBridgeLib.INSTANCE }
+    val playerPtr = remember { bridge.nuvio_player_create() }
+    var onCloseCallback by remember { mutableStateOf<(() -> Unit)?>(null) }
+
+    DisposableEffect(playerPtr) {
+        bridge.nuvio_player_show(playerPtr)
+        onDispose {
+            bridge.nuvio_player_destroy(playerPtr)
+        }
+    }
+
+    LaunchedEffect(sourceUrl, sourceAudioUrl) {
+        val headersJson = if (sourceHeaders.isNotEmpty()) {
+            buildJsonObject {
+                sourceHeaders.forEach { (k, v) -> put(k, v) }
+            }.toString()
+        } else null
+        bridge.nuvio_player_load_file(playerPtr, sourceUrl, sourceAudioUrl, headersJson)
+        if (playWhenReady) {
+            bridge.nuvio_player_play(playerPtr)
+        }
+    }
+
+    LaunchedEffect(resizeMode) {
+        val mode = when (resizeMode) {
+            PlayerResizeMode.Fit -> 0
+            PlayerResizeMode.Fill -> 1
+            PlayerResizeMode.Zoom -> 2
+        }
+        bridge.nuvio_player_set_resize_mode(playerPtr, mode)
+    }
+
+    val controller = remember(playerPtr) {
         object : PlayerEngineController {
-            override fun play() = Unit
+            override fun play() = bridge.nuvio_player_play(playerPtr)
+            override fun pause() = bridge.nuvio_player_pause(playerPtr)
+            override fun seekTo(positionMs: Long) = bridge.nuvio_player_seek_to(playerPtr, positionMs)
+            override fun seekBy(offsetMs: Long) = bridge.nuvio_player_seek_by(playerPtr, offsetMs)
+            override fun retry() = bridge.nuvio_player_retry(playerPtr)
+            override fun setPlaybackSpeed(speed: Float) = bridge.nuvio_player_set_speed(playerPtr, speed)
 
-            override fun pause() = Unit
+            override fun getAudioTracks(): List<AudioTrack> {
+                val count = bridge.nuvio_player_get_audio_track_count(playerPtr)
+                return (0 until count).map { i ->
+                    AudioTrack(
+                        index = i,
+                        id = bridge.nuvio_player_get_audio_track_id(playerPtr, i).toString(),
+                        label = bridge.nuvio_player_get_audio_track_label(playerPtr, i) ?: "",
+                        language = bridge.nuvio_player_get_audio_track_lang(playerPtr, i),
+                        isSelected = bridge.nuvio_player_is_audio_track_selected(playerPtr, i),
+                    )
+                }
+            }
 
-            override fun seekTo(positionMs: Long) = Unit
+            override fun getSubtitleTracks(): List<SubtitleTrack> {
+                val count = bridge.nuvio_player_get_subtitle_track_count(playerPtr)
+                return (0 until count).map { i ->
+                    SubtitleTrack(
+                        index = i,
+                        id = bridge.nuvio_player_get_subtitle_track_id(playerPtr, i).toString(),
+                        label = bridge.nuvio_player_get_subtitle_track_label(playerPtr, i) ?: "",
+                        language = bridge.nuvio_player_get_subtitle_track_lang(playerPtr, i),
+                        isSelected = bridge.nuvio_player_is_subtitle_track_selected(playerPtr, i),
+                    )
+                }
+            }
 
-            override fun seekBy(offsetMs: Long) = Unit
+            override fun selectAudioTrack(index: Int) {
+                val count = bridge.nuvio_player_get_audio_track_count(playerPtr)
+                if (index in 0 until count) {
+                    val trackId = bridge.nuvio_player_get_audio_track_id(playerPtr, index)
+                    bridge.nuvio_player_select_audio_track(playerPtr, trackId)
+                }
+            }
 
-            override fun retry() = Unit
+            override fun selectSubtitleTrack(index: Int) {
+                if (index < 0) {
+                    bridge.nuvio_player_select_subtitle_track(playerPtr, -1)
+                    return
+                }
+                val count = bridge.nuvio_player_get_subtitle_track_count(playerPtr)
+                if (index in 0 until count) {
+                    val trackId = bridge.nuvio_player_get_subtitle_track_id(playerPtr, index)
+                    bridge.nuvio_player_select_subtitle_track(playerPtr, trackId)
+                }
+            }
 
-            override fun setPlaybackSpeed(speed: Float) = Unit
+            override fun setSubtitleUri(url: String) =
+                bridge.nuvio_player_set_subtitle_url(playerPtr, url)
 
-            override fun getAudioTracks(): List<AudioTrack> = emptyList()
+            override fun clearExternalSubtitle() =
+                bridge.nuvio_player_clear_external_subtitle(playerPtr)
 
-            override fun getSubtitleTracks(): List<SubtitleTrack> = emptyList()
+            override fun clearExternalSubtitleAndSelect(trackIndex: Int) {
+                val trackId = if (trackIndex >= 0) {
+                    val count = bridge.nuvio_player_get_subtitle_track_count(playerPtr)
+                    if (trackIndex < count) bridge.nuvio_player_get_subtitle_track_id(playerPtr, trackIndex) else -1
+                } else -1
+                bridge.nuvio_player_clear_external_subtitle_and_select(playerPtr, trackId)
+            }
 
-            override fun selectAudioTrack(index: Int) = Unit
+            override fun applySubtitleStyle(style: SubtitleStyleState) {
+                val colorHex = style.textColor.toMpvColorString()
+                val outline = if (style.outlineEnabled) 2.0f else 0.0f
+                bridge.nuvio_player_apply_subtitle_style(
+                    playerPtr, colorHex, outline, style.fontSizeSp.toFloat(), style.bottomOffset,
+                )
+            }
 
-            override fun selectSubtitleTrack(index: Int) = Unit
+            override fun setMetadata(
+                title: String,
+                streamTitle: String,
+                providerName: String,
+                seasonNumber: Int?,
+                episodeNumber: Int?,
+                episodeTitle: String?,
+            ) {
+                bridge.nuvio_player_set_metadata(
+                    playerPtr, title, streamTitle, providerName,
+                    seasonNumber ?: 0, episodeNumber ?: 0, episodeTitle,
+                )
+            }
 
-            override fun setSubtitleUri(url: String) = Unit
+            override fun showSkipButton(type: String, endTimeMs: Long) {
+                bridge.nuvio_player_show_skip_button(playerPtr, type, endTimeMs)
+            }
 
-            override fun clearExternalSubtitle() = Unit
+            override fun hideSkipButton() {
+                bridge.nuvio_player_hide_skip_button(playerPtr)
+            }
 
-            override fun clearExternalSubtitleAndSelect(trackIndex: Int) = Unit
+            override fun showNextEpisode(
+                season: Int,
+                episode: Int,
+                title: String,
+                thumbnail: String?,
+                hasAired: Boolean,
+            ) {
+                bridge.nuvio_player_show_next_episode(playerPtr, season, episode, title, thumbnail, hasAired)
+            }
+
+            override fun hideNextEpisode() {
+                bridge.nuvio_player_hide_next_episode(playerPtr)
+            }
+
+            override fun setOnCloseCallback(callback: () -> Unit) {
+                onCloseCallback = callback
+            }
         }
     }
 
     LaunchedEffect(controller) {
         onControllerReady(controller)
-        onSnapshot(PlayerPlaybackSnapshot(isLoading = false))
-        onError(null)
     }
 
-    Box(
-        modifier = modifier.background(Color.Black),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text = "Desktop playback is not implemented yet.",
-            color = Color.White,
-        )
+    LaunchedEffect(playerPtr) {
+        while (true) {
+            delay(250)
+            if (bridge.nuvio_player_is_closed(playerPtr)) {
+                onCloseCallback?.invoke()
+                break
+            }
+            bridge.nuvio_player_refresh_state(playerPtr)
+            val snapshot = PlayerPlaybackSnapshot(
+                isLoading = bridge.nuvio_player_is_loading(playerPtr),
+                isPlaying = bridge.nuvio_player_is_playing(playerPtr),
+                isEnded = bridge.nuvio_player_is_ended(playerPtr),
+                positionMs = bridge.nuvio_player_get_position_ms(playerPtr),
+                durationMs = bridge.nuvio_player_get_duration_ms(playerPtr),
+                bufferedPositionMs = bridge.nuvio_player_get_buffered_ms(playerPtr),
+                playbackSpeed = bridge.nuvio_player_get_speed(playerPtr),
+            )
+            onSnapshot(snapshot)
+            val error = bridge.nuvio_player_get_error(playerPtr)
+            onError(error)
+        }
     }
+
+    Box(modifier = modifier.background(Color.Black))
 }
+
+private fun androidx.compose.ui.graphics.Color.toMpvColorString(): String {
+    val r = (red * 255).toInt().coerceIn(0, 255)
+    val g = (green * 255).toInt().coerceIn(0, 255)
+    val b = (blue * 255).toInt().coerceIn(0, 255)
+    val a = (alpha * 255).toInt().coerceIn(0, 255)
+    return "#${r.hex()}${g.hex()}${b.hex()}${a.hex()}"
+}
+
+private fun Int.hex(): String = toString(16).padStart(2, '0').uppercase()
 
 internal actual object DeviceLanguagePreferences {
     actual fun preferredLanguageCodes(): List<String> =
