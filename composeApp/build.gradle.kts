@@ -281,6 +281,16 @@ dependencies {
 compose.desktop {
     application {
         mainClass = "com.nuvio.app.DesktopAppKt"
+        nativeDistributions {
+            macOS {
+                infoPlist {
+                    extraKeysRawXml = """
+                        <key>NSRequiresAquaSystemAppearance</key>
+                        <false/>
+                    """.trimIndent()
+                }
+            }
+        }
     }
 }
 
