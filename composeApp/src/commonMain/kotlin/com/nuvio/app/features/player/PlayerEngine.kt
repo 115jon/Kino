@@ -25,6 +25,8 @@ interface PlayerEngineController {
         seasonNumber: Int? = null,
         episodeNumber: Int? = null,
         episodeTitle: String? = null,
+        artwork: String? = null,
+        logo: String? = null,
     ) {}
     fun showSkipButton(type: String, endTimeMs: Long) {}
     fun hideSkipButton() {}

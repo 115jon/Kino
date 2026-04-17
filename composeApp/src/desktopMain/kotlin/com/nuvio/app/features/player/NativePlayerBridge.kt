@@ -48,6 +48,8 @@ internal interface DesktopMPVBridgeLib : Library {
         season: Int,
         episode: Int,
         episodeTitle: String?,
+        artwork: String?,
+        logo: String?,
     )
 
     fun nuvio_player_load_file(

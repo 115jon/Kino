@@ -163,10 +163,13 @@ actual fun PlatformPlayerSurface(
                 seasonNumber: Int?,
                 episodeNumber: Int?,
                 episodeTitle: String?,
+                artwork: String?,
+                logo: String?,
             ) {
                 bridge.nuvio_player_set_metadata(
                     playerPtr, title, streamTitle, providerName,
                     seasonNumber ?: 0, episodeNumber ?: 0, episodeTitle,
+                    artwork, logo,
                 )
             }
 

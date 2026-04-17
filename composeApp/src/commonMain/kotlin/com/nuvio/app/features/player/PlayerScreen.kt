@@ -1438,6 +1438,8 @@ fun PlayerScreen(
                         seasonNumber = activeSeasonNumber,
                         episodeNumber = activeEpisodeNumber,
                         episodeTitle = activeEpisodeTitle,
+                        artwork = backdropArtwork,
+                        logo = logo,
                     )
                     controller.setOnCloseCallback { onBackWithProgress() }
                 },
