@@ -52,6 +52,9 @@ internal interface DesktopMPVBridgeLib : Library {
         logo: String?,
     )
 
+    fun nuvio_player_set_has_video_id(player: Pointer, value: Boolean)
+    fun nuvio_player_set_is_series(player: Pointer, value: Boolean)
+
     fun nuvio_player_load_file(
         player: Pointer,
         url: String,
@@ -117,4 +120,43 @@ internal interface DesktopMPVBridgeLib : Library {
 
     fun nuvio_player_is_closed(player: Pointer): Boolean
     fun nuvio_player_pop_next_episode_pressed(player: Pointer): Boolean
+    fun nuvio_player_is_addon_subtitles_fetch_requested(player: Pointer): Boolean
+    fun nuvio_player_set_addon_subtitles_loading(player: Pointer, loading: Boolean)
+    fun nuvio_player_clear_addon_subtitles(player: Pointer)
+    fun nuvio_player_add_addon_subtitle(player: Pointer, id: String, url: String, language: String, display: String)
+    fun nuvio_player_pop_subtitle_style_changed(player: Pointer): Boolean
+    fun nuvio_player_get_subtitle_style_color_index(player: Pointer): Int
+    fun nuvio_player_get_subtitle_style_font_size(player: Pointer): Int
+    fun nuvio_player_get_subtitle_style_outline_enabled(player: Pointer): Boolean
+    fun nuvio_player_get_subtitle_style_bottom_offset(player: Pointer): Int
+
+    fun nuvio_player_pop_sources_open_requested(player: Pointer): Boolean
+    fun nuvio_player_pop_episodes_open_requested(player: Pointer): Boolean
+    fun nuvio_player_pop_source_stream_selected(player: Pointer): String?
+    fun nuvio_player_pop_source_filter_changed(player: Pointer): Boolean
+    fun nuvio_player_get_source_filter_value(player: Pointer): String?
+    fun nuvio_player_pop_source_reload(player: Pointer): Boolean
+    fun nuvio_player_pop_episode_selected(player: Pointer): String?
+    fun nuvio_player_pop_episode_stream_selected(player: Pointer): String?
+    fun nuvio_player_pop_episode_filter_changed(player: Pointer): Boolean
+    fun nuvio_player_get_episode_filter_value(player: Pointer): String?
+    fun nuvio_player_pop_episode_reload(player: Pointer): Boolean
+    fun nuvio_player_pop_episode_back(player: Pointer): Boolean
+
+    fun nuvio_player_set_sources_loading(player: Pointer, loading: Boolean)
+    fun nuvio_player_clear_source_streams(player: Pointer)
+    fun nuvio_player_add_source_stream(player: Pointer, id: String, label: String, subtitle: String?, addonName: String, addonId: String, url: String, isCurrent: Boolean)
+    fun nuvio_player_clear_source_addon_groups(player: Pointer)
+    fun nuvio_player_add_source_addon_group(player: Pointer, id: String, addonName: String, addonId: String, isLoading: Boolean, hasError: Boolean)
+    fun nuvio_player_set_source_selected_filter(player: Pointer, addonId: String?)
+
+    fun nuvio_player_clear_episodes(player: Pointer)
+    fun nuvio_player_add_episode(player: Pointer, id: String, title: String, overview: String?, thumbnail: String?, season: Int, episode: Int)
+    fun nuvio_player_set_episode_streams_loading(player: Pointer, loading: Boolean)
+    fun nuvio_player_clear_episode_streams(player: Pointer)
+    fun nuvio_player_add_episode_stream(player: Pointer, id: String, label: String, subtitle: String?, addonName: String, addonId: String, url: String, isCurrent: Boolean)
+    fun nuvio_player_clear_episode_addon_groups(player: Pointer)
+    fun nuvio_player_add_episode_addon_group(player: Pointer, id: String, addonName: String, addonId: String, isLoading: Boolean, hasError: Boolean)
+    fun nuvio_player_set_episode_selected_filter(player: Pointer, addonId: String?)
+    fun nuvio_player_show_episode_streams(player: Pointer, season: Int, episode: Int, title: String?)
 }

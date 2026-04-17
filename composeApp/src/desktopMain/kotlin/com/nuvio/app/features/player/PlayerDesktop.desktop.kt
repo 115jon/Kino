@@ -25,6 +25,9 @@ import com.nuvio.app.core.sync.encodeSyncInt
 import com.nuvio.app.core.sync.encodeSyncString
 import com.nuvio.app.core.sync.encodeSyncStringSet
 import com.nuvio.app.desktop.DesktopPreferences
+import com.nuvio.app.features.details.MetaVideo
+import com.nuvio.app.features.streams.AddonStreamGroup
+import com.nuvio.app.features.streams.StreamItem
 import com.sun.jna.Pointer
 import java.util.Locale
 import kotlinx.coroutines.delay
@@ -50,6 +53,17 @@ actual fun PlatformPlayerSurface(
     val bridge = remember { DesktopMPVBridgeLib.INSTANCE }
     val playerPtr = remember { bridge.nuvio_player_create() }
     var onCloseCallback by remember { mutableStateOf<(() -> Unit)?>(null) }
+    var onAddonSubtitlesFetchCallback by remember { mutableStateOf<(() -> Unit)?>(null) }
+    var onSourcesRequestedCallback by remember { mutableStateOf<(() -> Unit)?>(null) }
+    var onSourceStreamSelectedCallback by remember { mutableStateOf<((String) -> Unit)?>(null) }
+    var onSourceFilterChangedCallback by remember { mutableStateOf<((String?) -> Unit)?>(null) }
+    var onSourceReloadCallback by remember { mutableStateOf<(() -> Unit)?>(null) }
+    var onEpisodesRequestedCallback by remember { mutableStateOf<(() -> Unit)?>(null) }
+    var onEpisodeSelectedCallback by remember { mutableStateOf<((String) -> Unit)?>(null) }
+    var onEpisodeStreamSelectedCallback by remember { mutableStateOf<((String) -> Unit)?>(null) }
+    var onEpisodeFilterChangedCallback by remember { mutableStateOf<((String?) -> Unit)?>(null) }
+    var onEpisodeReloadCallback by remember { mutableStateOf<(() -> Unit)?>(null) }
+    var onEpisodeBackCallback by remember { mutableStateOf<(() -> Unit)?>(null) }
 
     DisposableEffect(playerPtr) {
         bridge.nuvio_player_show(playerPtr)
@@ -151,8 +165,9 @@ actual fun PlatformPlayerSurface(
             override fun applySubtitleStyle(style: SubtitleStyleState) {
                 val colorHex = style.textColor.toMpvColorString()
                 val outline = if (style.outlineEnabled) 2.0f else 0.0f
+                val subPos = 100 - style.bottomOffset
                 bridge.nuvio_player_apply_subtitle_style(
-                    playerPtr, colorHex, outline, style.fontSizeSp.toFloat(), style.bottomOffset,
+                    playerPtr, colorHex, outline, style.fontSizeSp.toFloat(), subPos,
                 )
             }
 
@@ -171,6 +186,11 @@ actual fun PlatformPlayerSurface(
                     seasonNumber ?: 0, episodeNumber ?: 0, episodeTitle,
                     artwork, logo,
                 )
+            }
+
+            override fun setPlayerFlags(hasVideoId: Boolean, isSeries: Boolean) {
+                bridge.nuvio_player_set_has_video_id(playerPtr, hasVideoId)
+                bridge.nuvio_player_set_is_series(playerPtr, isSeries)
             }
 
             override fun showSkipButton(type: String, endTimeMs: Long) {
@@ -197,6 +217,130 @@ actual fun PlatformPlayerSurface(
 
             override fun setOnCloseCallback(callback: () -> Unit) {
                 onCloseCallback = callback
+            }
+
+            override fun setOnAddonSubtitlesFetchCallback(callback: () -> Unit) {
+                onAddonSubtitlesFetchCallback = callback
+            }
+
+            override fun pushAddonSubtitles(subtitles: List<AddonSubtitle>, isLoading: Boolean) {
+                bridge.nuvio_player_set_addon_subtitles_loading(playerPtr, isLoading)
+                if (!isLoading) {
+                    bridge.nuvio_player_clear_addon_subtitles(playerPtr)
+                    subtitles.forEach { addon ->
+                        bridge.nuvio_player_add_addon_subtitle(
+                            playerPtr, addon.id, addon.url, addon.language, addon.display,
+                        )
+                    }
+                }
+            }
+
+            override fun setOnSourcesRequestedCallback(callback: () -> Unit) {
+                onSourcesRequestedCallback = callback
+            }
+
+            override fun setOnSourceStreamSelectedCallback(callback: (String) -> Unit) {
+                onSourceStreamSelectedCallback = callback
+            }
+
+            override fun setOnSourceFilterChangedCallback(callback: (String?) -> Unit) {
+                onSourceFilterChangedCallback = callback
+            }
+
+            override fun setOnSourceReloadCallback(callback: () -> Unit) {
+                onSourceReloadCallback = callback
+            }
+
+            override fun setOnEpisodesRequestedCallback(callback: () -> Unit) {
+                onEpisodesRequestedCallback = callback
+            }
+
+            override fun setOnEpisodeSelectedCallback(callback: (String) -> Unit) {
+                onEpisodeSelectedCallback = callback
+            }
+
+            override fun setOnEpisodeStreamSelectedCallback(callback: (String) -> Unit) {
+                onEpisodeStreamSelectedCallback = callback
+            }
+
+            override fun setOnEpisodeFilterChangedCallback(callback: (String?) -> Unit) {
+                onEpisodeFilterChangedCallback = callback
+            }
+
+            override fun setOnEpisodeReloadCallback(callback: () -> Unit) {
+                onEpisodeReloadCallback = callback
+            }
+
+            override fun setOnEpisodeBackCallback(callback: () -> Unit) {
+                onEpisodeBackCallback = callback
+            }
+
+            override fun pushSourceData(
+                streams: List<StreamItem>,
+                groups: List<AddonStreamGroup>,
+                loading: Boolean,
+                selectedFilter: String?,
+                currentStreamUrl: String?,
+            ) {
+                bridge.nuvio_player_set_sources_loading(playerPtr, loading)
+                bridge.nuvio_player_set_source_selected_filter(playerPtr, selectedFilter)
+                bridge.nuvio_player_clear_source_addon_groups(playerPtr)
+                groups.forEach { g ->
+                    bridge.nuvio_player_add_source_addon_group(
+                        playerPtr, g.addonId, g.addonName, g.addonId, g.isLoading, g.error != null,
+                    )
+                }
+                bridge.nuvio_player_clear_source_streams(playerPtr)
+                streams.forEach { s ->
+                    bridge.nuvio_player_add_source_stream(
+                        playerPtr, s.addonId + "_" + (s.url ?: s.infoHash ?: ""),
+                        s.streamLabel, s.streamSubtitle, s.addonName, s.addonId,
+                        s.directPlaybackUrl ?: "", s.directPlaybackUrl == currentStreamUrl,
+                    )
+                }
+            }
+
+            override fun pushEpisodes(episodes: List<MetaVideo>) {
+                bridge.nuvio_player_clear_episodes(playerPtr)
+                episodes.forEach { ep ->
+                    bridge.nuvio_player_add_episode(
+                        playerPtr, ep.id, ep.title, ep.overview, ep.thumbnail,
+                        ep.season ?: 0, ep.episode ?: 0,
+                    )
+                }
+            }
+
+            override fun pushEpisodeStreamsData(
+                streams: List<StreamItem>,
+                groups: List<AddonStreamGroup>,
+                loading: Boolean,
+                selectedFilter: String?,
+                currentStreamUrl: String?,
+            ) {
+                bridge.nuvio_player_set_episode_streams_loading(playerPtr, loading)
+                bridge.nuvio_player_set_episode_selected_filter(playerPtr, selectedFilter)
+                bridge.nuvio_player_clear_episode_addon_groups(playerPtr)
+                groups.forEach { g ->
+                    bridge.nuvio_player_add_episode_addon_group(
+                        playerPtr, g.addonId, g.addonName, g.addonId, g.isLoading, g.error != null,
+                    )
+                }
+                bridge.nuvio_player_clear_episode_streams(playerPtr)
+                streams.forEach { s ->
+                    bridge.nuvio_player_add_episode_stream(
+                        playerPtr, s.addonId + "_" + (s.url ?: s.infoHash ?: ""),
+                        s.streamLabel, s.streamSubtitle, s.addonName, s.addonId,
+                        s.directPlaybackUrl ?: "", s.directPlaybackUrl == currentStreamUrl,
+                    )
+                }
+            }
+
+            override fun showEpisodeStreamsView(season: Int?, episode: Int?, title: String?) {
+                bridge.nuvio_player_show_episode_streams(playerPtr, season ?: 0, episode ?: 0, title)
+            }
+
+            override fun switchSource(url: String, audioUrl: String?, headersJson: String?) {
+                bridge.nuvio_player_load_file(playerPtr, url, audioUrl, headersJson)
             }
         }
     }
@@ -225,6 +369,54 @@ actual fun PlatformPlayerSurface(
             onSnapshot(snapshot)
             val error = bridge.nuvio_player_get_error(playerPtr)
             onError(error)
+            if (bridge.nuvio_player_is_addon_subtitles_fetch_requested(playerPtr)) {
+                onAddonSubtitlesFetchCallback?.invoke()
+            }
+            if (bridge.nuvio_player_pop_subtitle_style_changed(playerPtr)) {
+                val colorIndex = bridge.nuvio_player_get_subtitle_style_color_index(playerPtr)
+                    .coerceIn(0, SubtitleColorSwatches.lastIndex)
+                val style = SubtitleStyleState(
+                    textColor = SubtitleColorSwatches[colorIndex],
+                    outlineEnabled = bridge.nuvio_player_get_subtitle_style_outline_enabled(playerPtr),
+                    fontSizeSp = bridge.nuvio_player_get_subtitle_style_font_size(playerPtr),
+                    bottomOffset = bridge.nuvio_player_get_subtitle_style_bottom_offset(playerPtr),
+                )
+                PlayerSettingsRepository.setSubtitleStyle(style)
+            }
+            if (bridge.nuvio_player_pop_next_episode_pressed(playerPtr)) {
+            }
+            if (bridge.nuvio_player_pop_sources_open_requested(playerPtr)) {
+                onSourcesRequestedCallback?.invoke()
+            }
+            if (bridge.nuvio_player_pop_episodes_open_requested(playerPtr)) {
+                onEpisodesRequestedCallback?.invoke()
+            }
+            bridge.nuvio_player_pop_source_stream_selected(playerPtr)?.let { url ->
+                onSourceStreamSelectedCallback?.invoke(url)
+            }
+            if (bridge.nuvio_player_pop_source_filter_changed(playerPtr)) {
+                val filterValue = bridge.nuvio_player_get_source_filter_value(playerPtr)
+                onSourceFilterChangedCallback?.invoke(filterValue)
+            }
+            if (bridge.nuvio_player_pop_source_reload(playerPtr)) {
+                onSourceReloadCallback?.invoke()
+            }
+            bridge.nuvio_player_pop_episode_selected(playerPtr)?.let { episodeId ->
+                onEpisodeSelectedCallback?.invoke(episodeId)
+            }
+            bridge.nuvio_player_pop_episode_stream_selected(playerPtr)?.let { url ->
+                onEpisodeStreamSelectedCallback?.invoke(url)
+            }
+            if (bridge.nuvio_player_pop_episode_filter_changed(playerPtr)) {
+                val filterValue = bridge.nuvio_player_get_episode_filter_value(playerPtr)
+                onEpisodeFilterChangedCallback?.invoke(filterValue)
+            }
+            if (bridge.nuvio_player_pop_episode_reload(playerPtr)) {
+                onEpisodeReloadCallback?.invoke()
+            }
+            if (bridge.nuvio_player_pop_episode_back(playerPtr)) {
+                onEpisodeBackCallback?.invoke()
+            }
         }
     }
 
@@ -290,10 +482,6 @@ internal actual object PlayerSettingsStorage {
         secondaryPreferredAudioLanguageKey,
         preferredSubtitleLanguageKey,
         secondaryPreferredSubtitleLanguageKey,
-        subtitleTextColorKey,
-        subtitleOutlineEnabledKey,
-        subtitleFontSizeSpKey,
-        subtitleBottomOffsetKey,
         streamReuseLastLinkEnabledKey,
         streamReuseLastLinkCacheHoursKey,
         decoderPriorityKey,
@@ -524,10 +712,6 @@ internal actual object PlayerSettingsStorage {
         loadSecondaryPreferredAudioLanguage()?.let { put(secondaryPreferredAudioLanguageKey, encodeSyncString(it)) }
         loadPreferredSubtitleLanguage()?.let { put(preferredSubtitleLanguageKey, encodeSyncString(it)) }
         loadSecondaryPreferredSubtitleLanguage()?.let { put(secondaryPreferredSubtitleLanguageKey, encodeSyncString(it)) }
-        loadSubtitleTextColor()?.let { put(subtitleTextColorKey, encodeSyncString(it)) }
-        loadSubtitleOutlineEnabled()?.let { put(subtitleOutlineEnabledKey, encodeSyncBoolean(it)) }
-        loadSubtitleFontSizeSp()?.let { put(subtitleFontSizeSpKey, encodeSyncInt(it)) }
-        loadSubtitleBottomOffset()?.let { put(subtitleBottomOffsetKey, encodeSyncInt(it)) }
         loadStreamReuseLastLinkEnabled()?.let { put(streamReuseLastLinkEnabledKey, encodeSyncBoolean(it)) }
         loadStreamReuseLastLinkCacheHours()?.let { put(streamReuseLastLinkCacheHoursKey, encodeSyncInt(it)) }
         loadDecoderPriority()?.let { put(decoderPriorityKey, encodeSyncInt(it)) }
@@ -562,10 +746,6 @@ internal actual object PlayerSettingsStorage {
         payload.decodeSyncString(secondaryPreferredAudioLanguageKey)?.let(::saveSecondaryPreferredAudioLanguage)
         payload.decodeSyncString(preferredSubtitleLanguageKey)?.let(::savePreferredSubtitleLanguage)
         payload.decodeSyncString(secondaryPreferredSubtitleLanguageKey)?.let(::saveSecondaryPreferredSubtitleLanguage)
-        payload.decodeSyncString(subtitleTextColorKey)?.let(::saveSubtitleTextColor)
-        payload.decodeSyncBoolean(subtitleOutlineEnabledKey)?.let(::saveSubtitleOutlineEnabled)
-        payload.decodeSyncInt(subtitleFontSizeSpKey)?.let(::saveSubtitleFontSizeSp)
-        payload.decodeSyncInt(subtitleBottomOffsetKey)?.let(::saveSubtitleBottomOffset)
         payload.decodeSyncBoolean(streamReuseLastLinkEnabledKey)?.let(::saveStreamReuseLastLinkEnabled)
         payload.decodeSyncInt(streamReuseLastLinkCacheHoursKey)?.let(::saveStreamReuseLastLinkCacheHours)
         payload.decodeSyncInt(decoderPriorityKey)?.let(::saveDecoderPriority)

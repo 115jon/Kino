@@ -28,6 +28,7 @@ interface PlayerEngineController {
         artwork: String? = null,
         logo: String? = null,
     ) {}
+    fun setPlayerFlags(hasVideoId: Boolean, isSeries: Boolean) {}
     fun showSkipButton(type: String, endTimeMs: Long) {}
     fun hideSkipButton() {}
     fun showNextEpisode(
@@ -39,6 +40,35 @@ interface PlayerEngineController {
     ) {}
     fun hideNextEpisode() {}
     fun setOnCloseCallback(callback: () -> Unit) {}
+    fun setOnAddonSubtitlesFetchCallback(callback: () -> Unit) {}
+    fun pushAddonSubtitles(subtitles: List<AddonSubtitle>, isLoading: Boolean) {}
+    fun setOnSourcesRequestedCallback(callback: () -> Unit) {}
+    fun setOnSourceStreamSelectedCallback(callback: (String) -> Unit) {}
+    fun setOnSourceFilterChangedCallback(callback: (String?) -> Unit) {}
+    fun setOnSourceReloadCallback(callback: () -> Unit) {}
+    fun setOnEpisodesRequestedCallback(callback: () -> Unit) {}
+    fun setOnEpisodeSelectedCallback(callback: (String) -> Unit) {}
+    fun setOnEpisodeStreamSelectedCallback(callback: (String) -> Unit) {}
+    fun setOnEpisodeFilterChangedCallback(callback: (String?) -> Unit) {}
+    fun setOnEpisodeReloadCallback(callback: () -> Unit) {}
+    fun setOnEpisodeBackCallback(callback: () -> Unit) {}
+    fun pushSourceData(
+        streams: List<com.nuvio.app.features.streams.StreamItem>,
+        groups: List<com.nuvio.app.features.streams.AddonStreamGroup>,
+        loading: Boolean,
+        selectedFilter: String?,
+        currentStreamUrl: String?,
+    ) {}
+    fun pushEpisodes(episodes: List<com.nuvio.app.features.details.MetaVideo>) {}
+    fun pushEpisodeStreamsData(
+        streams: List<com.nuvio.app.features.streams.StreamItem>,
+        groups: List<com.nuvio.app.features.streams.AddonStreamGroup>,
+        loading: Boolean,
+        selectedFilter: String?,
+        currentStreamUrl: String?,
+    ) {}
+    fun showEpisodeStreamsView(season: Int?, episode: Int?, title: String?) {}
+    fun switchSource(url: String, audioUrl: String?, headersJson: String?) {}
 }
 
 internal fun sanitizePlaybackHeaders(headers: Map<String, String>?): Map<String, String> {

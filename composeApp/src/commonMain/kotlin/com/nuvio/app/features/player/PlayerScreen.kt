@@ -1023,6 +1023,30 @@ fun PlayerScreen(
             playerController?.applySubtitleStyle(subtitleStyle)
         }
 
+        LaunchedEffect(playerController, addonSubtitles, isLoadingAddonSubtitles) {
+            playerController?.pushAddonSubtitles(addonSubtitles, isLoadingAddonSubtitles)
+        }
+
+        LaunchedEffect(playerController, sourceStreamsState) {
+            playerController?.pushSourceData(
+                streams = sourceStreamsState.allStreams,
+                groups = sourceStreamsState.groups,
+                loading = sourceStreamsState.isAnyLoading,
+                selectedFilter = sourceStreamsState.selectedFilter,
+                currentStreamUrl = activeSourceUrl,
+            )
+        }
+
+        LaunchedEffect(playerController, episodeStreamsRepoState) {
+            playerController?.pushEpisodeStreamsData(
+                streams = episodeStreamsRepoState.allStreams,
+                groups = episodeStreamsRepoState.groups,
+                loading = episodeStreamsRepoState.isAnyLoading,
+                selectedFilter = episodeStreamsRepoState.selectedFilter,
+                currentStreamUrl = activeSourceUrl,
+            )
+        }
+
         LaunchedEffect(playbackSnapshot.isLoading, playerController) {
             if (!playbackSnapshot.isLoading && playerController != null) {
                 refreshTracks()
@@ -1441,7 +1465,124 @@ fun PlayerScreen(
                         artwork = backdropArtwork,
                         logo = logo,
                     )
+                    controller.setPlayerFlags(
+                        hasVideoId = activeVideoId != null,
+                        isSeries = parentMetaType == "series",
+                    )
                     controller.setOnCloseCallback { onBackWithProgress() }
+                    controller.setOnAddonSubtitlesFetchCallback {
+                        if (contentType != null && activeVideoId != null) {
+                            SubtitleRepository.fetchAddonSubtitles(contentType, activeVideoId!!)
+                        }
+                    }
+                    controller.setOnSourcesRequestedCallback {
+                        val type = contentType ?: parentMetaType
+                        val vid = activeVideoId ?: return@setOnSourcesRequestedCallback
+                        PlayerStreamsRepository.loadSources(
+                            type = type,
+                            videoId = vid,
+                            season = activeSeasonNumber,
+                            episode = activeEpisodeNumber,
+                        )
+                    }
+                    controller.setOnSourceStreamSelectedCallback { url ->
+                        val allStreams = PlayerStreamsRepository.sourceState.value.allStreams
+                        val stream = allStreams.firstOrNull { it.directPlaybackUrl == url }
+                            ?: return@setOnSourceStreamSelectedCallback
+                        switchToSource(stream)
+                        val headers = sanitizePlaybackHeaders(stream.behaviorHints.proxyHeaders?.request)
+                        val headersJson = headers.takeIf { it.isNotEmpty() }?.entries
+                            ?.joinToString(",", "{", "}") { (k, v) -> "\"${k}\":\"${v}\"" }
+                        controller.switchSource(url, null, headersJson)
+                        controller.setMetadata(
+                            title = title,
+                            streamTitle = activeStreamTitle,
+                            providerName = activeProviderName,
+                            seasonNumber = activeSeasonNumber,
+                            episodeNumber = activeEpisodeNumber,
+                            episodeTitle = activeEpisodeTitle,
+                            artwork = backdropArtwork,
+                            logo = logo,
+                        )
+                    }
+                    controller.setOnSourceFilterChangedCallback { addonId ->
+                        PlayerStreamsRepository.selectSourceFilter(addonId)
+                    }
+                    controller.setOnSourceReloadCallback {
+                        val type = contentType ?: parentMetaType
+                        val vid = activeVideoId ?: return@setOnSourceReloadCallback
+                        PlayerStreamsRepository.loadSources(
+                            type = type,
+                            videoId = vid,
+                            season = activeSeasonNumber,
+                            episode = activeEpisodeNumber,
+                            forceRefresh = true,
+                        )
+                    }
+                    controller.setOnEpisodesRequestedCallback {
+                        scope.launch {
+                            if (playerMetaVideos.isEmpty()) {
+                                playerMetaVideos = MetaDetailsRepository.fetch(parentMetaType, parentMetaId)?.videos ?: emptyList()
+                            }
+                            controller.pushEpisodes(playerMetaVideos)
+                        }
+                    }
+                    controller.setOnEpisodeSelectedCallback { episodeId ->
+                        val episode = playerMetaVideos.firstOrNull { it.id == episodeId }
+                            ?: return@setOnEpisodeSelectedCallback
+                        episodeStreamsPanelState = episodeStreamsPanelState.copy(
+                            showStreams = true,
+                            selectedEpisode = episode,
+                        )
+                        val type = contentType ?: parentMetaType
+                        PlayerStreamsRepository.loadEpisodeStreams(
+                            type = type,
+                            videoId = episode.id,
+                            season = episode.season,
+                            episode = episode.episode,
+                        )
+                        controller.showEpisodeStreamsView(episode.season, episode.episode, episode.title)
+                    }
+                    controller.setOnEpisodeStreamSelectedCallback { url ->
+                        val allStreams = PlayerStreamsRepository.episodeStreamsState.value.allStreams
+                        val stream = allStreams.firstOrNull { it.directPlaybackUrl == url }
+                            ?: return@setOnEpisodeStreamSelectedCallback
+                        val episode = playerMetaVideos.firstOrNull { it.id == episodeStreamsPanelState.selectedEpisode?.id }
+                            ?: return@setOnEpisodeStreamSelectedCallback
+                        switchToEpisodeStream(stream, episode)
+                        val headers = sanitizePlaybackHeaders(stream.behaviorHints.proxyHeaders?.request)
+                        val headersJson = headers.takeIf { it.isNotEmpty() }?.entries
+                            ?.joinToString(",", "{", "}") { (k, v) -> "\"${k}\":\"${v}\"" }
+                        controller.switchSource(url, null, headersJson)
+                        controller.setMetadata(
+                            title = title,
+                            streamTitle = activeStreamTitle,
+                            providerName = activeProviderName,
+                            seasonNumber = activeSeasonNumber,
+                            episodeNumber = activeEpisodeNumber,
+                            episodeTitle = activeEpisodeTitle,
+                            artwork = backdropArtwork,
+                            logo = logo,
+                        )
+                    }
+                    controller.setOnEpisodeFilterChangedCallback { addonId ->
+                        PlayerStreamsRepository.selectEpisodeStreamsFilter(addonId)
+                    }
+                    controller.setOnEpisodeReloadCallback {
+                        val episode = episodeStreamsPanelState.selectedEpisode ?: return@setOnEpisodeReloadCallback
+                        val type = contentType ?: parentMetaType
+                        PlayerStreamsRepository.loadEpisodeStreams(
+                            type = type,
+                            videoId = episode.id,
+                            season = episode.season,
+                            episode = episode.episode,
+                            forceRefresh = true,
+                        )
+                    }
+                    controller.setOnEpisodeBackCallback {
+                        episodeStreamsPanelState = EpisodeStreamsPanelState()
+                        PlayerStreamsRepository.clearEpisodeStreams()
+                    }
                 },
                 onSnapshot = { snapshot ->
                     playbackSnapshot = snapshot
