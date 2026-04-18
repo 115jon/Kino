@@ -60,20 +60,23 @@ object ProfileRepository {
 
     val activeProfileId: Int get() = activeProfileIndex
 
+    fun loadCachedProfiles(): Boolean {
+        val stored = decodeStoredPayload() ?: return false
+        loadedCacheForUserId = stored.userId
+        applyStoredPayload(stored)
+        return _state.value.profiles.isNotEmpty()
+    }
+
     fun ensureLoaded(userId: String) {
         if (loadedCacheForUserId == userId && _state.value.isLoaded) return
 
+        val stored = decodeStoredPayload()
         loadedCacheForUserId = userId
-        val payload = ProfileStorage.loadPayload().orEmpty().trim()
-        if (payload.isEmpty()) {
+        if (stored == null) {
             _state.value = ProfileState()
             activeProfileIndex = 1
             return
         }
-
-        val stored = runCatching {
-            json.decodeFromString<StoredProfilePayload>(payload)
-        }.getOrNull() ?: return
 
         if (stored.userId != userId) {
             _state.value = ProfileState()
@@ -81,14 +84,7 @@ object ProfileRepository {
             return
         }
 
-        val profiles = stored.profiles.sortedBy { it.profileIndex }
-        activeProfileIndex = stored.activeProfileIndex
-        _state.value = ProfileState(
-            profiles = profiles,
-            activeProfile = profiles.find { it.profileIndex == activeProfileIndex } ?: profiles.firstOrNull(),
-            isLoaded = profiles.isNotEmpty(),
-        )
-        _state.value.activeProfile?.let { activeProfileIndex = it.profileIndex }
+        applyStoredPayload(stored)
     }
 
     fun clearInMemory() {
@@ -232,6 +228,7 @@ object ProfileRepository {
     suspend fun deleteProfile(profileIndex: Int) {
         if (AuthRepository.state.value.isAnonymous) {
             val remaining = _state.value.profiles.filter { it.profileIndex != profileIndex }
+            ProfilePinCacheStorage.removePayload(profileIndex)
             _state.value = _state.value.copy(
                 profiles = remaining,
                 activeProfile = if (_state.value.activeProfile?.profileIndex == profileIndex) remaining.firstOrNull() else _state.value.activeProfile,
@@ -252,20 +249,32 @@ object ProfileRepository {
     }
 
     suspend fun verifyPin(profileIndex: Int, pin: String): PinVerifyResult {
+        if (AuthRepository.state.value !is AuthState.Authenticated) {
+            return verifyPinLocally(profileIndex, pin)
+        }
+
         return runCatching {
             val params = buildJsonObject {
                 put("p_profile_id", profileIndex)
                 put("p_pin", pin)
             }
             val result = SupabaseProvider.client.postgrest.rpc("verify_profile_pin", params)
-            result.decodeSingle<PinVerifyResult>()
+            result.decodeSingle<PinVerifyResult>().also { verifyResult ->
+                if (verifyResult.unlocked) {
+                    rememberVerifiedPin(profileIndex = profileIndex, pin = pin)
+                }
+            }
         }.getOrElse { e ->
             log.e(e) { "Failed to verify pin" }
-            PinVerifyResult(unlocked = false, retryAfterSeconds = 0, message = "Couldn't verify PIN. Try again.")
+            verifyPinLocally(profileIndex, pin)
         }
     }
 
     suspend fun setPin(profileIndex: Int, pin: String, currentPin: String? = null): PinVerifyResult {
+        if (AuthRepository.state.value !is AuthState.Authenticated) {
+            return PinVerifyResult(unlocked = false, message = "Connect to the internet to set a PIN.")
+        }
+
         return runCatching {
             val params = buildJsonObject {
                 put("p_profile_id", profileIndex)
@@ -274,6 +283,7 @@ object ProfileRepository {
             }
             SupabaseProvider.client.postgrest.rpc("set_profile_pin", params)
             pullProfiles()
+            rememberVerifiedPin(profileIndex = profileIndex, pin = pin)
             PinVerifyResult(unlocked = true)
         }.onFailure { e ->
             log.e(e) { "Failed to set pin" }
@@ -283,6 +293,10 @@ object ProfileRepository {
     }
 
     suspend fun clearPin(profileIndex: Int, currentPin: String? = null): PinVerifyResult {
+        if (AuthRepository.state.value !is AuthState.Authenticated) {
+            return PinVerifyResult(unlocked = false, message = "Connect to the internet to remove the PIN lock.")
+        }
+
         return runCatching {
             val params = buildJsonObject {
                 put("p_profile_id", profileIndex)
@@ -290,6 +304,7 @@ object ProfileRepository {
             }
             SupabaseProvider.client.postgrest.rpc("clear_profile_pin", params)
             pullProfiles()
+            ProfilePinCacheStorage.removePayload(profileIndex)
             PinVerifyResult(unlocked = true)
         }.onFailure { e ->
             log.e(e) { "Failed to clear pin" }
@@ -306,6 +321,7 @@ object ProfileRepository {
             }
             SupabaseProvider.client.postgrest.rpc("clear_profile_pin_with_account_password", params)
             pullProfiles()
+            ProfilePinCacheStorage.removePayload(profileIndex)
         }.onFailure { e ->
             log.e(e) { "Failed to clear pin with password" }
         }
@@ -343,7 +359,110 @@ object ProfileRepository {
         if (_state.value.activeProfile != null) {
             activeProfileIndex = _state.value.activeProfile!!.profileIndex
         }
+        syncPinCache(profiles)
         persist()
+    }
+
+    private fun decodeStoredPayload(): StoredProfilePayload? {
+        val payload = ProfileStorage.loadPayload().orEmpty().trim()
+        if (payload.isEmpty()) return null
+
+        return runCatching {
+            json.decodeFromString<StoredProfilePayload>(payload)
+        }.getOrNull()
+    }
+
+    private fun applyStoredPayload(stored: StoredProfilePayload) {
+        val profiles = stored.profiles.sortedBy { it.profileIndex }
+        activeProfileIndex = stored.activeProfileIndex
+        _state.value = ProfileState(
+            profiles = profiles,
+            activeProfile = profiles.find { it.profileIndex == activeProfileIndex } ?: profiles.firstOrNull(),
+            isLoaded = profiles.isNotEmpty(),
+        )
+        _state.value.activeProfile?.let { activeProfileIndex = it.profileIndex }
+        syncPinCache(profiles)
+    }
+
+    private fun rememberVerifiedPin(profileIndex: Int, pin: String) {
+        val profile = _state.value.profiles.find { it.profileIndex == profileIndex }
+        val salt = generateProfilePinSalt()
+        val payload = CachedProfilePinPayload(
+            salt = salt,
+            digest = hashProfilePin(profileIndex = profileIndex, salt = salt, pin = pin),
+            profileUpdatedAt = profile?.updatedAt.orEmpty(),
+        )
+        ProfilePinCacheStorage.savePayload(profileIndex, json.encodeToString(payload))
+    }
+
+    private fun verifyPinLocally(profileIndex: Int, pin: String): PinVerifyResult {
+        val profile = _state.value.profiles.find { it.profileIndex == profileIndex }
+        if (profile?.pinEnabled != true) {
+            return PinVerifyResult(unlocked = true)
+        }
+
+        val payload = ProfilePinCacheStorage.loadPayload(profileIndex).orEmpty().trim()
+        if (payload.isEmpty()) {
+            return PinVerifyResult(
+                unlocked = false,
+                message = "This PIN can't be verified offline on this device yet. Connect once and unlock it online first.",
+            )
+        }
+
+        val cached = runCatching {
+            json.decodeFromString<CachedProfilePinPayload>(payload)
+        }.getOrNull() ?: return PinVerifyResult(
+            unlocked = false,
+            message = "This PIN can't be verified offline on this device yet. Connect once and unlock it online first.",
+        )
+
+        if (
+            cached.profileUpdatedAt.isNotBlank() &&
+            profile.updatedAt.isNotBlank() &&
+            cached.profileUpdatedAt != profile.updatedAt
+        ) {
+            ProfilePinCacheStorage.removePayload(profileIndex)
+            return PinVerifyResult(
+                unlocked = false,
+                message = "This profile PIN changed. Connect once to refresh the lock on this device.",
+            )
+        }
+
+        val digest = hashProfilePin(profileIndex = profileIndex, salt = cached.salt, pin = pin)
+        return if (digest == cached.digest) {
+            PinVerifyResult(unlocked = true)
+        } else {
+            PinVerifyResult(unlocked = false, message = "Incorrect PIN")
+        }
+    }
+
+    private fun syncPinCache(profiles: List<NuvioProfile>) {
+        val profilesByIndex = profiles.associateBy { it.profileIndex }
+        for (profileIndex in 1..4) {
+            val profile = profilesByIndex[profileIndex]
+            if (profile == null || !profile.pinEnabled) {
+                ProfilePinCacheStorage.removePayload(profileIndex)
+                continue
+            }
+
+            val raw = ProfilePinCacheStorage.loadPayload(profileIndex).orEmpty().trim()
+            if (raw.isEmpty()) continue
+
+            val cached = runCatching {
+                json.decodeFromString<CachedProfilePinPayload>(raw)
+            }.getOrNull() ?: run {
+                ProfilePinCacheStorage.removePayload(profileIndex)
+                continue
+            }
+
+            if (
+                cached.profileUpdatedAt.isNotBlank() &&
+                profile.updatedAt.isNotBlank() &&
+                cached.profileUpdatedAt != profile.updatedAt
+            ) {
+                ProfilePinCacheStorage.removePayload(profileIndex)
+            }
+        }
     }
 
     private fun persist() {

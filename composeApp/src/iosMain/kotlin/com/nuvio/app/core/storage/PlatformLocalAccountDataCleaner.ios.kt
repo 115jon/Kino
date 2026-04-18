@@ -3,7 +3,11 @@ package com.nuvio.app.core.storage
 import platform.Foundation.NSUserDefaults
 
 internal actual object PlatformLocalAccountDataCleaner {
-    private val plainKeys = listOf("profile_payload")
+    private val plainKeys = listOf(
+        "profile_payload",
+        "avatar_catalog_payload",
+    )
+    private val profilePinCachePrefixes = listOf("profile_pin_cache_")
     private val profileIndexedPrefixes = listOf(
         "installed_manifest_urls_",
         "plugins_state_",
@@ -50,6 +54,9 @@ internal actual object PlatformLocalAccountDataCleaner {
 
         (1..4).forEach { profileId ->
             profileIndexedPrefixes.forEach { prefix ->
+                defaults.removeObjectForKey("$prefix$profileId")
+            }
+            profilePinCachePrefixes.forEach { prefix ->
                 defaults.removeObjectForKey("$prefix$profileId")
             }
             profileScopedBaseKeys.forEach { baseKey ->

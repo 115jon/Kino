@@ -134,6 +134,7 @@ import com.nuvio.app.features.settings.ContinueWatchingSettingsScreen
 import com.nuvio.app.features.settings.AddonsSettingsScreen
 import com.nuvio.app.features.settings.PluginsSettingsScreen
 import com.nuvio.app.features.settings.AccountSettingsScreen
+import com.nuvio.app.features.settings.SupportersContributorsSettingsScreen
 import com.nuvio.app.features.settings.ThemeSettingsRepository
 import com.nuvio.app.features.collection.CollectionManagementScreen
 import com.nuvio.app.features.collection.CollectionEditorScreen
@@ -216,6 +217,9 @@ object PluginsSettingsRoute
 object AccountSettingsRoute
 
 @Serializable
+object SupportersContributorsSettingsRoute
+
+@Serializable
 object CollectionsRoute
 
 @Serializable
@@ -278,38 +282,79 @@ fun App() {
             AuthRepository.initialize()
         }
 
+        LaunchedEffect(Unit) {
+            NetworkStatusRepository.ensureStarted()
+            ProfileRepository.loadCachedProfiles()
+        }
+
         val authState by AuthRepository.state.collectAsStateWithLifecycle()
         val profileState by ProfileRepository.state.collectAsStateWithLifecycle()
+        val networkStatusUiState by remember {
+            NetworkStatusRepository.uiState
+        }.collectAsStateWithLifecycle()
         var gateScreen by rememberSaveable { mutableStateOf(AppGateScreen.Loading.name) }
         var editingProfile by remember { mutableStateOf<NuvioProfile?>(null) }
         var isNewProfile by remember { mutableStateOf(false) }
         var autoSkipProfileSelection by rememberSaveable { mutableStateOf(false) }
 
-        LaunchedEffect(authState) {
+        fun enterProfileGate(profiles: List<NuvioProfile>, syncOnEnter: Boolean) {
+            if (profiles.isEmpty()) {
+                autoSkipProfileSelection = true
+                gateScreen = AppGateScreen.ProfileSelection.name
+                return
+            }
+
+            autoSkipProfileSelection = true
+            if (profiles.size == 1) {
+                val onlyProfile = profiles.first()
+                ProfileRepository.selectProfile(onlyProfile.profileIndex)
+                if (syncOnEnter) {
+                    SyncManager.pullAllForProfile(onlyProfile.profileIndex)
+                }
+                gateScreen = AppGateScreen.Main.name
+                autoSkipProfileSelection = false
+            } else {
+                gateScreen = AppGateScreen.ProfileSelection.name
+            }
+        }
+
+        LaunchedEffect(authState, networkStatusUiState.condition, profileState.profiles) {
+            val cachedProfiles = profileState.profiles
+            val allowOfflineProfileAccess =
+                cachedProfiles.isNotEmpty() &&
+                    authState !is AuthState.Authenticated &&
+                    networkStatusUiState.condition != NetworkCondition.Online
+
             when (authState) {
-                is AuthState.Loading -> gateScreen = AppGateScreen.Loading.name
+                is AuthState.Loading -> {
+                    if (allowOfflineProfileAccess) {
+                        enterProfileGate(cachedProfiles, syncOnEnter = false)
+                    } else {
+                        gateScreen = AppGateScreen.Loading.name
+                    }
+                }
                 is AuthState.Unauthenticated -> {
-                    ProfileRepository.clearInMemory()
-                    gateScreen = AppGateScreen.Auth.name
+                    if (allowOfflineProfileAccess) {
+                        enterProfileGate(cachedProfiles, syncOnEnter = false)
+                    } else {
+                        ProfileRepository.clearInMemory()
+                        gateScreen = AppGateScreen.Auth.name
+                    }
                 }
                 is AuthState.Authenticated -> {
                     val authenticatedState = authState as AuthState.Authenticated
                     ProfileRepository.ensureLoaded(authenticatedState.userId)
                     if (gateScreen == AppGateScreen.Loading.name || gateScreen == AppGateScreen.Auth.name) {
-                        autoSkipProfileSelection = true
-                        val cachedProfiles = ProfileRepository.state.value.profiles
-                        if (cachedProfiles.size == 1) {
-                            val onlyProfile = cachedProfiles.first()
-                            ProfileRepository.selectProfile(onlyProfile.profileIndex)
-                            SyncManager.pullAllForProfile(onlyProfile.profileIndex)
-                            gateScreen = AppGateScreen.Main.name
-                            autoSkipProfileSelection = false
-                        } else {
-                            gateScreen = AppGateScreen.ProfileSelection.name
-                        }
+                        enterProfileGate(ProfileRepository.state.value.profiles, syncOnEnter = true)
                     }
                 }
             }
+        }
+
+        LaunchedEffect((authState as? AuthState.Authenticated)?.userId) {
+            val authenticatedState = authState as? AuthState.Authenticated ?: return@LaunchedEffect
+            ProfileRepository.ensureLoaded(authenticatedState.userId)
+            ProfileRepository.pullProfiles()
         }
 
         LaunchedEffect(gateScreen, autoSkipProfileSelection, profileState.profiles) {
@@ -352,7 +397,9 @@ fun App() {
                     ProfileSelectionScreen(
                         onProfileSelected = { profile ->
                             ProfileRepository.selectProfile(profile.profileIndex)
-                            SyncManager.pullAllForProfile(profile.profileIndex)
+                            if (authState is AuthState.Authenticated) {
+                                SyncManager.pullAllForProfile(profile.profileIndex)
+                            }
                             gateScreen = AppGateScreen.Main.name
                         },
                         onEditProfile = { profile ->
@@ -910,6 +957,9 @@ private fun MainAppContent(
                                         }
                                     },
                                     onAccountSettingsClick = { navController.navigate(AccountSettingsRoute) },
+                                    onSupportersContributorsSettingsClick = {
+                                        navController.navigate(SupportersContributorsSettingsRoute)
+                                    },
                                     onCollectionsSettingsClick = { navController.navigate(CollectionsRoute) },
                                     onFolderClick = { collectionId, folderId ->
                                         navController.navigate(FolderDetailRoute(collectionId = collectionId, folderId = folderId))
@@ -1515,6 +1565,15 @@ private fun MainAppContent(
                         onBack = onBack,
                     )
                 }
+                composable<SupportersContributorsSettingsRoute> { backStackEntry ->
+                    val onBack = rememberGuardedPopBackStack(
+                        navController = navController,
+                        backStackEntry = backStackEntry,
+                    )
+                    SupportersContributorsSettingsScreen(
+                        onBack = onBack,
+                    )
+                }
                 composable<CollectionsRoute> { backStackEntry ->
                     val onBack = rememberGuardedPopBackStack(
                         navController = navController,
@@ -1780,6 +1839,7 @@ private fun AppTabHost(
     onAddonsSettingsClick: () -> Unit = {},
     onPluginsSettingsClick: () -> Unit = {},
     onAccountSettingsClick: () -> Unit = {},
+    onSupportersContributorsSettingsClick: () -> Unit = {},
     onCollectionsSettingsClick: () -> Unit = {},
     onFolderClick: ((collectionId: String, folderId: String) -> Unit)? = null,
     onInitialHomeContentRendered: () -> Unit = {},
@@ -1829,6 +1889,7 @@ private fun AppTabHost(
                         onAddonsClick = onAddonsSettingsClick,
                         onPluginsClick = onPluginsSettingsClick,
                         onAccountClick = onAccountSettingsClick,
+                        onSupportersContributorsClick = onSupportersContributorsSettingsClick,
                         onCollectionsClick = onCollectionsSettingsClick,
                     )
                 }
