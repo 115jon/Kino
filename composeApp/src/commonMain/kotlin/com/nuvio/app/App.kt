@@ -192,6 +192,17 @@ import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 
+private fun desktopPlayerTrace(message: String) {
+    val osName = System.getProperty("os.name").orEmpty()
+    if (
+        osName.contains("Windows", ignoreCase = true) ||
+        osName.contains("Mac", ignoreCase = true) ||
+        osName.contains("Linux", ignoreCase = true)
+    ) {
+        println("Debug: (DesktopPlayerTrace) $message")
+    }
+}
+
 @Serializable
 object TabsRoute
 
@@ -1348,6 +1359,9 @@ private fun MainAppContent(
                         val maxAgeMs = playerSettings.streamReuseLastLinkCacheHours * 60L * 60L * 1000L
                         val cached = StreamLinkCacheRepository.getValid(cacheKey, maxAgeMs)
                         if (cached != null) {
+                            desktopPlayerTrace(
+                                "reusing cached stream title=${launch.title} videoId=$effectiveVideoId addon=${cached.addonName} url=${cached.url.take(240)} requestHeaderKeys=${cached.requestHeaders.keys.joinToString()} responseHeaderKeys=${cached.responseHeaders.keys.joinToString()}"
+                            )
                             reuseNavigated = true
                             StreamsRepository.clear()
                             val launchId = PlayerLaunchStore.put(
@@ -1406,6 +1420,9 @@ private fun MainAppContent(
                         if (streamsUiState.requestToken != expectedStreamsRequestToken) return@LaunchedEffect
                         val stream = streamsUiState.autoPlayStream ?: return@LaunchedEffect
                         val sourceUrl = stream.directPlaybackUrl ?: return@LaunchedEffect
+                        desktopPlayerTrace(
+                            "auto-play stream title=${launch.title} videoId=$effectiveVideoId addon=${stream.addonName} label=${stream.streamLabel} url=${sourceUrl.take(240)} requestHeaderKeys=${sanitizePlaybackHeaders(stream.behaviorHints.proxyHeaders?.request).keys.joinToString()} responseHeaderKeys=${sanitizePlaybackResponseHeaders(stream.behaviorHints.proxyHeaders?.response).keys.joinToString()}"
+                        )
                         autoPlayHandled = true
                         if (playerSettings.streamReuseLastLinkEnabled) {
                             val cacheKey = StreamLinkCacheRepository.contentKey(
@@ -1492,6 +1509,9 @@ private fun MainAppContent(
                         onStreamSelected = { stream, resolvedResumePositionMs, resolvedResumeProgressFraction ->
                             val sourceUrl = stream.directPlaybackUrl
                             if (sourceUrl != null) {
+                                desktopPlayerTrace(
+                                    "manual stream title=${launch.title} videoId=$effectiveVideoId addon=${stream.addonName} label=${stream.streamLabel} url=${sourceUrl.take(240)} requestHeaderKeys=${sanitizePlaybackHeaders(stream.behaviorHints.proxyHeaders?.request).keys.joinToString()} responseHeaderKeys=${sanitizePlaybackResponseHeaders(stream.behaviorHints.proxyHeaders?.response).keys.joinToString()}"
+                                )
                                 // Persist for Reuse Last Link
                                 if (playerSettings.streamReuseLastLinkEnabled) {
                                     val cacheKey = StreamLinkCacheRepository.contentKey(
@@ -1579,6 +1599,9 @@ private fun MainAppContent(
                     }
                     LaunchedEffect(launch.videoId) {
                         launch.videoId?.let { ResumePromptRepository.markPlayerEntered(it) }
+                        desktopPlayerTrace(
+                            "player launch title=${launch.title} provider=${launch.providerName} url=${launch.sourceUrl.take(240)} requestHeaderKeys=${launch.sourceHeaders.keys.joinToString()} responseHeaderKeys=${launch.sourceResponseHeaders.keys.joinToString()} initialPositionMs=${launch.initialPositionMs}"
+                        )
                     }
                     PlayerScreen(
                         title = launch.title,

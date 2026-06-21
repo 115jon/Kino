@@ -73,34 +73,31 @@ object CatalogRepository {
         )
 
         activeJob = scope.launch {
-            runCatching {
+            try {
                 LibraryRepository.ensureLoaded()
+                val items =
                 LibraryRepository.uiState.value.sections
                     .firstOrNull { it.type == request.catalogId }
                     ?.items
                     .orEmpty()
                     .map { it.toMetaPreview() }
                     .let(::dedupeCatalogItems)
-            }.fold(
-                onSuccess = { items ->
-                    if (activeRequest != request) return@fold
-                    _uiState.value = CatalogUiState(
-                        items = items,
-                        isLoading = false,
-                        nextSkip = null,
-                        errorMessage = null,
-                    )
-                },
-                onFailure = { error ->
-                    if (activeRequest != request) return@fold
-                    _uiState.value = CatalogUiState(
-                        items = emptyList(),
-                        isLoading = false,
-                        nextSkip = null,
-                        errorMessage = error.message ?: getString(Res.string.catalog_load_failed),
-                    )
-                },
-            )
+                if (activeRequest != request) return@launch
+                _uiState.value = CatalogUiState(
+                    items = items,
+                    isLoading = false,
+                    nextSkip = null,
+                    errorMessage = null,
+                )
+            } catch (error: Throwable) {
+                if (activeRequest != request) return@launch
+                _uiState.value = CatalogUiState(
+                    items = emptyList(),
+                    isLoading = false,
+                    nextSkip = null,
+                    errorMessage = error.message ?: getString(Res.string.catalog_load_failed),
+                )
+            }
         }
     }
 
@@ -120,43 +117,39 @@ object CatalogRepository {
         )
 
         activeJob = scope.launch {
-            runCatching {
-                fetchCatalogPage(
+            try {
+                val page = fetchCatalogPage(
                     manifestUrl = request.manifestUrl,
                     type = request.type,
                     catalogId = request.catalogId,
                     genre = request.genre,
                     skip = requestedSkip.takeIf { it > 0 },
                 ).withUnreleasedFilter()
-            }.fold(
-                onSuccess = { page ->
-                    if (activeRequest != request) return@fold
+                if (activeRequest != request) return@launch
 
-                    val mergedItems = if (reset) {
-                        dedupeCatalogItems(page.items)
-                    } else {
-                        mergeCatalogItems(_uiState.value.items, page.items)
-                    }
-                    val supportsPagination = request.supportsPagination || page.rawItemCount >= CATALOG_PAGE_SIZE
-                    val loadedNewItems = reset || mergedItems.size > current.items.size
-                    _uiState.value = CatalogUiState(
-                        items = mergedItems,
-                        isLoading = false,
-                        nextSkip = if (supportsPagination && loadedNewItems) page.nextSkip else null,
-                        errorMessage = null,
-                    )
-                },
-                onFailure = { error ->
-                    if (activeRequest != request) return@fold
+                val mergedItems = if (reset) {
+                    dedupeCatalogItems(page.items)
+                } else {
+                    mergeCatalogItems(_uiState.value.items, page.items)
+                }
+                val supportsPagination = request.supportsPagination || page.rawItemCount >= CATALOG_PAGE_SIZE
+                val loadedNewItems = reset || mergedItems.size > current.items.size
+                _uiState.value = CatalogUiState(
+                    items = mergedItems,
+                    isLoading = false,
+                    nextSkip = if (supportsPagination && loadedNewItems) page.nextSkip else null,
+                    errorMessage = null,
+                )
+            } catch (error: Throwable) {
+                if (activeRequest != request) return@launch
 
-                    _uiState.value = current.copy(
-                        items = if (reset) emptyList() else current.items,
-                        isLoading = false,
-                        nextSkip = null,
-                        errorMessage = error.message ?: getString(Res.string.catalog_load_failed),
-                    )
-                },
-            )
+                _uiState.value = current.copy(
+                    items = if (reset) emptyList() else current.items,
+                    isLoading = false,
+                    nextSkip = null,
+                    errorMessage = error.message ?: getString(Res.string.catalog_load_failed),
+                )
+            }
         }
     }
 }

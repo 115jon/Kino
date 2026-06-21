@@ -27,6 +27,7 @@ quickjsKt = "1.0.5"
 ksoup = "0.2.6"
 reorderable = "3.0.0"
 jna = "5.14.0"
+jogl = "2.6.0"
 desugarJdkLibs = "2.1.5"
 
 [libraries]
@@ -80,6 +81,8 @@ quickjs-kt = { module = "io.github.dokar3:quickjs-kt", version.ref = "quickjsKt"
 ksoup = { module = "com.fleeksoft.ksoup:ksoup", version.ref = "ksoup" }
 reorderable = { module = "sh.calvin.reorderable:reorderable", version.ref = "reorderable" }
 jna = { module = "net.java.dev.jna:jna", version.ref = "jna" }
+jogl-all = { module = "org.jogamp.jogl:jogl-all-main", version.ref = "jogl" }
+gluegen-rt = { module = "org.jogamp.gluegen:gluegen-rt-main", version.ref = "jogl" }
 desugar-jdk-libs = { module = "com.android.tools:desugar_jdk_libs", version.ref = "desugarJdkLibs" }
 
 [plugins]

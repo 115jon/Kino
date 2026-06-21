@@ -62,6 +62,8 @@ private fun desktopPlaybackBackend(): DesktopPlaybackBackend {
     val osName = System.getProperty("os.name").orEmpty().lowercase()
     return if (osName.contains("mac")) {
         MacOSMpvPlayerBackend
+    } else if (osName.contains("win")) {
+        WindowsMpvPlayerBackend
     } else {
         UnsupportedDesktopPlaybackBackend(osName.ifBlank { "unknown" })
     }

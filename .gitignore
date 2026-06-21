@@ -10,6 +10,8 @@ local.properties
 .idea
 .DS_Store
 captures
+installed-capture/
+*.log
 .externalNativeBuild
 .cxx
 *.xcodeproj/*

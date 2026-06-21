@@ -17,13 +17,24 @@ class HomeHeroSectionTest {
     }
 
     @Test
-    fun `tablet hero height remains width driven even with viewport height`() {
+    fun `tablet hero height is viewport driven when viewport height is provided`() {
         val layout = homeHeroLayout(
             maxWidthDp = 840f,
             viewportHeightDp = 1200f,
         )
 
         assertEquals(true, layout.isTablet)
-        assertEquals(386.4f, layout.heroHeight.value, 0.001f)
+        assertEquals(580.0f, layout.heroHeight.value, 0.001f)
+    }
+
+    @Test
+    fun `tablet hero height uses min limit when viewport height is not provided`() {
+        val layout = homeHeroLayout(
+            maxWidthDp = 840f,
+            viewportHeightDp = null,
+        )
+
+        assertEquals(true, layout.isTablet)
+        assertEquals(460.0f, layout.heroHeight.value, 0.001f)
     }
 }

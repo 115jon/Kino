@@ -19,6 +19,10 @@ import kotlinx.coroutines.launch
 import nuvio.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.getString
 
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+
 object AuthRepository {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val log = Logger.withTag("AuthRepository")
@@ -82,6 +86,36 @@ object AuthRepository {
         )
     }
 
+    private fun getCleanErrorMessage(e: Throwable, defaultMessage: String): String {
+        val msg = e.message ?: return defaultMessage
+        val trimmed = msg.trim()
+        val jsonStart = trimmed.indexOf('{')
+        val jsonEnd = trimmed.lastIndexOf('}')
+        if (jsonStart != -1 && jsonEnd != -1 && jsonEnd > jsonStart) {
+            val jsonStr = trimmed.substring(jsonStart, jsonEnd + 1)
+            try {
+                val element = Json.parseToJsonElement(jsonStr)
+                val obj = element.jsonObject
+                return obj["error_description"]?.jsonPrimitive?.content
+                    ?: obj["error"]?.jsonPrimitive?.content
+                    ?: obj["msg"]?.jsonPrimitive?.content
+                    ?: obj["message"]?.jsonPrimitive?.content
+                    ?: msg
+            } catch (_: Exception) {
+                // fall back
+            }
+        }
+        if (trimmed.contains("errorDescription=")) {
+            val description = trimmed.substringAfter("errorDescription=").substringBefore(")").trim()
+            if (description.isNotEmpty() && !description.startsWith("null")) return description
+        }
+        if (trimmed.contains("error_description=")) {
+            val description = trimmed.substringAfter("error_description=").substringBefore(")").trim()
+            if (description.isNotEmpty() && !description.startsWith("null")) return description
+        }
+        return msg
+    }
+
     suspend fun signUpWithEmail(email: String, password: String): Result<Unit> = runCatching {
         _error.value = null
         SupabaseProvider.client.auth.signUpWith(Email) {
@@ -91,7 +125,7 @@ object AuthRepository {
         Unit
     }.onFailure { e ->
         log.e(e) { "Email sign-up failed" }
-        _error.value = e.message ?: getString(Res.string.auth_sign_up_failed)
+        _error.value = getCleanErrorMessage(e, getString(Res.string.auth_sign_up_failed))
     }
 
     suspend fun signInWithEmail(email: String, password: String): Result<Unit> = runCatching {
@@ -102,7 +136,7 @@ object AuthRepository {
         }
     }.onFailure { e ->
         log.e(e) { "Email sign-in failed" }
-        _error.value = e.message ?: getString(Res.string.auth_sign_in_failed)
+        _error.value = getCleanErrorMessage(e, getString(Res.string.auth_sign_in_failed))
     }
 
     suspend fun signOut(): Result<Unit> = runCatching {

@@ -9,6 +9,13 @@ private val desktopPlaybackPrewarmStarted = AtomicBoolean(false)
 
 internal suspend fun prewarmDesktopPlaybackBackend() {
     val osName = System.getProperty("os.name").orEmpty().lowercase()
+    if (osName.contains("windows")) {
+        withContext(Dispatchers.IO) {
+            runCatching { WindowsJoglNativeLoader.ensureConfigured() }
+                .onFailure { println("Debug: (DesktopPlayerTrace) windows jogl preload failed: ${it.message}") }
+        }
+        return
+    }
     if (!osName.contains("mac")) return
     if (!desktopPlaybackPrewarmStarted.compareAndSet(false, true)) return
 

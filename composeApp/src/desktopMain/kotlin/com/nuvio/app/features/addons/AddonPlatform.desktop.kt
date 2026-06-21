@@ -54,6 +54,22 @@ private fun Map<String, String>.withoutAcceptEncoding(): Map<String, String> =
         .filterNot { (key, _) -> key.equals("Accept-Encoding", ignoreCase = true) }
         .associate { (key, value) -> key to value }
 
+private fun sanitizeUrl(url: String): String {
+    return url
+        .replace(" ", "%20")
+        .replace("|", "%7C")
+        .replace("[", "%5B")
+        .replace("]", "%5D")
+        .replace("{", "%7B")
+        .replace("}", "%7D")
+        .replace("^", "%5E")
+        .replace("`", "%60")
+        .replace("<", "%3C")
+        .replace(">", "%3E")
+        .replace("\\", "%5C")
+        .replace("\"", "%22")
+}
+
 private suspend fun executeRequest(
     method: String,
     url: String,
@@ -62,7 +78,7 @@ private suspend fun executeRequest(
     followRedirects: Boolean = true,
 ) = withContext(Dispatchers.IO) {
     val builder = HttpRequest.newBuilder()
-        .uri(URI.create(url))
+        .uri(URI.create(sanitizeUrl(url)))
         .timeout(Duration.ofSeconds(60))
 
     headers.withoutAcceptEncoding().forEach { (key, value) ->

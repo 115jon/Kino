@@ -17,6 +17,8 @@ private fun configureMacOsNativeAppearance() {
 
 fun main() {
     configureMacOsNativeAppearance()
+    System.setProperty("java.net.preferIPv4Stack", "true")
+    System.setProperty("compose.interop.blending", "true")
     application {
         Window(
             onCloseRequest = ::exitApplication,
