@@ -635,7 +635,11 @@ struct ComposeView: UIViewControllerRepresentable {
         // Register MPV player bridge before Compose initializes
         NuvioPlayerRegistration.register()
         
-        let controller = MainViewControllerKt.MainViewController()
+        #if DEBUG
+        let controller = MainViewControllerKt.MainViewController(isDebug: true)
+        #else
+        let controller = MainViewControllerKt.MainViewController(isDebug: false)
+        #endif
         controller.view.backgroundColor = UIColor(red: 0.008, green: 0.016, blue: 0.016, alpha: 1.0)
         return RootComposeViewController(contentController: controller)
     }

@@ -116,26 +116,35 @@ object AuthRepository {
         return msg
     }
 
+    private fun buildNormalizedAuthEmail(email: String): String = normalizeAuthEmail(email)
+    private fun buildEmailDiagnostics(email: String): AuthEmailDiagnostics = buildAuthEmailDiagnostics(email)
+
     suspend fun signUpWithEmail(email: String, password: String): Result<Unit> = runCatching {
         _error.value = null
+        val emailDiagnostics = buildEmailDiagnostics(email)
+        val normalizedEmail = buildNormalizedAuthEmail(email)
+        log.i { "Email sign-up attempt ${emailDiagnostics.toLogFields()}" }
         SupabaseProvider.client.auth.signUpWith(Email) {
-            this.email = email
+            this.email = normalizedEmail
             this.password = password
         }
         Unit
     }.onFailure { e ->
-        log.e(e) { "Email sign-up failed" }
+        log.e(e) { "Email sign-up failed ${buildEmailDiagnostics(email).toLogFields()}" }
         _error.value = getCleanErrorMessage(e, getString(Res.string.auth_sign_up_failed))
     }
 
     suspend fun signInWithEmail(email: String, password: String): Result<Unit> = runCatching {
         _error.value = null
+        val emailDiagnostics = buildEmailDiagnostics(email)
+        val normalizedEmail = buildNormalizedAuthEmail(email)
+        log.i { "Email sign-in attempt ${emailDiagnostics.toLogFields()}" }
         SupabaseProvider.client.auth.signInWith(Email) {
-            this.email = email
+            this.email = normalizedEmail
             this.password = password
         }
     }.onFailure { e ->
-        log.e(e) { "Email sign-in failed" }
+        log.e(e) { "Email sign-in failed ${buildEmailDiagnostics(email).toLogFields()}" }
         _error.value = getCleanErrorMessage(e, getString(Res.string.auth_sign_in_failed))
     }
 
@@ -166,4 +175,34 @@ object AuthRepository {
     fun clearError() {
         _error.value = null
     }
+}
+
+internal fun normalizeAuthEmail(email: String): String = email.trim()
+
+internal data class AuthEmailDiagnostics(
+    val originalLength: Int,
+    val normalizedLength: Int,
+    val normalizationChanged: Boolean,
+    val hadLeadingWhitespace: Boolean,
+    val hadTrailingWhitespace: Boolean,
+    val hasInternalWhitespace: Boolean,
+    val hasControlCharacters: Boolean,
+) {
+    fun toLogFields(): String =
+        "emailMetrics={rawLen=$originalLength, normalizedLen=$normalizedLength, changed=$normalizationChanged, leadingWs=$hadLeadingWhitespace, trailingWs=$hadTrailingWhitespace, internalWs=$hasInternalWhitespace, controlChars=$hasControlCharacters}"
+}
+
+internal fun buildAuthEmailDiagnostics(email: String): AuthEmailDiagnostics {
+    val normalizedEmail = normalizeAuthEmail(email)
+    val withoutLeadingWhitespace = email.trimStart()
+    val withoutTrailingWhitespace = email.trimEnd()
+    return AuthEmailDiagnostics(
+        originalLength = email.length,
+        normalizedLength = normalizedEmail.length,
+        normalizationChanged = normalizedEmail != email,
+        hadLeadingWhitespace = withoutLeadingWhitespace != email,
+        hadTrailingWhitespace = withoutTrailingWhitespace != email,
+        hasInternalWhitespace = normalizedEmail.any(Char::isWhitespace),
+        hasControlCharacters = email.any { it.code < 32 || it.code == 127 },
+    )
 }

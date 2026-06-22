@@ -1,12 +1,15 @@
 package com.nuvio.app.features.player
 
+import co.touchlab.kermit.Logger
 import com.sun.jna.Native
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 
+private val windowsMpvLog = Logger.withTag("DesktopPlayerTrace")
+
 private fun windowsMpvTrace(message: String) {
-    println("Debug: (DesktopPlayerTrace) $message")
+    windowsMpvLog.d { message }
 }
 
 internal object WindowsMpvNativeLoader {

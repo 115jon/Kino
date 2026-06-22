@@ -4,6 +4,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
+import com.nuvio.app.core.logging.initializeDesktopAppLogging
 import com.nuvio.app.features.player.prewarmDesktopPlaybackBackend
 import java.awt.Color as AwtColor
 
@@ -19,6 +20,7 @@ fun main() {
     configureMacOsNativeAppearance()
     System.setProperty("java.net.preferIPv4Stack", "true")
     System.setProperty("compose.interop.blending", "true")
+    initializeDesktopAppLogging()
     application {
         Window(
             onCloseRequest = ::exitApplication,

@@ -1,13 +1,15 @@
 package com.nuvio.app.features.player
 
+import co.touchlab.kermit.Logger
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 
 private const val windowsJoglPrimaryLibraryProperty = "jogamp.primary.library"
+private val windowsJoglLog = Logger.withTag("DesktopPlayerTrace")
 
 private fun windowsJoglTrace(message: String) {
-    println("Debug: (DesktopPlayerTrace) $message")
+    windowsJoglLog.d { message }
 }
 
 internal object WindowsJoglNativeLoader {

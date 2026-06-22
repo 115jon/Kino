@@ -11,6 +11,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import com.nuvio.app.core.auth.AuthStorage
 import com.nuvio.app.core.deeplink.handleAppUrl
+import com.nuvio.app.core.logging.initializeAndroidAppLogging
 import com.nuvio.app.core.storage.PlatformLocalAccountDataCleaner
 import com.nuvio.app.features.addons.AddonStorage
 import com.nuvio.app.features.collection.CollectionMobileSettingsStorage
@@ -57,6 +58,7 @@ class MainActivity : AppCompatActivity() {
         )
         ThemeSettingsStorage.initialize(applicationContext)
         super.onCreate(savedInstanceState)
+        initializeAndroidAppLogging(applicationContext)
         window.setBackgroundDrawableResource(R.color.nuvio_background)
         AddonStorage.initialize(applicationContext)
         AuthStorage.initialize(applicationContext)

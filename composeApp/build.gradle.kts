@@ -645,6 +645,9 @@ val buildDesktopMpvBridge = tasks.register<Exec>("buildDesktopMpvBridge") {
 
 tasks.matching { it.name == "run" || it.name == "desktopRun" }.configureEach {
     dependsOn(buildDesktopMpvBridge)
+    if (this is org.gradle.process.JavaForkOptions) {
+        jvmArgs("-Dnuvio.logging.mode=debug")
+    }
 }
 
 configurations.all {

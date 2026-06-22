@@ -69,6 +69,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
+import co.touchlab.kermit.Logger
 import coil3.ImageLoader
 import coil3.compose.setSingletonImageLoaderFactory
 import coil3.request.CachePolicy
@@ -192,6 +193,8 @@ import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 
+private val desktopPlayerTraceLog = Logger.withTag("DesktopPlayerTrace")
+
 private fun desktopPlayerTrace(message: String) {
     val osName = System.getProperty("os.name").orEmpty()
     if (
@@ -199,7 +202,7 @@ private fun desktopPlayerTrace(message: String) {
         osName.contains("Mac", ignoreCase = true) ||
         osName.contains("Linux", ignoreCase = true)
     ) {
-        println("Debug: (DesktopPlayerTrace) $message")
+        desktopPlayerTraceLog.d { message }
     }
 }
 

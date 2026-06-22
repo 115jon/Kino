@@ -1,5 +1,6 @@
 package com.nuvio.app.features.player
 
+import co.touchlab.kermit.Logger
 import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
@@ -8,8 +9,10 @@ import java.time.Duration
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 
+private val desktopPlaybackUrlResolverLog = Logger.withTag("DesktopPlaybackUrlResolver")
+
 private fun desktopPlaybackUrlResolverTrace(message: String) {
-    println("Debug: (DesktopPlaybackUrlResolver) $message")
+    desktopPlaybackUrlResolverLog.d { message }
 }
 
 internal object DesktopPlaybackUrlResolver {

@@ -10,6 +10,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.awt.SwingPanel
 import androidx.compose.ui.graphics.Color as ComposeColor
+import co.touchlab.kermit.Logger
 import com.nuvio.app.core.ui.LocalAppTheme
 import com.nuvio.app.core.ui.ThemeColors
 import com.nuvio.app.features.details.MetaVideo
@@ -39,8 +40,10 @@ import javax.swing.*
 import javax.swing.plaf.basic.BasicSliderUI
 import kotlin.concurrent.schedule
 
+private val desktopPlayerLog = Logger.withTag("DesktopPlayerTrace")
+
 private fun desktopPlayerTrace(message: String) {
-    println("Debug: (DesktopPlayerTrace) $message")
+    desktopPlayerLog.d { message }
 }
 
 
