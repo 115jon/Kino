@@ -202,7 +202,7 @@ private fun desktopPlayerTrace(message: String) {
         osName.contains("Mac", ignoreCase = true) ||
         osName.contains("Linux", ignoreCase = true)
     ) {
-        desktopPlayerTraceLog.d { message }
+        desktopPlayerTraceLog.i { message }
     }
 }
 

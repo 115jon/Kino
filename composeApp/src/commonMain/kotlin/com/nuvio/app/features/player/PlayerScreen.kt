@@ -327,11 +327,20 @@ fun PlayerScreen(
             activeSeasonNumber,
             activeEpisodeNumber,
         ) { mutableStateOf(false) }
+        var pendingSeekPositionMs by remember(activeSourceUrl) { mutableStateOf<Long?>(null) }
         val backdropArtwork = background ?: poster
-        val displayedPositionMs = playbackSnapshot.durationMs
+        val snapshotPositionMs = playbackSnapshot.durationMs
             .takeIf { it > 0L }
             ?.let { durationMs -> playbackSnapshot.positionMs.coerceIn(0L, durationMs) }
             ?: playbackSnapshot.positionMs.coerceAtLeast(0L)
+        val displayedPositionMs = pendingSeekPositionMs
+            ?.let { pendingPositionMs ->
+                playbackSnapshot.durationMs
+                    .takeIf { it > 0L }
+                    ?.let { durationMs -> pendingPositionMs.coerceIn(0L, durationMs) }
+                    ?: pendingPositionMs.coerceAtLeast(0L)
+            }
+            ?: snapshotPositionMs
         val activeStreamProfile = remember(activeStreamTitle, activeStreamSubtitle) {
             parseStreamCapabilityProfile(
                 streamTitle = activeStreamTitle,
@@ -882,6 +891,12 @@ fun PlayerScreen(
         }
 
         fun seekBy(offsetMs: Long) {
+            val currentPositionMs = pendingSeekPositionMs ?: snapshotPositionMs
+            val targetPositionMs = playbackSnapshot.durationMs
+                .takeIf { it > 0L }
+                ?.let { durationMs -> (currentPositionMs + offsetMs).coerceIn(0L, durationMs) }
+                ?: (currentPositionMs + offsetMs).coerceAtLeast(0L)
+            pendingSeekPositionMs = targetPositionMs
             playerController?.seekBy(offsetMs)
             controlsVisible = true
             when {
@@ -914,6 +929,7 @@ fun PlayerScreen(
                     maxDurationMs?.let { unclamped.coerceAtMost(it) } ?: unclamped
                 }
             }
+            pendingSeekPositionMs = targetPositionMs
             playerController?.seekTo(targetPositionMs)
             showSeekFeedback(direction, nextState.amountMs)
 
@@ -1018,6 +1034,7 @@ fun PlayerScreen(
         val currentPositionMsState = rememberUpdatedState(playbackSnapshot.positionMs.coerceAtLeast(0L))
         val currentDurationMsState = rememberUpdatedState(playbackSnapshot.durationMs)
         val commitHorizontalSeekState = rememberUpdatedState { targetPositionMs: Long ->
+            pendingSeekPositionMs = targetPositionMs
             playerController?.seekTo(targetPositionMs)
         }
         val desktopGestureController = gestureController
@@ -1342,9 +1359,6 @@ fun PlayerScreen(
 
         LaunchedEffect(activeSourceUrl, activeSourceAudioUrl, activeSourceHeaders, activeSourceResponseHeaders) {
             errorMessage = null
-            playerController = null
-            playerControllerSourceUrl = null
-            playbackSnapshot = PlayerPlaybackSnapshot()
             liveGestureFeedback = null
             renderedGestureFeedback = null
             lockedOverlayVisible = false
@@ -1354,6 +1368,7 @@ fun PlayerScreen(
             accumulatedSeekResetJob?.cancel()
             accumulatedSeekResetJob = null
             accumulatedSeekState = null
+            pendingSeekPositionMs = null
             speedBoostRestoreSpeed = null
             preferredAudioSelectionApplied = false
             preferredSubtitleSelectionApplied = false
@@ -1930,8 +1945,23 @@ fun PlayerScreen(
                 },
                 onSnapshot = { snapshot ->
                     playbackSnapshot = snapshot
+                    val pendingSeek = pendingSeekPositionMs
+                    if (pendingSeek != null) {
+                        val settledDurationMs = snapshot.durationMs.takeIf { it > 0L }
+                        val clampedPendingSeekMs = settledDurationMs
+                            ?.let { durationMs -> pendingSeek.coerceIn(0L, durationMs) }
+                            ?: pendingSeek.coerceAtLeast(0L)
+                        if (kotlin.math.abs(snapshot.positionMs - clampedPendingSeekMs) <= 1_000L || snapshot.isEnded) {
+                            pendingSeekPositionMs = null
+                        }
+                    }
                     desktopVolumeLevel = playerController?.currentVolumeLevel() ?: desktopVolumeLevel
-                    if (!snapshot.isLoading) {
+                    if (
+                        !snapshot.isLoading ||
+                        snapshot.isPlaying ||
+                        snapshot.positionMs > 0L ||
+                        snapshot.durationMs > 0L
+                    ) {
                         initialLoadCompleted = true
                     }
                     if (snapshot.isEnded) {
@@ -2178,20 +2208,30 @@ fun PlayerScreen(
                     onEpisodesClick = if (isSeries) { { openEpisodesPanel() } } else null,
                     onSubmitIntroClick = if (canSubmitIntro) { { showSubmitIntroModal = true } } else null,
                     onScrubChange = { positionMs ->
+                        pendingSeekPositionMs = positionMs
                         controlsVisible = true
                         pausedOverlayVisible = false
                     },
                     onScrubFinished = { positionMs ->
+                        pendingSeekPositionMs = positionMs
                         controlsVisible = true
                         restorePlayerInteractionFocus()
                         playerController?.seekTo(positionMs)
                     },
-                    desktopVolume = desktopVolumeLevel.takeIf { desktopVolumeSupported },
-                    onDesktopVolumePreview = if (desktopVolumeSupported) ::previewDesktopVolume else null,
-                    onDesktopVolumeCommit = if (desktopVolumeSupported) ::commitDesktopVolume else null,
-                    onFullscreenClick = if (desktopFullscreenSupported) ::toggleFullscreen else null,
                     horizontalSafePadding = horizontalSafePadding,
                     modifier = Modifier.fillMaxSize(),
+                )
+            }
+
+            if ((desktopVolumeSupported && desktopVolumeLevel != null) || desktopFullscreenSupported) {
+                DesktopPlayerSideControls(
+                    volumeLevel = desktopVolumeLevel.takeIf { desktopVolumeSupported },
+                    onVolumePreview = if (desktopVolumeSupported) ::previewDesktopVolume else null,
+                    onVolumeCommit = if (desktopVolumeSupported) ::commitDesktopVolume else null,
+                    onFullscreenClick = if (desktopFullscreenSupported) ::toggleFullscreen else null,
+                    metrics = metrics,
+                    horizontalSafePadding = horizontalSafePadding,
+                    visible = controlsVisible && !playerControlsLocked,
                 )
             }
 

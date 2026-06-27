@@ -45,7 +45,7 @@ import kotlin.math.roundToInt
 private val desktopPlayerLog = Logger.withTag("DesktopPlayerTrace")
 
 private fun desktopPlayerTrace(message: String) {
-    desktopPlayerLog.d { message }
+    desktopPlayerLog.i { message }
 }
 
 
@@ -83,6 +83,7 @@ private const val MPV_RENDER_PARAM_FLIP_Y = 4
 private const val MPV_RENDER_UPDATE_FRAME = 1L
 private const val MPV_RENDER_API_TYPE_OPENGL = "opengl"
 private const val WindowsPlayerTrackPollIntervalMs = 1_000L
+private const val WindowsPlayerFallbackPollIntervalMs = 250L
 private const val WindowsPlayerMaxCacheBytes = "536870912"
 private const val WindowsPlayerMaxBackCacheBytes = "268435456"
 private const val WindowsPlayerReadAheadSeconds = "30"
@@ -434,6 +435,7 @@ internal object WindowsMpvPlayerBackend : DesktopPlaybackBackend {
                 windowState.currentHeaders = playbackHeaders
                 SwingUtilities.invokeLater {
                     windowState.panelRef?.loadFile(sourceUrl, sourceAudioUrl, playbackHeaders)
+                    playerStateSignal = System.nanoTime()
                 }
             }
         }
@@ -765,6 +767,15 @@ internal object WindowsMpvPlayerBackend : DesktopPlaybackBackend {
         // Inform Compose controller is ready
         LaunchedEffect(controller) {
             onControllerReady(controller)
+        }
+
+        LaunchedEffect(windowState) {
+            while (!windowState.isClosed) {
+                delay(WindowsPlayerFallbackPollIntervalMs)
+                if (windowState.playerPtr != null) {
+                    playerStateSignal = System.nanoTime()
+                }
+            }
         }
 
         LaunchedEffect(windowState, playerStateSignal) {

@@ -45,6 +45,10 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -101,10 +105,6 @@ internal fun PlayerControlsShell(
     onSubmitIntroClick: (() -> Unit)? = null,
     onScrubChange: (Long) -> Unit,
     onScrubFinished: (Long) -> Unit,
-    desktopVolume: PlayerAudioLevel? = null,
-    onDesktopVolumePreview: ((Float) -> Unit)? = null,
-    onDesktopVolumeCommit: ((Float) -> Unit)? = null,
-    onFullscreenClick: (() -> Unit)? = null,
     horizontalSafePadding: androidx.compose.ui.unit.Dp,
     modifier: Modifier = Modifier,
 ) {
@@ -201,17 +201,43 @@ internal fun PlayerControlsShell(
                     .padding(bottom = metrics.sliderBottomOffset),
             )
 
-            if (desktopVolume != null || onFullscreenClick != null) {
-                DesktopSideControlsOverlay(
-                    volumeLevel = desktopVolume,
-                    onVolumePreview = onDesktopVolumePreview,
-                    onVolumeCommit = onDesktopVolumeCommit,
-                    onFullscreenClick = onFullscreenClick,
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(end = metrics.horizontalPadding, bottom = metrics.sliderBottomOffset),
-                )
-            }
+        }
+    }
+}
+
+@Composable
+internal fun DesktopPlayerSideControls(
+    volumeLevel: PlayerAudioLevel?,
+    onVolumePreview: ((Float) -> Unit)?,
+    onVolumeCommit: ((Float) -> Unit)?,
+    onFullscreenClick: (() -> Unit)?,
+    metrics: PlayerLayoutMetrics,
+    horizontalSafePadding: androidx.compose.ui.unit.Dp,
+    visible: Boolean,
+) {
+    if (volumeLevel == null && onFullscreenClick == null) {
+        return
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = horizontalSafePadding),
+    ) {
+        AnimatedVisibility(
+            visible = visible,
+            enter = fadeIn(animationSpec = tween(durationMillis = 70)),
+            exit = fadeOut(animationSpec = tween(durationMillis = 60)),
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(end = metrics.horizontalPadding, bottom = metrics.sliderBottomOffset),
+        ) {
+            DesktopSideControlsOverlay(
+                volumeLevel = volumeLevel,
+                onVolumePreview = onVolumePreview,
+                onVolumeCommit = onVolumeCommit,
+                onFullscreenClick = onFullscreenClick,
+            )
         }
     }
 }
