@@ -8,6 +8,18 @@ interface PlayerEngineController {
     fun pause()
     fun seekTo(positionMs: Long)
     fun seekBy(offsetMs: Long)
+    fun supportsVolumeControl(): Boolean = false
+    fun currentVolumeLevel(): PlayerAudioLevel? = null
+    fun setVolumeLevel(level: Float): PlayerAudioLevel? = null
+    fun supportsFullscreenToggle(): Boolean = false
+    fun toggleFullscreen() {}
+    fun requestInteractionFocus() {}
+    fun setStreamProfileInfo(
+        profileSummary: String?,
+        isHdrLike: Boolean,
+        hasDolbyVision: Boolean,
+        hasHdrFallback: Boolean,
+    ) {}
     fun retry()
     fun setPlaybackSpeed(speed: Float)
     fun getAudioTracks(): List<AudioTrack>

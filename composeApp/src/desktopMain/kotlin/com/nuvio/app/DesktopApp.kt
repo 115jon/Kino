@@ -6,6 +6,9 @@ import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import com.nuvio.app.core.logging.initializeDesktopAppLogging
 import com.nuvio.app.features.player.prewarmDesktopPlaybackBackend
+import nuvio.composeapp.generated.resources.Res
+import nuvio.composeapp.generated.resources.app_logo_wordmark
+import org.jetbrains.compose.resources.painterResource
 import java.awt.Color as AwtColor
 
 private val DesktopWindowBackground = AwtColor(0x0D, 0x0D, 0x0D)
@@ -25,6 +28,7 @@ fun main() {
         Window(
             onCloseRequest = ::exitApplication,
             title = "Nuvio",
+            icon = painterResource(Res.drawable.app_logo_wordmark),
         ) {
             DisposableEffect(window) {
                 window.background = DesktopWindowBackground

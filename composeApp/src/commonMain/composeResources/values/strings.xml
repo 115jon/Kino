@@ -337,6 +337,7 @@
     <string name="compose_player_brightness_level">Brightness %1$s</string>
     <string name="compose_player_volume_level">Volume %1$s</string>
     <string name="compose_player_muted">Muted</string>
+    <string name="compose_player_fullscreen">Fullscreen</string>
     <string name="compose_player_downloaded">Downloaded</string>
     <string name="compose_player_airs_prefix">Airs</string>
     <string name="compose_player_tba">TBA</string>

@@ -3,6 +3,9 @@ package com.nuvio.app.features.player
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.hoverable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,13 +18,19 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.safeContent
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.VolumeOff
+import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.Flag
+import androidx.compose.material.icons.rounded.Fullscreen
 import androidx.compose.material.icons.rounded.Forward10
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.LockOpen
@@ -37,6 +46,12 @@ import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -45,6 +60,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -55,12 +71,14 @@ import com.nuvio.app.core.ui.appIconPainter
 import com.nuvio.app.core.ui.nuvioTypeScale
 import nuvio.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.stringResource
+import kotlin.math.roundToInt
 
 @Composable
 internal fun PlayerControlsShell(
     title: String,
     streamTitle: String,
     providerName: String,
+    streamProfileTags: List<String>,
     seasonNumber: Int?,
     episodeNumber: Int?,
     episodeTitle: String?,
@@ -83,9 +101,14 @@ internal fun PlayerControlsShell(
     onSubmitIntroClick: (() -> Unit)? = null,
     onScrubChange: (Long) -> Unit,
     onScrubFinished: (Long) -> Unit,
+    desktopVolume: PlayerAudioLevel? = null,
+    onDesktopVolumePreview: ((Float) -> Unit)? = null,
+    onDesktopVolumeCommit: ((Float) -> Unit)? = null,
+    onFullscreenClick: (() -> Unit)? = null,
     horizontalSafePadding: androidx.compose.ui.unit.Dp,
     modifier: Modifier = Modifier,
 ) {
+    val overlayVisible = !isLocked
     Box(modifier = modifier.fillMaxSize()) {
         Box(
             modifier = Modifier
@@ -126,6 +149,7 @@ internal fun PlayerControlsShell(
                 title = title,
                 streamTitle = streamTitle,
                 providerName = providerName,
+                streamProfileTags = streamProfileTags,
                 seasonNumber = seasonNumber,
                 episodeNumber = episodeNumber,
                 episodeTitle = episodeTitle,
@@ -159,6 +183,7 @@ internal fun PlayerControlsShell(
             ProgressControls(
                 playbackSnapshot = playbackSnapshot,
                 displayedPositionMs = displayedPositionMs,
+                animateProgress = overlayVisible,
                 metrics = metrics,
                 resizeMode = resizeMode,
                 onScrubChange = onScrubChange,
@@ -175,6 +200,18 @@ internal fun PlayerControlsShell(
                     .padding(horizontal = metrics.horizontalPadding)
                     .padding(bottom = metrics.sliderBottomOffset),
             )
+
+            if (desktopVolume != null || onFullscreenClick != null) {
+                DesktopSideControlsOverlay(
+                    volumeLevel = desktopVolume,
+                    onVolumePreview = onDesktopVolumePreview,
+                    onVolumeCommit = onDesktopVolumeCommit,
+                    onFullscreenClick = onFullscreenClick,
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(end = metrics.horizontalPadding, bottom = metrics.sliderBottomOffset),
+                )
+            }
         }
     }
 }
@@ -184,6 +221,7 @@ private fun PlayerHeader(
     title: String,
     streamTitle: String,
     providerName: String,
+    streamProfileTags: List<String>,
     seasonNumber: Int?,
     episodeNumber: Int?,
     episodeTitle: String?,
@@ -258,6 +296,16 @@ private fun PlayerHeader(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
+                }
+                if (streamProfileTags.isNotEmpty()) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        streamProfileTags.take(5).forEach { tag ->
+                            StreamProfileChip(tag)
+                        }
+                    }
                 }
             }
 
@@ -424,6 +472,7 @@ private fun PlayPauseControlButton(
 private fun ProgressControls(
     playbackSnapshot: PlayerPlaybackSnapshot,
     displayedPositionMs: Long,
+    animateProgress: Boolean,
     metrics: PlayerLayoutMetrics,
     resizeMode: PlayerResizeMode,
     onScrubChange: (Long) -> Unit,
@@ -440,6 +489,53 @@ private fun ProgressControls(
     val aspectRatioPainter = appIconPainter(AppIconResource.PlayerAspectRatio)
     val subtitlesPainter = appIconPainter(AppIconResource.PlayerSubtitles)
     val audioPainter = appIconPainter(AppIconResource.PlayerAudioFilled)
+    var animatedPositionMs by remember { mutableStateOf(displayedPositionMs.coerceIn(0L, durationMs)) }
+    var scrubValue by remember(durationMs) {
+        mutableStateOf(displayedPositionMs.coerceIn(0L, durationMs).toFloat())
+    }
+    var isScrubbing by remember { mutableStateOf(false) }
+
+    LaunchedEffect(displayedPositionMs, durationMs) {
+        if (!isScrubbing) {
+            animatedPositionMs = displayedPositionMs.coerceIn(0L, durationMs)
+        }
+    }
+
+    LaunchedEffect(
+        animateProgress,
+        isScrubbing,
+        playbackSnapshot.isPlaying,
+        playbackSnapshot.isLoading,
+        playbackSnapshot.positionMs,
+        playbackSnapshot.durationMs,
+        playbackSnapshot.playbackSpeed,
+    ) {
+        if (!animateProgress || isScrubbing || !playbackSnapshot.isPlaying || playbackSnapshot.isLoading) {
+            return@LaunchedEffect
+        }
+        var lastFrameNs = 0L
+        while (true) {
+            withFrameNanos { frameNs ->
+                val frameDurationNs = if (lastFrameNs == 0L) 0L else (frameNs - lastFrameNs).coerceAtLeast(0L)
+                lastFrameNs = frameNs
+                val projectedPositionMs = animatedPositionMs +
+                    ((frameDurationNs.toDouble() / 1_000_000.0) * playbackSnapshot.playbackSpeed.toDouble()).toLong()
+                animatedPositionMs = projectedPositionMs.coerceIn(0L, playbackSnapshot.durationMs.coerceAtLeast(0L))
+            }
+        }
+    }
+
+    LaunchedEffect(displayedPositionMs, durationMs) {
+        if (!isScrubbing) {
+            scrubValue = displayedPositionMs.coerceIn(0L, durationMs).toFloat()
+        }
+    }
+
+    val effectiveDisplayedPositionMs = if (isScrubbing) {
+        scrubValue.toLong().coerceIn(0L, durationMs)
+    } else {
+        animatedPositionMs.coerceIn(0L, durationMs)
+    }
 
     Column(modifier = modifier) {
         Slider(
@@ -447,9 +543,18 @@ private fun ProgressControls(
                 .fillMaxWidth()
                 .height(metrics.sliderTouchHeight)
                 .graphicsLayer(scaleY = metrics.sliderScaleY),
-            value = displayedPositionMs.coerceIn(0L, durationMs).toFloat(),
-            onValueChange = { value -> onScrubChange(value.toLong()) },
-            onValueChangeFinished = { onScrubFinished(displayedPositionMs.coerceIn(0L, durationMs)) },
+            value = scrubValue,
+            onValueChange = { value ->
+                val nextValue = value.coerceIn(0f, durationMs.toFloat())
+                isScrubbing = true
+                scrubValue = nextValue
+                onScrubChange(nextValue.toLong())
+            },
+            onValueChangeFinished = {
+                val finalPositionMs = scrubValue.toLong().coerceIn(0L, durationMs)
+                isScrubbing = false
+                onScrubFinished(finalPositionMs)
+            },
             valueRange = 0f..durationMs.toFloat(),
         )
         Row(
@@ -460,7 +565,7 @@ private fun ProgressControls(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            TimePill(text = formatPlaybackTime(displayedPositionMs), fontSize = metrics.timeSize)
+            TimePill(text = formatPlaybackTime(effectiveDisplayedPositionMs), fontSize = metrics.timeSize)
             TimePill(text = formatPlaybackTime(durationMs), fontSize = metrics.timeSize)
         }
         Row(
@@ -517,6 +622,166 @@ private fun ProgressControls(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun StreamProfileChip(tag: String) {
+    Text(
+        text = tag,
+        style = MaterialTheme.nuvioTypeScale.labelSm.copy(fontWeight = FontWeight.SemiBold),
+        color = Color.White.copy(alpha = 0.92f),
+        modifier = Modifier
+            .clip(RoundedCornerShape(999.dp))
+            .background(Color.White.copy(alpha = 0.1f))
+            .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(999.dp))
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+    )
+}
+
+@Composable
+private fun DesktopSideControlsOverlay(
+    volumeLevel: PlayerAudioLevel?,
+    onVolumePreview: ((Float) -> Unit)?,
+    onVolumeCommit: ((Float) -> Unit)?,
+    onFullscreenClick: (() -> Unit)?,
+    modifier: Modifier = Modifier,
+) {
+    if (volumeLevel == null && onFullscreenClick == null) {
+        return
+    }
+
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.Bottom,
+    ) {
+        if (volumeLevel != null && onVolumePreview != null && onVolumeCommit != null) {
+            DesktopVolumeHoverControl(
+                volumeLevel = volumeLevel,
+                onVolumePreview = onVolumePreview,
+                onVolumeCommit = onVolumeCommit,
+            )
+        }
+
+        if (onFullscreenClick != null) {
+            Surface(
+                color = Color.Black.copy(alpha = 0.5f),
+                shape = RoundedCornerShape(20.dp),
+                modifier = Modifier
+                    .border(
+                        width = 1.dp,
+                        color = Color.White.copy(alpha = 0.2f),
+                        shape = RoundedCornerShape(20.dp),
+                    ),
+            ) {
+                PlayerActionPillButton(
+                    label = stringResource(Res.string.compose_player_fullscreen),
+                    icon = Icons.Rounded.Fullscreen,
+                    onClick = onFullscreenClick,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun DesktopVolumeHoverControl(
+    volumeLevel: PlayerAudioLevel,
+    onVolumePreview: (Float) -> Unit,
+    onVolumeCommit: (Float) -> Unit,
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isHovered by interactionSource.collectIsHoveredAsState()
+    var isPinnedOpen by remember { mutableStateOf(false) }
+    var isAdjustingVolume by remember { mutableStateOf(false) }
+    var volumeSliderValue by remember { mutableStateOf(volumeLevel.fraction.coerceIn(0f, 1f)) }
+
+    LaunchedEffect(volumeLevel.fraction, volumeLevel.isMuted) {
+        if (!isAdjustingVolume) {
+            volumeSliderValue = volumeLevel.fraction.coerceIn(0f, 1f)
+        }
+    }
+
+    val showSlider = isHovered || isPinnedOpen
+    val clampedVolume = volumeSliderValue.coerceIn(0f, 1f)
+
+    Box(
+        modifier = Modifier
+            .width(88.dp)
+            .height(272.dp)
+            .hoverable(interactionSource = interactionSource),
+        contentAlignment = Alignment.BottomCenter,
+    ) {
+        if (showSlider) {
+            Surface(
+                color = Color.Black.copy(alpha = 0.72f),
+                shape = RoundedCornerShape(18.dp),
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .border(
+                        width = 1.dp,
+                        color = Color.White.copy(alpha = 0.2f),
+                        shape = RoundedCornerShape(18.dp),
+                    ),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .width(72.dp)
+                        .height(212.dp)
+                        .padding(vertical = 16.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Slider(
+                        modifier = Modifier
+                            .requiredWidth(196.dp)
+                            .height(32.dp)
+                            .graphicsLayer {
+                                rotationZ = -90f
+                                transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 0.5f)
+                            },
+                        value = clampedVolume,
+                        onValueChange = { value ->
+                            isAdjustingVolume = true
+                            volumeSliderValue = value.coerceIn(0f, 1f)
+                            onVolumePreview(volumeSliderValue)
+                        },
+                        onValueChangeFinished = {
+                            isAdjustingVolume = false
+                            onVolumeCommit(volumeSliderValue.coerceIn(0f, 1f))
+                        },
+                        valueRange = 0f..1f,
+                        colors = SliderDefaults.colors(
+                            thumbColor = Color.White,
+                            activeTrackColor = Color.White,
+                            inactiveTrackColor = Color.White.copy(alpha = 0.28f),
+                        ),
+                    )
+                }
+            }
+        }
+
+        Box(
+            modifier = Modifier
+                .size(44.dp)
+                .clip(CircleShape)
+                .background(Color.Black.copy(alpha = 0.5f))
+                .border(1.dp, Color.White.copy(alpha = 0.2f), CircleShape)
+                .clickable {
+                    isPinnedOpen = !isPinnedOpen
+                },
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = if (volumeLevel.isMuted) Icons.AutoMirrored.Rounded.VolumeOff else Icons.AutoMirrored.Rounded.VolumeUp,
+                contentDescription = stringResource(
+                    Res.string.compose_player_volume_level,
+                    "${(clampedVolume * 100f).roundToInt()}%",
+                ),
+                tint = Color.White,
+                modifier = Modifier.size(18.dp),
+            )
         }
     }
 }
