@@ -3,6 +3,9 @@
 -keepattributes *Annotation*,Signature,InnerClasses,EnclosingMethod
 
 -dontwarn dev.chrisbanes.haze.**
+-dontwarn io.github.alexzhirkevich.compottie.**
+-dontwarn androidx.compose.ui.graphics.**
+-dontwarn org.jetbrains.skia.**
 -dontwarn javafx.**
 -dontwarn org.eclipse.swt.**
 -dontwarn com.sun.javafx.**

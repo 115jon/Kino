@@ -488,6 +488,12 @@ kotlin {
 compose.desktop {
     application {
         mainClass = "com.nuvio.app.DesktopAppKt"
+        buildTypes.release.proguard {
+            isEnabled.set(true)
+            optimize.set(false)
+            obfuscate.set(false)
+            configurationFiles.from(project.file("desktop-proguard-rules.pro"))
+        }
         nativeDistributions {
             packageName = "Nuvio"
             packageVersion = releaseAppVersionName
