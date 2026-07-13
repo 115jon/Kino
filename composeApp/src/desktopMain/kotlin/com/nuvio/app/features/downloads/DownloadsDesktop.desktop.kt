@@ -36,6 +36,8 @@ internal actual object DownloadsPlatformDownloader {
 
     actual fun removePartialFile(destinationFileName: String): Boolean = false
 
+    actual fun openDownloadsDirectory(): Boolean = false
+
     actual fun resolveLocalFileUri(localFileUri: String?, destinationFileName: String): String? =
         localFileUri
             ?.toLocalFileOrNull()

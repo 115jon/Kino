@@ -3,9 +3,18 @@ package com.nuvio.app.features.watchprogress
 import com.nuvio.app.core.storage.ProfileScopedKey
 import com.nuvio.app.desktop.DesktopPreferences
 import java.time.LocalDate
+import java.time.ZoneId
 
 actual object CurrentDateProvider {
     actual fun todayIsoDate(): String = LocalDate.now().toString()
+
+    actual fun localStartOfDayEpochMs(isoDate: String): Long? =
+        runCatching {
+            LocalDate.parse(isoDate)
+                .atStartOfDay(ZoneId.systemDefault())
+                .toInstant()
+                .toEpochMilli()
+        }.getOrNull()
 }
 
 internal actual object WatchProgressClock {
@@ -32,6 +41,10 @@ actual object ContinueWatchingEnrichmentStorage {
 
     actual fun savePayload(key: String, payload: String) {
         DesktopPreferences.putString(preferencesName, key, payload)
+    }
+
+    actual fun removePayload(key: String) {
+        DesktopPreferences.remove(preferencesName, key)
     }
 }
 
