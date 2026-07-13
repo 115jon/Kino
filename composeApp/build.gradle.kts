@@ -227,7 +227,7 @@ val releaseKeyPassword = supabaseProps.getProperty("NUVIO_RELEASE_KEY_PASSWORD")
 val androidApplicationId = supabaseProps.getProperty("KINO_APPLICATION_ID")
     ?.trim()
     ?.takeIf { it.isNotBlank() }
-    ?: "com.nuvio.app"
+    ?: "site.x115jon.kino"
 val releaseKeystore = releaseStoreFile?.let(rootProject::file)
 val appVersionConfigFile = rootProject.file("iosApp/Configuration/Version.xcconfig")
 val releaseAppVersionName = readXcconfigValue(appVersionConfigFile, "MARKETING_VERSION")

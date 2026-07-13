@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     tags:
-      - 'kino-*'
+      - 'v*'
 
 permissions:
   contents: write
@@ -43,4 +43,5 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: desktop/installer/bin/Release/NuvioSetup-*.exe
+          name: Kino ${{ github.ref_name }}
           generate_release_notes: true

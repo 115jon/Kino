@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     tags:
-      - 'kino-*'
+      - 'v*'
 
 permissions:
   contents: write
@@ -40,7 +40,7 @@ jobs:
           SUPABASE_URL=$SUPABASE_URL
           SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY
           INTRODB_API_URL=$INTRODB_API_URL
-          KINO_APPLICATION_ID=com.kino.app
+          KINO_APPLICATION_ID=site.x115jon.kino
           NUVIO_RELEASE_STORE_FILE=$GITHUB_WORKSPACE/kino-release.keystore
           NUVIO_RELEASE_STORE_PASSWORD=$STORE_PASSWORD
           NUVIO_RELEASE_KEY_ALIAS=$KEY_ALIAS
@@ -54,4 +54,5 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: composeApp/build/outputs/apk/full/release/*.apk
+          name: Kino ${{ github.ref_name }}
           generate_release_notes: true

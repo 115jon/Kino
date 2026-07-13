@@ -25,6 +25,19 @@ powershell -ExecutionPolicy Bypass -File ./desktop/scripts/build-installer.ps1
 
 The installer is produced under `desktop/installer/bin/Release/`.
 
+## Release Versioning
+
+`iosApp/Configuration/Version.xcconfig` is the shared version source for Android and desktop builds. Kino follows Semantic Versioning and Conventional Commit prefixes:
+
+```bash
+node scripts/bump-version.mjs --dry-run
+node scripts/bump-version.mjs
+git tag v<version>
+git push origin v<version>
+```
+
+Breaking changes produce a major bump, `feat` commits produce a minor bump, and fixes or maintenance commits produce a patch bump. The tag starts the Android and Windows release workflows.
+
 ## Development
 
 ```bash
