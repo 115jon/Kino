@@ -29,16 +29,16 @@ jobs:
 
       - name: Configure runtime and signing properties
         env:
-          SUPABASE_URL: ${{ secrets.KINO_SUPABASE_URL }}
-          SUPABASE_ANON_KEY: ${{ secrets.KINO_SUPABASE_ANON_KEY }}
+          NUVIO_SUPABASE_URL: ${{ secrets.KINO_SUPABASE_URL }}
+          NUVIO_SUPABASE_ANON_KEY: ${{ secrets.KINO_SUPABASE_ANON_KEY }}
           INTRODB_API_URL: ${{ secrets.KINO_INTRODB_API_URL }}
           STORE_PASSWORD: ${{ secrets.KINO_RELEASE_STORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KINO_RELEASE_KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KINO_RELEASE_KEY_PASSWORD }}
         run: |
           cat > local.properties <<EOF
-          SUPABASE_URL=$SUPABASE_URL
-          SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY
+          NUVIO_SUPABASE_URL=$NUVIO_SUPABASE_URL
+          NUVIO_SUPABASE_ANON_KEY=$NUVIO_SUPABASE_ANON_KEY
           INTRODB_API_URL=$INTRODB_API_URL
           KINO_APPLICATION_ID=site.x115jon.kino
           NUVIO_RELEASE_STORE_FILE=$GITHUB_WORKSPACE/kino-release.keystore
@@ -48,11 +48,11 @@ jobs:
           EOF
 
       - name: Build full release APK
-        run: ./gradlew --no-daemon :composeApp:assembleFullRelease
+        run: ./gradlew --no-daemon :androidApp:assembleFullRelease
 
       - name: Publish APK
         uses: softprops/action-gh-release@v2
         with:
-          files: composeApp/build/outputs/apk/full/release/*.apk
+          files: androidApp/build/outputs/apk/full/release/*.apk
           name: Kino ${{ github.ref_name }}
           generate_release_notes: true
