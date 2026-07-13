@@ -10,6 +10,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nuvio.app.features.addons.AddonRepository
@@ -80,6 +81,7 @@ internal fun PlayerScreenContent(args: PlayerScreenArgs) {
         val density = LocalDensity.current
         val horizontalSafePadding = playerHorizontalSafePadding()
         val metrics = remember(maxWidth) { PlayerLayoutMetrics.fromWidth(maxWidth) }
+        val isDesktopLayout = maxWidth >= 1024.dp
 
         runtime.scope = rememberCoroutineScope()
         runtime.hapticFeedback = LocalHapticFeedback.current
@@ -98,6 +100,7 @@ internal fun PlayerScreenContent(args: PlayerScreenArgs) {
         runtime.isLoadingAddonSubtitles = isLoadingAddonSubtitles
         runtime.horizontalSafePadding = horizontalSafePadding
         runtime.metrics = metrics
+        runtime.isDesktopLayout = isDesktopLayout
         runtime.sliderEdgePadding = horizontalSafePadding + metrics.horizontalPadding
         runtime.overlayBottomPadding = sliderOverlayBottomPadding(metrics)
         runtime.sideGestureSystemEdgeExclusionPx = with(density) {

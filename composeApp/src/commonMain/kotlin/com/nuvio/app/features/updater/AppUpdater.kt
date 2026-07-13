@@ -54,10 +54,10 @@ import nuvio.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.stringResource
 
-private const val gitHubOwner = "NuvioMedia"
-private const val gitHubRepo = "NuvioMobile"
+private const val gitHubOwner = "115jon"
+private const val gitHubRepo = "Kino"
 private const val gitHubApiBase = "https://api.github.com"
-private const val releaseChannelBranch = "cmp-rewrite"
+private const val releaseChannelBranch = "kino"
 
 data class AppUpdate(
     val tag: String,
@@ -154,7 +154,7 @@ private object AppUpdaterRepository {
             url = "$gitHubApiBase/repos/$gitHubOwner/$gitHubRepo/releases?per_page=20",
             headers = mapOf(
                 "Accept" to "application/vnd.github+json",
-                "User-Agent" to "NuvioMobile",
+                "User-Agent" to "Kino",
             ),
             body = "",
         )
@@ -170,7 +170,7 @@ private object AppUpdaterRepository {
             ?: release.name?.takeIf { it.isNotBlank() }
             ?: error(getString(Res.string.updates_release_missing_title))
 
-        val asset = chooseBestApkAsset(release.assets)
+        val asset = chooseBestReleaseAsset(release.assets)
             ?: error(getString(Res.string.updates_apk_asset_missing))
 
         AppUpdate(
@@ -195,26 +195,30 @@ private object AppUpdaterRepository {
             .any { value -> value.contains(channel, ignoreCase = true) }
     }
 
-    private fun chooseBestApkAsset(assets: List<GitHubAssetDto>): GitHubAssetDto? {
-        val apkAssets = assets.filter { asset ->
-            asset.name.endsWith(".apk", ignoreCase = true) ||
-                asset.contentType == "application/vnd.android.package-archive"
+    private fun chooseBestReleaseAsset(assets: List<GitHubAssetDto>): GitHubAssetDto? {
+        val compatibleAssets = if (AppUpdaterPlatform.isDesktop) {
+            assets.filter { it.name.endsWith(".exe", ignoreCase = true) }
+        } else {
+            assets.filter { asset ->
+                asset.name.endsWith(".apk", ignoreCase = true) ||
+                    asset.contentType == "application/vnd.android.package-archive"
+            }
         }
-        if (apkAssets.isEmpty()) return null
-        if (apkAssets.size == 1) return apkAssets.first()
+        if (compatibleAssets.isEmpty()) return null
+        if (compatibleAssets.size == 1) return compatibleAssets.first()
 
         val supportedAbis = AppUpdaterPlatform.getSupportedAbis()
         for (abi in supportedAbis) {
-            val candidate = apkAssets.firstOrNull { asset ->
+            val candidate = compatibleAssets.firstOrNull { asset ->
                 asset.name.contains(abi, ignoreCase = true)
             }
             if (candidate != null) return candidate
         }
 
-        return apkAssets.firstOrNull { asset ->
+        return compatibleAssets.firstOrNull { asset ->
             val name = asset.name.lowercase()
             name.contains("universal") || name.contains("all")
-        } ?: apkAssets.first()
+        } ?: compatibleAssets.first()
     }
 }
 

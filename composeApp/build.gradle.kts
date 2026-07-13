@@ -7,6 +7,7 @@ import org.gradle.api.tasks.InputFile
 import org.gradle.api.tasks.Optional
 import org.gradle.api.tasks.OutputDirectory
 import org.gradle.api.tasks.TaskAction
+import org.gradle.api.tasks.bundling.Zip
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompilationTask
 import java.util.Properties
@@ -205,6 +206,30 @@ val supabaseProps = Properties().apply {
     val propsFile = rootProject.file("local.properties")
     if (propsFile.exists()) propsFile.inputStream().use { load(it) }
 }
+val isWindowsHost = System.getProperty("os.name").contains("Windows", ignoreCase = true)
+if (isWindowsHost) {
+    System.setProperty("compose.preserve.working.dir", "true")
+}
+val joglVersion = libs.versions.jogl.get()
+val windowsJoglCore = configurations.detachedConfiguration(
+    dependencies.create("org.jogamp.jogl:jogl-all:$joglVersion")
+)
+val stripWindowsJoglJar = tasks.register<Zip>("stripWindowsJoglJar") {
+    destinationDirectory.set(layout.buildDirectory.dir("stripped-jars"))
+    archiveFileName.set("jogl-all-$joglVersion-windows.jar")
+    archiveExtension.set("jar")
+    duplicatesStrategy = org.gradle.api.file.DuplicatesStrategy.EXCLUDE
+    from({ zipTree(windowsJoglCore.singleFile) })
+    exclude(
+        "com/jogamp/nativewindow/javafx/**",
+        "com/jogamp/nativewindow/swt/**",
+        "com/jogamp/newt/javafx/**",
+        "com/jogamp/newt/swt/**",
+        "com/jogamp/opengl/swt/**",
+        "jogamp/newt/javafx/**",
+        "jogamp/newt/swt/**",
+    )
+}
 val appVersionConfigFile = rootProject.file("iosApp/Configuration/Version.xcconfig")
 val releaseAppVersionName = readXcconfigValue(appVersionConfigFile, "MARKETING_VERSION")
     ?: error("MARKETING_VERSION is missing from ${appVersionConfigFile.path}")
@@ -322,6 +347,12 @@ kotlin {
             jvmTarget.set(JvmTarget.JVM_11)
         }
     }
+
+    jvm("desktop") {
+        compilerOptions {
+            jvmTarget.set(JvmTarget.JVM_11)
+        }
+    }
     
     val iosTargets = listOf(
         iosArm64(),
@@ -360,6 +391,23 @@ kotlin {
     sourceSets {
         val commonMain by getting {
             kotlin.srcDir(generatedRuntimeConfigDir)
+        }
+        val desktopMain by getting {
+            dependencies {
+                implementation(compose.desktop.currentOs)
+                implementation(libs.ktor.client.java)
+                implementation(libs.kotlinx.coroutines.swing)
+                implementation(libs.jna)
+                if (isWindowsHost) {
+                    implementation(files(stripWindowsJoglJar.flatMap { it.archiveFile }))
+                    implementation("org.jogamp.gluegen:gluegen-rt:$joglVersion")
+                    implementation("org.jogamp.jogl:jogl-all:$joglVersion:natives-windows-amd64")
+                    implementation("org.jogamp.gluegen:gluegen-rt:$joglVersion:natives-windows-amd64")
+                } else {
+                    implementation(libs.jogl.all)
+                    implementation(libs.gluegen.rt)
+                }
+            }
         }
         androidMain {
             kotlin.srcDir(project.file(androidDistributionSourceDir))
@@ -433,6 +481,37 @@ kotlin {
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
+        }
+    }
+}
+
+compose.desktop {
+    application {
+        mainClass = "com.nuvio.app.DesktopAppKt"
+        nativeDistributions {
+            packageName = "Nuvio"
+            packageVersion = releaseAppVersionName
+            description = "Kino desktop streaming app"
+            vendor = "Kino"
+            modules("java.net.http")
+            targetFormats(
+                org.jetbrains.compose.desktop.application.dsl.TargetFormat.Dmg,
+                org.jetbrains.compose.desktop.application.dsl.TargetFormat.Msi,
+                org.jetbrains.compose.desktop.application.dsl.TargetFormat.Exe,
+            )
+            macOS {
+                dockName = "Kino"
+                iconFile.set(project.file("desktop-icons/nuvio.icns"))
+            }
+            windows {
+                iconFile.set(project.file("desktop-icons/nuvio.ico"))
+                menu = true
+                menuGroup = "Kino"
+                dirChooser = true
+                perUserInstall = true
+                shortcut = true
+                upgradeUuid = "e4d85c1d-4bb0-4ed2-9a02-dfa497317d20"
+            }
         }
     }
 }

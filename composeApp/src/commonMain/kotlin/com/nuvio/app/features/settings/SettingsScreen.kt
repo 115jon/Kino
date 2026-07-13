@@ -159,7 +159,6 @@ fun SettingsScreen(
         val onAppLanguageSelected: (AppLanguage) -> Unit = remember(settingsSyncScope) {
             { language ->
                 ThemeSettingsRepository.setAppLanguage(language)
-                ProfileSettingsSync.markAppLanguageChanged()
                 settingsSyncScope.launch {
                     ProfileSettingsSync.pushCurrentProfileToRemote()
                 }

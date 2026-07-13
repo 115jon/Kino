@@ -25,19 +25,25 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.Refresh
 import com.nuvio.app.core.ui.NuvioLoadingIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.launch
 import com.nuvio.app.core.ui.NuvioTokens
 import com.nuvio.app.core.ui.nuvio
 import com.nuvio.app.features.debrid.DebridSettingsRepository
@@ -59,6 +65,7 @@ fun PlayerSourcesPanel(
     onStreamSelected: (StreamItem) -> Unit,
     onReload: () -> Unit,
     onDismiss: () -> Unit,
+    desktopLayout: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val tokens = MaterialTheme.nuvio
@@ -98,6 +105,7 @@ fun PlayerSourcesPanel(
                     modifier = Modifier
                         .widthIn(max = tokens.components.playerPanelMaxWidth)
                         .fillMaxWidth(0.92f)
+                        .then(if (desktopLayout) Modifier.widthIn(min = 720.dp, max = 960.dp) else Modifier)
                         .heightIn(max = tokens.components.dialogMaxWidth + NuvioTokens.Space.s40)
                         .clip(tokens.shapes.playerPanel)
                         .background(tokens.colors.surfaceSheet)
@@ -141,14 +149,9 @@ fun PlayerSourcesPanel(
                             streamsUiState.groups.map { it.addonName }.distinct()
                         }
                         if (addonNames.size > 1) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .horizontalScroll(rememberScrollState())
-                                    .padding(horizontal = tokens.spacing.sheetPadding)
-                                    .padding(bottom = tokens.spacing.listGap),
-                                horizontalArrangement = Arrangement.spacedBy(tokens.spacing.controlGap),
-                            ) {
+                            val filterScrollState = rememberScrollState()
+                            val filterScope = rememberCoroutineScope()
+                            val filterContent: @Composable () -> Unit = {
                                 AddonFilterChip(
                                     label = stringResource(Res.string.collections_tab_all),
                                     isSelected = streamsUiState.selectedFilter == null,
@@ -163,6 +166,40 @@ fun PlayerSourcesPanel(
                                         hasError = group?.error != null,
                                         onClick = { onFilterSelected(group?.addonId) },
                                     )
+                                }
+                            }
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = tokens.spacing.sheetPadding)
+                                    .padding(bottom = tokens.spacing.listGap),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                if (desktopLayout) {
+                                    IconButton(onClick = {
+                                        filterScope.launch {
+                                            filterScrollState.animateScrollTo((filterScrollState.value - 240).coerceAtLeast(0))
+                                        }
+                                    }) {
+                                        Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = null)
+                                    }
+                                }
+                                Row(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .horizontalScroll(filterScrollState),
+                                    horizontalArrangement = Arrangement.spacedBy(tokens.spacing.controlGap),
+                                ) {
+                                    filterContent()
+                                }
+                                if (desktopLayout) {
+                                    IconButton(onClick = {
+                                        filterScope.launch {
+                                            filterScrollState.animateScrollTo((filterScrollState.value + 240).coerceAtMost(filterScrollState.maxValue))
+                                        }
+                                    }) {
+                                        Icon(Icons.Rounded.KeyboardArrowRight, contentDescription = null)
+                                    }
                                 }
                             }
                         }

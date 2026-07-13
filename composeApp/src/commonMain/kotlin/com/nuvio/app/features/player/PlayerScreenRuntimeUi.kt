@@ -459,6 +459,7 @@ private fun PlayerScreenRuntime.RenderPlayerModals(displayedPositionMs: Long) {
             showSourcesPanel = false
             controlsVisible = true
         },
+        desktopLayout = isDesktopLayout,
         isSeries = isSeries,
         showEpisodesPanel = showEpisodesPanel,
         allEpisodes = playerMetaVideos,

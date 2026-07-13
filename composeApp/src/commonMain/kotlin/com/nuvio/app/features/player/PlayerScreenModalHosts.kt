@@ -58,6 +58,7 @@ internal fun PlayerScreenModalHosts(
     onSourceStreamSelected: (StreamItem) -> Unit,
     onReloadSources: () -> Unit,
     onSourcesPanelDismissed: () -> Unit,
+    desktopLayout: Boolean,
     isSeries: Boolean,
     showEpisodesPanel: Boolean,
     allEpisodes: List<MetaVideo>,
@@ -163,6 +164,7 @@ internal fun PlayerScreenModalHosts(
         onStreamSelected = onSourceStreamSelected,
         onReload = onReloadSources,
         onDismiss = onSourcesPanelDismissed,
+        desktopLayout = desktopLayout,
     )
 
     if (isSeries) {
@@ -190,6 +192,7 @@ internal fun PlayerScreenModalHosts(
             onBackToEpisodes = onBackToEpisodes,
             onReloadEpisodeStreams = onReloadEpisodeStreams,
             onDismiss = onEpisodesPanelDismissed,
+            desktopLayout = desktopLayout,
         )
     }
 

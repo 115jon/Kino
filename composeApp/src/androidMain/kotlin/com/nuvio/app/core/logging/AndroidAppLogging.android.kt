@@ -1,11 +1,11 @@
 package com.nuvio.app.core.logging
 
 import android.content.Context
+import android.content.pm.ApplicationInfo
 import android.util.Log
 import co.touchlab.kermit.LogWriter
 import co.touchlab.kermit.Logger
 import co.touchlab.kermit.Severity
-import com.nuvio.app.BuildConfig
 import java.io.File
 import java.time.Instant
 import java.time.ZoneOffset
@@ -20,7 +20,7 @@ private val androidTimestampFormatter: DateTimeFormatter =
 
 internal fun initializeAndroidAppLogging(context: Context) {
     val mode = resolveAppLogMode(
-        isDebugBinary = BuildConfig.DEBUG,
+        isDebugBinary = context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0,
         overrideValue = null,
     )
     val policy = AppLogPolicy.forMode(mode)
