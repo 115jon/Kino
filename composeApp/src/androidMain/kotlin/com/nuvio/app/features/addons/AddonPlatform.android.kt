@@ -2,9 +2,15 @@ package com.nuvio.app.features.addons
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.nuvio.app.core.diagnostics.SentryNetworkBreadcrumbInterceptor
 import com.nuvio.app.core.network.IPv4FirstDns
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import nuvio.composeapp.generated.resources.Res
+import nuvio.composeapp.generated.resources.network_empty_response_body
+import nuvio.composeapp.generated.resources.network_request_failed_http
+import org.jetbrains.compose.resources.getString
 import okhttp3.ResponseBody
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -19,6 +25,7 @@ import java.util.concurrent.TimeUnit
 actual object AddonStorage {
     private const val preferencesName = "nuvio_addons"
     private const val addonUrlsKey = "installed_manifest_urls"
+    private const val addonEnabledStatesKey = "installed_manifest_enabled_states"
 
     private var preferences: SharedPreferences? = null
 
@@ -41,6 +48,34 @@ actual object AddonStorage {
             ?.putString("${addonUrlsKey}_$profileId", urls.joinToString(separator = "\n"))
             ?.apply()
     }
+
+    actual fun loadAddonEnabledStates(profileId: Int): Map<String, Boolean> =
+        preferences
+            ?.getString("${addonEnabledStatesKey}_$profileId", null)
+            .orEmpty()
+            .lineSequence()
+            .mapNotNull(::parseEnabledStateLine)
+            .toMap()
+
+    actual fun saveAddonEnabledStates(profileId: Int, states: Map<String, Boolean>) {
+        val payload = states.entries.joinToString(separator = "\n") { (url, enabled) ->
+            "$url\t$enabled"
+        }
+        preferences
+            ?.edit()
+            ?.putString("${addonEnabledStatesKey}_$profileId", payload)
+            ?.apply()
+    }
+}
+
+private fun parseEnabledStateLine(line: String): Pair<String, Boolean>? {
+    val url = line.substringBefore("\t").trim().takeIf { it.isNotEmpty() } ?: return null
+    val rawEnabled = line.substringAfter("\t", "true").trim().lowercase()
+    val enabled = when (rawEnabled) {
+        "false" -> false
+        else -> true
+    }
+    return url to enabled
 }
 
 private val addonHttpClient = OkHttpClient.Builder()
@@ -50,6 +85,7 @@ private val addonHttpClient = OkHttpClient.Builder()
     .writeTimeout(60, TimeUnit.SECONDS)
     .followRedirects(true)
     .followSslRedirects(true)
+    .addInterceptor(SentryNetworkBreadcrumbInterceptor())
     .proxy(Proxy.NO_PROXY)
     .build()
 
@@ -153,10 +189,10 @@ private suspend fun executeTextRequest(
     addonHttpClient.newCall(request).execute().use { response ->
         val payload = readResponseBody(response.body)
         if (!response.isSuccessful) {
-            error("Request failed with HTTP ${response.code}")
+            error(runBlocking { getString(Res.string.network_request_failed_http, response.code) })
         }
         if (payload.isBlank()) {
-            throw IllegalStateException("Empty response body")
+            throw IllegalStateException(runBlocking { getString(Res.string.network_empty_response_body) })
         }
         payload
     }

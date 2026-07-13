@@ -6,6 +6,8 @@ import com.nuvio.app.core.auth.AuthState
 import com.nuvio.app.core.network.SupabaseProvider
 import com.nuvio.app.features.collection.CollectionMobileSettingsRepository
 import com.nuvio.app.features.collection.CollectionMobileSettingsStorage
+import com.nuvio.app.features.debrid.DebridSettingsRepository
+import com.nuvio.app.features.debrid.DebridSettingsStorage
 import com.nuvio.app.features.details.MetaScreenSettingsStorage
 import com.nuvio.app.features.details.MetaScreenSettingsRepository
 import com.nuvio.app.features.mdblist.MdbListMetadataService
@@ -15,10 +17,14 @@ import com.nuvio.app.features.notifications.EpisodeReleaseNotificationsRepositor
 import com.nuvio.app.features.player.PlayerSettingsStorage
 import com.nuvio.app.features.player.PlayerSettingsRepository
 import com.nuvio.app.features.profiles.ProfileRepository
+import com.nuvio.app.core.ui.CardDepthStyleRepository
+import com.nuvio.app.core.ui.CardDepthStyleStorage
 import com.nuvio.app.core.ui.PosterCardStyleRepository
 import com.nuvio.app.core.ui.PosterCardStyleStorage
 import com.nuvio.app.features.settings.ThemeSettingsStorage
 import com.nuvio.app.features.settings.ThemeSettingsRepository
+import com.nuvio.app.features.streams.StreamBadgeSettingsRepository
+import com.nuvio.app.features.streams.StreamBadgeSettingsStorage
 import com.nuvio.app.features.tmdb.TmdbSettingsStorage
 import com.nuvio.app.features.tmdb.TmdbSettingsRepository
 import com.nuvio.app.features.trakt.TraktCommentsStorage
@@ -35,7 +41,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -55,7 +60,6 @@ import kotlinx.serialization.json.encodeToJsonElement
 import kotlinx.serialization.json.put
 
 private const val PUSH_DEBOUNCE_MS = 1500L
-private const val APP_LANGUAGE_SYNC_KEY = "selected_app_language"
 
 object ProfileSettingsSync {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -75,9 +79,6 @@ object ProfileSettingsSync {
     @Volatile
     private var skipNextPushSignature: String? = null
 
-    @Volatile
-    private var pendingLocalAppLanguageCode: String? = null
-
     private var observeJob: Job? = null
 
     fun startObserving() {
@@ -86,12 +87,23 @@ object ProfileSettingsSync {
         observeLocalChangesAndPush()
     }
 
+    fun clearAccountState() {
+        observeJob?.cancel()
+        observeJob = null
+        skipNextPushSignature = null
+    }
+
     suspend fun pull(profileId: Int): Boolean {
         ensureRepositoriesLoaded()
         return syncMutex.withLock {
+            if (ProfileRepository.activeProfileId != profileId) {
+                log.d { "pull(profileId=$profileId) — skipped because profile is no longer active" }
+                return@withLock false
+            }
             isServerSyncInFlight = true
             try {
                 val localBlob = exportSettingsBlob()
+                if (ProfileRepository.activeProfileId != profileId) return@withLock false
                 val localSignature = buildSignature(localBlob)
 
                 val params = buildJsonObject {
@@ -99,14 +111,12 @@ object ProfileSettingsSync {
                     put("p_platform", MOBILE_SYNC_PLATFORM)
                 }
                 val result = SupabaseProvider.client.postgrest.rpc("sync_pull_profile_settings_blob", params)
+                if (ProfileRepository.activeProfileId != profileId) return@withLock false
                 val response = result.decodeList<SettingsBlobResponse>().firstOrNull()
                 val remoteJson = response?.settingsJson
 
                 if (remoteJson == null) {
                     log.i { "pull(profileId=$profileId) — no remote settings blob found" }
-                    if (localSignature != defaultSignature()) {
-                        pushToRemoteLocked(profileId, localBlob)
-                    }
                     return@withLock false
                 }
 
@@ -118,14 +128,14 @@ object ProfileSettingsSync {
                         log.e(error) { "pull(profileId=$profileId) — failed to decode remote settings blob" }
                         return@withLock false
                     }
-
                     val remoteSignature = buildSignature(remoteBlob)
                     if (remoteSignature == localSignature) {
                         log.d { "pull(profileId=$profileId) — remote matches local" }
                         return@withLock false
                     }
 
-                    applyRemoteBlob(remoteBlob.withPendingLocalAppLanguage())
+                    if (ProfileRepository.activeProfileId != profileId) return@withLock false
+                    applyRemoteBlob(remoteBlob)
                     skipNextPushSignature = currentObservedStateSignature()
                 } finally {
                     isApplyingRemoteBlob = false
@@ -142,24 +152,19 @@ object ProfileSettingsSync {
         }
     }
 
-    suspend fun pushCurrentProfileToRemote() {
+    suspend fun pushCurrentProfileToRemote(): Boolean {
         ensureRepositoriesLoaded()
-        val authState = AuthRepository.state.value
-        if (authState !is AuthState.Authenticated || authState.isAnonymous) return
-        syncMutex.withLock {
+        return syncMutex.withLock {
             runCatching {
-                pushToRemoteLocked(ProfileRepository.activeProfileId, exportSettingsBlob())
-                if (pendingLocalAppLanguageCode == ThemeSettingsRepository.selectedAppLanguage.value.code) {
-                    pendingLocalAppLanguageCode = null
-                }
+                val profileId = ProfileRepository.activeProfileId
+                val blob = exportSettingsBlob()
+                if (ProfileRepository.activeProfileId != profileId) return@runCatching false
+                pushToRemoteLocked(profileId, blob)
+                true
             }.onFailure { error ->
                 log.e(error) { "pushCurrentProfileToRemote() — FAILED" }
-            }
+            }.getOrDefault(false)
         }
-    }
-
-    fun markAppLanguageChanged() {
-        pendingLocalAppLanguageCode = ThemeSettingsRepository.selectedAppLanguage.value.code
     }
 
     @OptIn(FlowPreview::class)
@@ -168,9 +173,11 @@ object ProfileSettingsSync {
             ThemeSettingsRepository.selectedTheme.map { "theme" },
             ThemeSettingsRepository.amoledEnabled.map { "amoled" },
             ThemeSettingsRepository.liquidGlassNativeTabBarEnabled.map { "liquid_glass_tab_bar" },
-            ThemeSettingsRepository.selectedAppLanguage.map { "app_language" },
             PosterCardStyleRepository.uiState.map { "poster_card_style" },
+            CardDepthStyleRepository.uiState.map { "card_depth_style" },
             PlayerSettingsRepository.uiState.map { "player" },
+            StreamBadgeSettingsRepository.uiState.map { "stream_badges" },
+            DebridSettingsRepository.uiState.map { "debrid" },
             TmdbSettingsRepository.uiState.map { "tmdb" },
             MdbListSettingsRepository.uiState.map { "mdblist" },
             MetaScreenSettingsRepository.uiState.map { "meta" },
@@ -204,6 +211,7 @@ object ProfileSettingsSync {
             put("p_profile_id", profileId)
             put("p_platform", MOBILE_SYNC_PLATFORM)
             put("p_settings_json", json.encodeToJsonElement(MobileProfileSettingsBlob.serializer(), blob))
+            putSyncOriginClientId()
         }
         SupabaseProvider.client.postgrest.rpc("sync_push_profile_settings_blob", params)
         log.d { "pushToRemoteLocked(profileId=$profileId) — success" }
@@ -215,7 +223,10 @@ object ProfileSettingsSync {
             features = MobileProfileSettingsFeatures(
                 themeSettings = ThemeSettingsStorage.exportToSyncPayload(),
                 posterCardStyleSettingsPayload = PosterCardStyleStorage.loadPayload().orEmpty().trim(),
+                cardDepthStyleSettingsPayload = CardDepthStyleStorage.loadPayload().orEmpty().trim(),
                 playerSettings = PlayerSettingsStorage.exportToSyncPayload(),
+                streamBadgeSettings = StreamBadgeSettingsStorage.exportToSyncPayload(),
+                debridSettings = DebridSettingsStorage.exportToSyncPayload(),
                 tmdbSettings = TmdbSettingsStorage.exportToSyncPayload(),
                 mdbListSettings = MdbListSettingsStorage.exportToSyncPayload(),
                 metaScreenSettingsPayload = MetaScreenSettingsStorage.loadPayload().orEmpty().trim(),
@@ -237,8 +248,17 @@ object ProfileSettingsSync {
         PosterCardStyleStorage.savePayload(blob.features.posterCardStyleSettingsPayload)
         PosterCardStyleRepository.onProfileChanged()
 
+        CardDepthStyleStorage.savePayload(blob.features.cardDepthStyleSettingsPayload)
+        CardDepthStyleRepository.onProfileChanged()
+
         PlayerSettingsStorage.replaceFromSyncPayload(blob.features.playerSettings)
         PlayerSettingsRepository.onProfileChanged()
+
+        StreamBadgeSettingsStorage.replaceFromSyncPayload(blob.features.streamBadgeSettings)
+        StreamBadgeSettingsRepository.onProfileChanged()
+
+        DebridSettingsStorage.replaceFromSyncPayload(blob.features.debridSettings)
+        DebridSettingsRepository.onProfileChanged()
 
         TmdbSettingsStorage.replaceFromSyncPayload(blob.features.tmdbSettings)
         TmdbSettingsRepository.onProfileChanged()
@@ -268,7 +288,10 @@ object ProfileSettingsSync {
     private fun ensureRepositoriesLoaded() {
         ThemeSettingsRepository.ensureLoaded()
         PosterCardStyleRepository.ensureLoaded()
+        CardDepthStyleRepository.ensureLoaded()
         PlayerSettingsRepository.ensureLoaded()
+        StreamBadgeSettingsRepository.ensureLoaded()
+        DebridSettingsRepository.ensureLoaded()
         TmdbSettingsRepository.ensureLoaded()
         MdbListSettingsRepository.ensureLoaded()
         MetaScreenSettingsRepository.ensureLoaded()
@@ -282,16 +305,15 @@ object ProfileSettingsSync {
     private fun buildSignature(blob: MobileProfileSettingsBlob): String =
         json.encodeToString(MobileProfileSettingsBlob.serializer(), blob)
 
-    private fun defaultSignature(): String =
-        buildSignature(MobileProfileSettingsBlob())
-
     private fun currentObservedStateSignature(): String = listOf(
         "theme=${ThemeSettingsRepository.selectedTheme.value.name}",
         "amoled=${ThemeSettingsRepository.amoledEnabled.value}",
         "liquid_glass_tab_bar=${ThemeSettingsRepository.liquidGlassNativeTabBarEnabled.value}",
-        "app_language=${ThemeSettingsRepository.selectedAppLanguage.value.code}",
         "poster_card_style=${PosterCardStyleRepository.uiState.value}",
+        "card_depth_style=${CardDepthStyleRepository.uiState.value}",
         "player=${PlayerSettingsRepository.uiState.value}",
+        "stream_badges=${StreamBadgeSettingsRepository.uiState.value}",
+        "debrid=${DebridSettingsRepository.uiState.value}",
         "tmdb=${TmdbSettingsRepository.uiState.value}",
         "mdblist=${MdbListSettingsRepository.uiState.value}",
         "meta=${MetaScreenSettingsRepository.uiState.value}",
@@ -302,22 +324,11 @@ object ProfileSettingsSync {
         "episode_release_alerts=${EpisodeReleaseNotificationsRepository.uiState.value.isEnabled}",
     ).joinToString(separator = "||")
 
-    private fun MobileProfileSettingsBlob.withPendingLocalAppLanguage(): MobileProfileSettingsBlob {
-        val languageCode = pendingLocalAppLanguageCode ?: return this
-        return copy(
-            features = features.copy(
-                themeSettings = buildJsonObject {
-                    features.themeSettings.forEach { (key, value) -> put(key, value) }
-                    put(APP_LANGUAGE_SYNC_KEY, encodeSyncString(languageCode))
-                },
-            ),
-        )
-    }
 }
 
 @Serializable
 private data class MobileProfileSettingsBlob(
-    val version: Int = 2,
+    val version: Int = 3,
     val features: MobileProfileSettingsFeatures = MobileProfileSettingsFeatures(),
 )
 
@@ -325,7 +336,10 @@ private data class MobileProfileSettingsBlob(
 private data class MobileProfileSettingsFeatures(
     @SerialName("theme_settings") val themeSettings: JsonObject = JsonObject(emptyMap()),
     @SerialName("poster_card_style_settings_payload") val posterCardStyleSettingsPayload: String = "",
+    @SerialName("card_depth_style_settings_payload") val cardDepthStyleSettingsPayload: String = "",
     @SerialName("player_settings") val playerSettings: JsonObject = JsonObject(emptyMap()),
+    @SerialName("stream_badge_settings") val streamBadgeSettings: JsonObject = JsonObject(emptyMap()),
+    @SerialName("debrid_settings") val debridSettings: JsonObject = JsonObject(emptyMap()),
     @SerialName("tmdb_settings") val tmdbSettings: JsonObject = JsonObject(emptyMap()),
     @SerialName("mdblist_settings") val mdbListSettings: JsonObject = JsonObject(emptyMap()),
     @SerialName("meta_screen_settings_payload") val metaScreenSettingsPayload: String = "",

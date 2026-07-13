@@ -15,10 +15,16 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
 import io.ktor.http.isSuccess
+import kotlinx.coroutines.runBlocking
+import nuvio.composeapp.generated.resources.Res
+import nuvio.composeapp.generated.resources.network_empty_response_body
+import nuvio.composeapp.generated.resources.network_request_failed_http
+import org.jetbrains.compose.resources.getString
 import platform.Foundation.NSUserDefaults
 
 actual object AddonStorage {
     private const val addonUrlsKey = "installed_manifest_urls"
+    private const val addonEnabledStatesKey = "installed_manifest_enabled_states"
 
     actual fun loadInstalledAddonUrls(profileId: Int): List<String> =
         NSUserDefaults.standardUserDefaults
@@ -35,6 +41,34 @@ actual object AddonStorage {
             forKey = "${addonUrlsKey}_$profileId",
         )
     }
+
+    actual fun loadAddonEnabledStates(profileId: Int): Map<String, Boolean> =
+        NSUserDefaults.standardUserDefaults
+            .stringForKey("${addonEnabledStatesKey}_$profileId")
+            .orEmpty()
+            .lineSequence()
+            .mapNotNull(::parseEnabledStateLine)
+            .toMap()
+
+    actual fun saveAddonEnabledStates(profileId: Int, states: Map<String, Boolean>) {
+        val payload = states.entries.joinToString(separator = "\n") { (url, enabled) ->
+            "$url\t$enabled"
+        }
+        NSUserDefaults.standardUserDefaults.setObject(
+            payload,
+            forKey = "${addonEnabledStatesKey}_$profileId",
+        )
+    }
+}
+
+private fun parseEnabledStateLine(line: String): Pair<String, Boolean>? {
+    val url = line.substringBefore("\t").trim().takeIf { it.isNotEmpty() } ?: return null
+    val rawEnabled = line.substringAfter("\t", "true").trim().lowercase()
+    val enabled = when (rawEnabled) {
+        "false" -> false
+        else -> true
+    }
+    return url to enabled
 }
 
 private val addonHttpClient = HttpClient(Darwin) {
@@ -54,10 +88,10 @@ actual suspend fun httpGetText(url: String): String =
         .let { response ->
             val payload = response.bodyAsText()
             if (!response.status.isSuccess()) {
-                error("Request failed with HTTP ${response.status.value}")
+                error(runBlocking { getString(Res.string.network_request_failed_http, response.status.value) })
             }
             if (payload.isBlank()) {
-                throw IllegalStateException("Empty response body")
+                throw IllegalStateException(runBlocking { getString(Res.string.network_empty_response_body) })
             }
             payload
         }
@@ -72,10 +106,10 @@ actual suspend fun httpPostJson(url: String, body: String): String =
         .let { response ->
             val payload = response.bodyAsText()
             if (!response.status.isSuccess()) {
-                error("Request failed with HTTP ${response.status.value}")
+                error(runBlocking { getString(Res.string.network_request_failed_http, response.status.value) })
             }
             if (payload.isBlank()) {
-                throw IllegalStateException("Empty response body")
+                throw IllegalStateException(runBlocking { getString(Res.string.network_empty_response_body) })
             }
             payload
         }
@@ -94,10 +128,10 @@ actual suspend fun httpGetTextWithHeaders(
         .let { response ->
             val payload = response.bodyAsText()
             if (!response.status.isSuccess()) {
-                error("Request failed with HTTP ${response.status.value}")
+                error(runBlocking { getString(Res.string.network_request_failed_http, response.status.value) })
             }
             if (payload.isBlank()) {
-                throw IllegalStateException("Empty response body")
+                throw IllegalStateException(runBlocking { getString(Res.string.network_empty_response_body) })
             }
             payload
         }
@@ -119,10 +153,10 @@ actual suspend fun httpPostJsonWithHeaders(
         .let { response ->
             val payload = response.bodyAsText()
             if (!response.status.isSuccess()) {
-                error("Request failed with HTTP ${response.status.value}")
+                error(runBlocking { getString(Res.string.network_request_failed_http, response.status.value) })
             }
             if (payload.isBlank()) {
-                throw IllegalStateException("Empty response body")
+                throw IllegalStateException(runBlocking { getString(Res.string.network_empty_response_body) })
             }
             payload
         }

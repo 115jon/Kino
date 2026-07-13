@@ -23,6 +23,8 @@ import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -42,6 +44,7 @@ import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.nuvio.app.core.build.AppFeaturePolicy
 import coil3.compose.AsyncImage
 import com.nuvio.app.core.ui.NuvioIconActionButton
 import com.nuvio.app.core.ui.NuvioInfoBadge
@@ -91,6 +94,7 @@ internal fun AddonsSettingsPageContent(
     var formMessage by rememberSaveable { mutableStateOf<String?>(null) }
     var installModalState by remember { mutableStateOf<AddonInstallModalState?>(null) }
     val enterAddonUrlMessage = stringResource(Res.string.addons_error_enter_url)
+    val usePersonalMediaCopy = AppFeaturePolicy.personalMediaAddonCopyEnabled
 
     val overview = remember(uiState.addons) { uiState.addons.toOverview() }
 
@@ -105,6 +109,7 @@ internal fun AddonsSettingsPageContent(
         AddAddonCard(
             addonUrl = addonUrl,
             formMessage = formMessage,
+            usePersonalMediaCopy = usePersonalMediaCopy,
             onAddonUrlChange = {
                 addonUrl = it
                 formMessage = null
@@ -136,7 +141,7 @@ internal fun AddonsSettingsPageContent(
 
         SectionHeader(stringResource(Res.string.addons_section_installed))
         if (uiState.addons.isEmpty()) {
-            EmptyStateCard()
+            EmptyStateCard(usePersonalMediaCopy = usePersonalMediaCopy)
         } else {
             val lastIndex = uiState.addons.lastIndex
             uiState.addons.forEachIndexed { index, addon ->
@@ -157,6 +162,9 @@ internal fun AddonsSettingsPageContent(
                         null
                     },
                     onRefreshClick = { AddonRepository.refreshAddon(addon.manifestUrl) },
+                    onEnabledChange = { enabled ->
+                        AddonRepository.setAddonEnabled(addon.manifestUrl, enabled)
+                    },
                     onConfigureClick = if (showConfigureAction && !configureUrl.isNullOrBlank()) {
                         {
                             runCatching {
@@ -278,6 +286,7 @@ private fun VerticalSeparator() {
 private fun AddAddonCard(
     addonUrl: String,
     formMessage: String?,
+    usePersonalMediaCopy: Boolean,
     onAddonUrlChange: (String) -> Unit,
     onAddClick: () -> Unit,
 ) {
@@ -285,14 +294,34 @@ private fun AddAddonCard(
         NuvioInputField(
             value = addonUrl,
             onValueChange = onAddonUrlChange,
-            placeholder = stringResource(Res.string.addons_input_placeholder),
+            placeholder = stringResource(
+                if (usePersonalMediaCopy) {
+                    Res.string.addons_appstore_input_placeholder
+                } else {
+                    Res.string.addons_input_placeholder
+                },
+            ),
         )
         Spacer(modifier = Modifier.height(18.dp))
         NuvioPrimaryButton(
-            text = stringResource(Res.string.addons_install_button),
+            text = stringResource(
+                if (usePersonalMediaCopy) {
+                    Res.string.addons_appstore_install_button
+                } else {
+                    Res.string.addons_install_button
+                },
+            ),
             enabled = addonUrl.isNotBlank(),
             onClick = onAddClick,
         )
+        if (usePersonalMediaCopy) {
+            Spacer(modifier = Modifier.height(14.dp))
+            Text(
+                text = stringResource(Res.string.addons_appstore_add_description),
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
         formMessage?.let { message ->
             Spacer(modifier = Modifier.height(14.dp))
             Text(
@@ -325,16 +354,30 @@ private sealed interface AddonInstallModalState {
 }
 
 @Composable
-private fun EmptyStateCard() {
+private fun EmptyStateCard(
+    usePersonalMediaCopy: Boolean,
+) {
     NuvioSurfaceCard {
         Text(
-            text = stringResource(Res.string.addons_empty_title),
+            text = stringResource(
+                if (usePersonalMediaCopy) {
+                    Res.string.addons_appstore_empty_title
+                } else {
+                    Res.string.addons_empty_title
+                },
+            ),
             style = MaterialTheme.typography.titleLarge,
             color = MaterialTheme.colorScheme.onSurface,
         )
         Spacer(modifier = Modifier.height(8.dp))
         Text(
-            text = stringResource(Res.string.addons_empty_subtitle),
+            text = stringResource(
+                if (usePersonalMediaCopy) {
+                    Res.string.addons_appstore_empty_subtitle
+                } else {
+                    Res.string.addons_empty_subtitle
+                },
+            ),
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -347,6 +390,7 @@ private fun InstalledAddonCard(
     onMoveUpClick: (() -> Unit)?,
     onMoveDownClick: (() -> Unit)?,
     onRefreshClick: () -> Unit,
+    onEnabledChange: (Boolean) -> Unit,
     onConfigureClick: (() -> Unit)?,
     onDeleteClick: () -> Unit,
 ) {
@@ -380,6 +424,17 @@ private fun InstalledAddonCard(
                     )
                 }
             }
+            Spacer(modifier = Modifier.width(12.dp))
+            Switch(
+                checked = addon.enabled,
+                onCheckedChange = onEnabledChange,
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
+                    checkedTrackColor = MaterialTheme.colorScheme.primary,
+                    uncheckedThumbColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    uncheckedTrackColor = MaterialTheme.colorScheme.outlineVariant,
+                ),
+            )
         }
 
         Spacer(modifier = Modifier.height(12.dp))
@@ -438,6 +493,7 @@ private fun InstalledAddonCard(
         ) {
             NuvioInfoBadge(
                 text = when {
+                    !addon.enabled -> stringResource(Res.string.addons_badge_disabled)
                     addon.isRefreshing -> stringResource(Res.string.addons_badge_refreshing)
                     manifest != null -> stringResource(Res.string.addons_badge_active)
                     else -> stringResource(Res.string.addons_badge_unavailable)

@@ -5,10 +5,14 @@ import com.nuvio.app.core.i18n.localizedMediaTypeLabel
 import com.nuvio.app.features.addons.AddonCatalog
 import com.nuvio.app.features.addons.AddonExtraProperty
 import com.nuvio.app.features.addons.ManagedAddon
+import com.nuvio.app.features.addons.enabledAddons
+import com.nuvio.app.features.catalog.CATALOG_PAGE_SIZE
 import com.nuvio.app.features.catalog.CatalogPage
+import com.nuvio.app.features.catalog.CatalogTarget
 import com.nuvio.app.features.catalog.buildCatalogUrl
 import com.nuvio.app.features.catalog.fetchCatalogPage
 import com.nuvio.app.features.catalog.mergeCatalogItems
+import com.nuvio.app.features.catalog.nextCatalogPaginationState
 import com.nuvio.app.features.catalog.supportsPagination
 import com.nuvio.app.features.home.HomeCatalogSettingsRepository
 import com.nuvio.app.features.home.HomeCatalogSection
@@ -50,7 +54,7 @@ object SearchRepository {
             return
         }
 
-        val activeAddons = addons.filter { it.manifest != null }
+        val activeAddons = addons.enabledAddons().filter { it.manifest != null }
         if (activeAddons.isEmpty()) {
             activeJob?.cancel()
             lastRequestKey = null
@@ -173,7 +177,7 @@ object SearchRepository {
     }
 
     fun refreshDiscover(addons: List<ManagedAddon>) {
-        val activeAddons = addons.filter { it.manifest != null }
+        val activeAddons = addons.enabledAddons().filter { it.manifest != null }
         if (activeAddons.isEmpty()) {
             activeDiscoverJob?.cancel()
             discoverSources = emptyList()
@@ -368,19 +372,24 @@ object SearchRepository {
             search = query,
         ).withUnreleasedFilter()
         val items = page.items
-        require(items.isNotEmpty()) { "No search results returned for $catalogName." }
+        require(items.isNotEmpty()) {
+            getString(Res.string.search_error_no_results_for_catalog, catalogName)
+        }
 
         return HomeCatalogSection(
             key = "${manifest.id}:search:$type:$catalogId:${query.lowercase()}",
             title = getString(Res.string.discover_catalog_context, catalogName, type.displayLabel()),
             subtitle = addon.displayTitle,
             addonName = addon.displayTitle,
-            type = type,
-            manifestUrl = manifest.transportUrl,
-            catalogId = catalogId,
+            target = CatalogTarget.Addon(
+                manifestUrl = manifest.transportUrl,
+                contentType = type,
+                catalogId = catalogId,
+                supportsPagination = supportsPagination,
+            ),
             items = items,
             availableItemCount = page.rawItemCount,
-            supportsPagination = supportsPagination,
+            hasMore = supportsPagination && page.nextSkip != null,
         )
     }
 
@@ -408,6 +417,7 @@ object SearchRepository {
             isLoading = true,
             items = if (reset) emptyList() else current.items,
             nextSkip = if (reset) null else current.nextSkip,
+            consecutiveDuplicatePages = if (reset) 0 else current.consecutiveDuplicatePages,
             emptyStateReason = null,
             errorMessage = null,
         )
@@ -432,6 +442,15 @@ object SearchRepository {
                     } else {
                         mergeCatalogItems(latest.items, page.items)
                     }
+                    val supportsPagination = selectedCatalog.supportsPagination || page.rawItemCount >= CATALOG_PAGE_SIZE
+                    val loadedNewItems = reset || mergedItems.size > latest.items.size
+                    val paginationState = nextCatalogPaginationState(
+                        supportsPagination = supportsPagination,
+                        requestedSkip = requestedSkip,
+                        page = page,
+                        loadedNewItems = loadedNewItems,
+                        consecutiveDuplicatePages = if (reset) 0 else latest.consecutiveDuplicatePages,
+                    )
                     log.d {
                         "Discover response catalogKey=${selectedCatalog.key} returned=${page.items.size} " +
                             "merged=${mergedItems.size} rawItemCount=${page.rawItemCount} nextSkip=${page.nextSkip} " +
@@ -440,7 +459,8 @@ object SearchRepository {
                     _discoverUiState.value = latest.copy(
                         items = mergedItems,
                         isLoading = false,
-                        nextSkip = if (selectedCatalog.supportsPagination) page.nextSkip else null,
+                        nextSkip = paginationState.nextSkip,
+                        consecutiveDuplicatePages = paginationState.consecutiveDuplicatePages,
                         emptyStateReason = if (mergedItems.isEmpty()) DiscoverEmptyStateReason.NoResults else null,
                         errorMessage = null,
                     )

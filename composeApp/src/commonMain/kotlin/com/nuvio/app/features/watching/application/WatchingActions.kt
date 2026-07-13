@@ -7,7 +7,7 @@ import com.nuvio.app.features.home.MetaPreview
 import com.nuvio.app.features.watched.WatchedItem
 import com.nuvio.app.features.watched.WatchedRepository
 import com.nuvio.app.features.watched.episodePlaybackId
-import com.nuvio.app.features.watched.releasedPlayableEpisodes
+import com.nuvio.app.features.watched.releasedMainSeasonEpisodes
 import com.nuvio.app.features.watched.toEpisodeWatchedItem
 import com.nuvio.app.features.watched.toSeriesWatchedItem
 import com.nuvio.app.features.watched.toWatchedItem
@@ -23,7 +23,7 @@ object WatchingActions {
     private val actionScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     suspend fun togglePosterWatched(preview: MetaPreview) {
-        if (preview.type != "series") {
+        if (!preview.type.isSeriesLikeType()) {
             WatchedRepository.toggleWatched(preview.toWatchedItem(markedAtEpochMs = 0L))
             return
         }
@@ -34,22 +34,56 @@ object WatchingActions {
         )
         val meta = MetaDetailsRepository.fetch(type = preview.type, id = preview.id)
         if (meta == null) {
-            WatchedRepository.toggleWatched(preview.toWatchedItem(markedAtEpochMs = 0L))
+            if (isCurrentlyWatched) {
+                WatchedRepository.unmarkWatched(preview.toWatchedItem(markedAtEpochMs = 0L))
+                WatchedRepository.updateFullyWatchedSeries(
+                    id = preview.id,
+                    type = preview.type,
+                    isFullyWatched = false,
+                )
+            }
             return
         }
 
         val todayIsoDate = CurrentDateProvider.todayIsoDate()
+        val releasedMainEpisodes = meta.releasedMainSeasonEpisodes(todayIsoDate)
+        if (releasedMainEpisodes.isEmpty()) {
+            if (isCurrentlyWatched) {
+                WatchedRepository.unmarkWatched(meta.toSeriesWatchedItem())
+                WatchedRepository.updateFullyWatchedSeries(
+                    id = meta.id,
+                    type = meta.type,
+                    isFullyWatched = false,
+                )
+            }
+            return
+        }
         val seriesItems = buildList {
             add(meta.toSeriesWatchedItem())
-            addAll(meta.releasedPlayableEpisodes(todayIsoDate).map(meta::toEpisodeWatchedItem))
+            addAll(releasedMainEpisodes.map(meta::toEpisodeWatchedItem))
         }
 
         if (isCurrentlyWatched) {
             WatchedRepository.unmarkWatched(seriesItems)
+            WatchProgressRepository.clearProgress(
+                videoIds = releasedMainEpisodes.map(meta::episodePlaybackId),
+                parentMetaId = meta.id,
+            )
+            WatchedRepository.updateFullyWatchedSeries(
+                id = meta.id,
+                type = meta.type,
+                isFullyWatched = false,
+            )
         } else {
             WatchedRepository.markWatched(seriesItems)
+            WatchedRepository.updateFullyWatchedSeries(
+                id = meta.id,
+                type = meta.type,
+                isFullyWatched = true,
+            )
             WatchProgressRepository.clearProgress(
-                meta.releasedPlayableEpisodes(todayIsoDate).map(meta::episodePlaybackId),
+                videoIds = releasedMainEpisodes.map(meta::episodePlaybackId),
+                parentMetaId = meta.id,
             )
         }
     }
@@ -62,9 +96,16 @@ object WatchingActions {
         val watchedItem = meta.toEpisodeWatchedItem(episode)
         if (isCurrentlyWatched) {
             WatchedRepository.unmarkWatched(watchedItem)
+            WatchProgressRepository.clearProgress(
+                videoId = meta.episodePlaybackId(episode),
+                parentMetaId = meta.id,
+            )
         } else {
             WatchedRepository.markWatched(watchedItem)
-            WatchProgressRepository.clearProgress(meta.episodePlaybackId(episode))
+            WatchProgressRepository.clearProgress(
+                videoId = meta.episodePlaybackId(episode),
+                parentMetaId = meta.id,
+            )
         }
         reconcileSeriesWatchedState(meta)
     }
@@ -97,16 +138,23 @@ object WatchingActions {
         meta: MetaDetails,
         todayIsoDate: String = CurrentDateProvider.todayIsoDate(),
     ) {
+        if (!meta.type.isSeriesLikeType()) return
+
         WatchedRepository.reconcileSeriesWatchedState(
             meta = meta,
             todayIsoDate = todayIsoDate,
             isEpisodeCompleted = { episode ->
-                WatchProgressRepository.progressForVideo(meta.episodePlaybackId(episode))?.isCompleted == true
+                WatchProgressRepository.progressForVideo(
+                    videoId = meta.episodePlaybackId(episode),
+                    parentMetaId = meta.id,
+                    seasonNumber = episode.season,
+                    episodeNumber = episode.episode,
+                )?.isCompleted == true
             },
         )
     }
 
-    fun onProgressEntryUpdated(entry: WatchProgressEntry) {
+    fun onProgressEntryUpdated(entry: WatchProgressEntry, syncRemote: Boolean = true) {
         if (!entry.isCompleted) return
 
         val watchedItem = WatchedItem(
@@ -118,9 +166,9 @@ object WatchingActions {
             episode = entry.episodeNumber,
             markedAtEpochMs = entry.lastUpdatedEpochMs,
         )
-        WatchedRepository.markWatched(watchedItem)
+        WatchedRepository.markWatchedFromPlaybackCompletion(watchedItem, syncRemote = syncRemote)
 
-        if (!entry.isEpisode) return
+        if (!syncRemote || !entry.isEpisode) return
         actionScope.launch {
             val meta = runCatching {
                 MetaDetailsRepository.fetch(
@@ -142,10 +190,20 @@ object WatchingActions {
         val watchedItems = episodes.map(meta::toEpisodeWatchedItem)
         if (areCurrentlyWatched) {
             WatchedRepository.unmarkWatched(watchedItems)
+            WatchProgressRepository.clearProgress(
+                videoIds = episodes.map(meta::episodePlaybackId),
+                parentMetaId = meta.id,
+            )
         } else {
             WatchedRepository.markWatched(watchedItems)
-            WatchProgressRepository.clearProgress(episodes.map(meta::episodePlaybackId))
+            WatchProgressRepository.clearProgress(
+                videoIds = episodes.map(meta::episodePlaybackId),
+                parentMetaId = meta.id,
+            )
         }
         reconcileSeriesWatchedState(meta)
     }
 }
+
+private fun String.isSeriesLikeType(): Boolean =
+    trim().lowercase() in setOf("series", "show", "tv", "tvshow")

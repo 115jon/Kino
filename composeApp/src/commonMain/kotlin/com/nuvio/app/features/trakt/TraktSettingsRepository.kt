@@ -1,6 +1,9 @@
 package com.nuvio.app.features.trakt
 
+import com.nuvio.app.core.auth.AuthRepository
+import com.nuvio.app.core.auth.AuthState
 import com.nuvio.app.features.library.LibrarySourceMode
+import com.nuvio.app.features.profiles.ProfileRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -41,10 +44,24 @@ val DEFAULT_LIBRARY_SOURCE_MODE: LibrarySourceMode = LibrarySourceMode.TRAKT
 fun librarySourceModeFromStorage(value: String?): LibrarySourceMode =
     LibrarySourceMode.entries.firstOrNull { it.name == value } ?: DEFAULT_LIBRARY_SOURCE_MODE
 
+@Serializable
+enum class MoreLikeThisSourcePreference {
+    TRAKT,
+    TMDB;
+
+    companion object {
+        fun fromStorage(value: String?): MoreLikeThisSourcePreference =
+            entries.firstOrNull { it.name == value } ?: DEFAULT_MORE_LIKE_THIS_SOURCE
+    }
+}
+
+val DEFAULT_MORE_LIKE_THIS_SOURCE: MoreLikeThisSourcePreference = MoreLikeThisSourcePreference.TRAKT
+
 data class TraktSettingsUiState(
     val watchProgressSource: WatchProgressSource = DEFAULT_WATCH_PROGRESS_SOURCE,
     val continueWatchingDaysCap: Int = TRAKT_DEFAULT_CONTINUE_WATCHING_DAYS_CAP,
     val librarySourceMode: LibrarySourceMode = DEFAULT_LIBRARY_SOURCE_MODE,
+    val moreLikeThisSource: MoreLikeThisSourcePreference = DEFAULT_MORE_LIKE_THIS_SOURCE,
 )
 
 @Serializable
@@ -52,6 +69,7 @@ private data class StoredTraktSettings(
     val watchProgressSource: String? = null,
     val continueWatchingDaysCap: Int = TRAKT_DEFAULT_CONTINUE_WATCHING_DAYS_CAP,
     val librarySourceMode: String? = null,
+    val moreLikeThisSource: String? = null,
 )
 
 object TraktSettingsRepository {
@@ -79,11 +97,23 @@ object TraktSettingsRepository {
         _uiState.value = TraktSettingsUiState()
     }
 
-    fun setWatchProgressSource(source: WatchProgressSource) {
+    internal fun setWatchProgressSource(
+        source: WatchProgressSource,
+        profileId: Int = ProfileRepository.activeProfileId,
+    ) {
         ensureLoaded()
         if (_uiState.value.watchProgressSource == source) return
-        _uiState.value = _uiState.value.copy(watchProgressSource = source)
-        persist()
+        val nextState = _uiState.value.copy(watchProgressSource = source)
+        persist(nextState)
+        val authState = AuthRepository.state.value
+        if (authState is AuthState.Authenticated && !authState.isAnonymous) {
+            ProfileSettingsWatchSourceOutbox.record(
+                accountId = authState.userId,
+                profileId = profileId,
+                source = source,
+            )
+        }
+        _uiState.value = nextState
     }
 
     fun setContinueWatchingDaysCap(days: Int) {
@@ -98,6 +128,13 @@ object TraktSettingsRepository {
         ensureLoaded()
         if (_uiState.value.librarySourceMode == mode) return
         _uiState.value = _uiState.value.copy(librarySourceMode = mode)
+        persist()
+    }
+
+    fun setMoreLikeThisSource(source: MoreLikeThisSourcePreference) {
+        ensureLoaded()
+        if (_uiState.value.moreLikeThisSource == source) return
+        _uiState.value = _uiState.value.copy(moreLikeThisSource = source)
         persist()
     }
 
@@ -119,19 +156,21 @@ object TraktSettingsRepository {
                 watchProgressSource = WatchProgressSource.fromStorage(stored.watchProgressSource),
                 continueWatchingDaysCap = normalizeTraktContinueWatchingDaysCap(stored.continueWatchingDaysCap),
                 librarySourceMode = librarySourceModeFromStorage(stored.librarySourceMode),
+                moreLikeThisSource = MoreLikeThisSourcePreference.fromStorage(stored.moreLikeThisSource),
             )
         } else {
             TraktSettingsUiState()
         }
     }
 
-    private fun persist() {
+    private fun persist(state: TraktSettingsUiState = _uiState.value) {
         TraktSettingsStorage.savePayload(
             json.encodeToString(
                 StoredTraktSettings(
-                    watchProgressSource = _uiState.value.watchProgressSource.name,
-                    continueWatchingDaysCap = _uiState.value.continueWatchingDaysCap,
-                    librarySourceMode = _uiState.value.librarySourceMode.name,
+                    watchProgressSource = state.watchProgressSource.name,
+                    continueWatchingDaysCap = state.continueWatchingDaysCap,
+                    librarySourceMode = state.librarySourceMode.name,
+                    moreLikeThisSource = state.moreLikeThisSource.name,
                 ),
             ),
         )
@@ -150,6 +189,20 @@ fun shouldUseTraktProgress(
     source: WatchProgressSource,
 ): Boolean = isAuthenticated && source == WatchProgressSource.TRAKT
 
+fun effectiveWatchProgressSource(
+    isTraktAuthenticated: Boolean,
+    requestedSource: WatchProgressSource,
+): WatchProgressSource =
+    if (shouldUseTraktProgress(
+            isAuthenticated = isTraktAuthenticated,
+            source = requestedSource,
+        )
+    ) {
+        WatchProgressSource.TRAKT
+    } else {
+        WatchProgressSource.NUVIO_SYNC
+    }
+
 fun effectiveLibrarySourceMode(
     isAuthenticated: Boolean,
     source: LibrarySourceMode,
@@ -164,3 +217,8 @@ fun shouldUseTraktLibrary(
     isAuthenticated: Boolean,
     source: LibrarySourceMode,
 ): Boolean = effectiveLibrarySourceMode(isAuthenticated, source) == LibrarySourceMode.TRAKT
+
+fun shouldUseTraktMoreLikeThis(
+    isAuthenticated: Boolean,
+    source: MoreLikeThisSourcePreference,
+): Boolean = isAuthenticated && source == MoreLikeThisSourcePreference.TRAKT

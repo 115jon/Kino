@@ -5,14 +5,17 @@ import androidx.compose.material.icons.rounded.AccountCircle
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.ui.graphics.vector.ImageVector
 import nuvio.composeapp.generated.resources.Res
 import nuvio.composeapp.generated.resources.compose_settings_category_about
 import nuvio.composeapp.generated.resources.compose_settings_category_general
 import nuvio.composeapp.generated.resources.compose_settings_page_account
 import nuvio.composeapp.generated.resources.compose_settings_page_addons
+import nuvio.composeapp.generated.resources.compose_settings_page_advanced
 import nuvio.composeapp.generated.resources.compose_settings_page_appearance
 import nuvio.composeapp.generated.resources.compose_settings_page_content_discovery
+import nuvio.composeapp.generated.resources.compose_settings_page_debrid
 import nuvio.composeapp.generated.resources.compose_settings_page_continue_watching
 import nuvio.composeapp.generated.resources.compose_settings_page_homescreen
 import nuvio.composeapp.generated.resources.compose_settings_page_integrations
@@ -24,6 +27,7 @@ import nuvio.composeapp.generated.resources.compose_settings_page_playback
 import nuvio.composeapp.generated.resources.compose_settings_page_plugins
 import nuvio.composeapp.generated.resources.compose_settings_page_poster_customization
 import nuvio.composeapp.generated.resources.compose_settings_page_root
+import nuvio.composeapp.generated.resources.compose_settings_page_streams
 import nuvio.composeapp.generated.resources.compose_settings_page_supporters_contributors
 import nuvio.composeapp.generated.resources.compose_settings_page_tmdb_enrichment
 import nuvio.composeapp.generated.resources.compose_settings_page_trakt
@@ -37,6 +41,7 @@ internal enum class SettingsCategory(
     Account(Res.string.settings_account, Icons.Rounded.AccountCircle),
     General(Res.string.compose_settings_category_general, Icons.Rounded.Settings),
     About(Res.string.compose_settings_category_about, Icons.Rounded.Info),
+    Advanced(Res.string.compose_settings_page_advanced, Icons.Rounded.Tune),
 }
 
 internal enum class SettingsPage(
@@ -74,6 +79,16 @@ internal enum class SettingsPage(
         category = SettingsCategory.General,
         parentPage = Root,
     ),
+    Streams(
+        titleRes = Res.string.compose_settings_page_streams,
+        category = SettingsCategory.General,
+        parentPage = Appearance,
+    ),
+    Advanced(
+        titleRes = Res.string.compose_settings_page_advanced,
+        category = SettingsCategory.Advanced,
+        parentPage = Root,
+    ),
     Notifications(
         titleRes = Res.string.compose_settings_page_notifications,
         category = SettingsCategory.General,
@@ -107,12 +122,12 @@ internal enum class SettingsPage(
     Homescreen(
         titleRes = Res.string.compose_settings_page_homescreen,
         category = SettingsCategory.General,
-        parentPage = ContentDiscovery,
+        parentPage = Appearance,
     ),
     MetaScreen(
         titleRes = Res.string.compose_settings_page_meta_screen,
         category = SettingsCategory.General,
-        parentPage = ContentDiscovery,
+        parentPage = Appearance,
     ),
     Integrations(
         titleRes = Res.string.compose_settings_page_integrations,
@@ -126,6 +141,11 @@ internal enum class SettingsPage(
     ),
     MdbListRatings(
         titleRes = Res.string.compose_settings_page_mdblist_ratings,
+        category = SettingsCategory.General,
+        parentPage = Integrations,
+    ),
+    Debrid(
+        titleRes = Res.string.compose_settings_page_debrid,
         category = SettingsCategory.General,
         parentPage = Integrations,
     ),

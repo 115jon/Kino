@@ -30,7 +30,9 @@ fun isProgressComplete(
 fun isReleasedBy(
     todayIsoDate: String,
     releasedDate: String?,
+    available: Boolean = true,
 ): Boolean {
+    if (!available) return false
     val isoDate = releasedDate
         ?.substringBefore('T')
         ?.takeIf { it.length == 10 }
@@ -44,8 +46,17 @@ internal fun shouldSurfaceNextEpisode(
     todayIsoDate: String,
     releasedDate: String?,
     showUnairedNextUp: Boolean,
+    available: Boolean = true,
 ): Boolean {
     val isSeasonRollover = normalizeSeasonNumber(candidateSeasonNumber) != normalizeSeasonNumber(watchedSeasonNumber)
+    if (!available) {
+        val daysUntilRelease = daysUntilExplicitRelease(
+            todayIsoDate = todayIsoDate,
+            releasedDate = releasedDate,
+        ) ?: return false
+        if (!showUnairedNextUp || daysUntilRelease <= 0) return false
+        return !isSeasonRollover || daysUntilRelease <= UpcomingNextSeasonWindowDays
+    }
     if (!isSeasonRollover) {
         if (showUnairedNextUp) return true
         return isReleasedBy(todayIsoDate = todayIsoDate, releasedDate = releasedDate)
@@ -73,7 +84,7 @@ private fun isExplicitlyReleasedBy(
     return isoDate <= todayIsoDate
 }
 
-private fun daysUntilExplicitRelease(
+internal fun daysUntilExplicitRelease(
     todayIsoDate: String,
     releasedDate: String?,
 ): Int? {
@@ -82,7 +93,7 @@ private fun daysUntilExplicitRelease(
     return (isoEpochDay(targetDate) - isoEpochDay(startDate)).toInt()
 }
 
-private fun isoCalendarDateOrNull(value: String?): String? {
+internal fun isoCalendarDateOrNull(value: String?): String? {
     val datePart = value
         ?.trim()
         ?.substringBefore('T')
@@ -99,7 +110,7 @@ private fun isoCalendarDateOrNull(value: String?): String? {
     return "$normalizedYear-$normalizedMonth-$normalizedDay"
 }
 
-private fun isoEpochDay(date: String): Long {
+internal fun isoEpochDay(date: String): Long {
     val year = date.substring(0, 4).toLong()
     val month = date.substring(5, 7).toLong()
     val day = date.substring(8, 10).toLong()
@@ -117,7 +128,11 @@ fun releasedEpisodes(
     episodes: List<WatchingReleasedEpisode>,
     todayIsoDate: String,
 ): List<WatchingReleasedEpisode> = episodes.filter { episode ->
-    isReleasedBy(todayIsoDate = todayIsoDate, releasedDate = episode.releasedDate)
+    isReleasedBy(
+        todayIsoDate = todayIsoDate,
+        releasedDate = episode.releasedDate,
+        available = episode.available,
+    )
 }
 
 fun releasedMainSeasonEpisodes(

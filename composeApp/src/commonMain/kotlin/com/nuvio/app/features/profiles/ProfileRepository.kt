@@ -5,6 +5,7 @@ import com.nuvio.app.core.auth.AuthRepository
 import com.nuvio.app.core.auth.AuthState
 import com.nuvio.app.core.auth.isAnonymous
 import com.nuvio.app.core.network.SupabaseProvider
+import com.nuvio.app.core.sync.putSyncOriginClientId
 import com.nuvio.app.features.addons.AddonRepository
 import com.nuvio.app.features.collection.CollectionMobileSettingsRepository
 import com.nuvio.app.features.collection.CollectionRepository
@@ -12,14 +13,17 @@ import com.nuvio.app.features.downloads.DownloadsRepository
 import com.nuvio.app.features.details.MetaScreenSettingsRepository
 import com.nuvio.app.features.home.HomeCatalogSettingsRepository
 import com.nuvio.app.features.home.HomeRepository
+import com.nuvio.app.core.ui.CardDepthStyleRepository
 import com.nuvio.app.core.ui.PosterCardStyleRepository
 import com.nuvio.app.features.library.LibraryRepository
 import com.nuvio.app.features.mdblist.MdbListSettingsRepository
 import com.nuvio.app.features.notifications.EpisodeReleaseNotificationsRepository
+import com.nuvio.app.features.p2p.P2pSettingsRepository
 import com.nuvio.app.features.player.PlayerSettingsRepository
 import com.nuvio.app.features.plugins.PluginRepository
 import com.nuvio.app.features.search.SearchHistoryRepository
 import com.nuvio.app.features.settings.ThemeSettingsRepository
+import com.nuvio.app.features.streams.StreamBadgeSettingsRepository
 import com.nuvio.app.features.trakt.TraktAuthRepository
 import com.nuvio.app.features.trakt.TraktSettingsRepository
 import com.nuvio.app.features.tmdb.TmdbSettingsRepository
@@ -51,6 +55,8 @@ import org.jetbrains.compose.resources.getString
 private data class StoredProfilePayload(
     val userId: String,
     val activeProfileIndex: Int = 1,
+    val hasEverSelectedProfile: Boolean = false,
+    val rememberLastProfileEnabled: Boolean = false,
     val profiles: List<NuvioProfile> = emptyList(),
 )
 
@@ -67,6 +73,13 @@ object ProfileRepository {
     private var loadedCacheForUserId: String? = null
 
     val activeProfileId: Int get() = activeProfileIndex
+
+    fun setRememberLastProfileEnabled(enabled: Boolean) {
+        if (_state.value.rememberLastProfileEnabled == enabled) return
+
+        _state.value = _state.value.copy(rememberLastProfileEnabled = enabled)
+        persist()
+    }
 
     fun loadCachedProfiles(): Boolean {
         val stored = decodeStoredPayload() ?: return false
@@ -109,7 +122,7 @@ object ProfileRepository {
             }
             return
         }
-        runCatching {
+        try {
             val result = SupabaseProvider.client.postgrest.rpc("sync_pull_profiles")
             val profiles = result.decodeList<NuvioProfile>()
             _state.value = _state.value.copy(
@@ -122,7 +135,8 @@ object ProfileRepository {
                 activeProfileIndex = _state.value.activeProfile!!.profileIndex
             }
             persist()
-        }.onFailure { e ->
+        } catch (e: Throwable) {
+            if (AuthRepository.signOutIfSessionInvalid(e, "Profile pull")) return
             log.e(e) { "Failed to pull profiles" }
             if (!_state.value.isLoaded) {
                 _state.value = _state.value.copy(isLoaded = true)
@@ -132,12 +146,15 @@ object ProfileRepository {
 
     fun selectProfile(profileIndex: Int) {
         activeProfileIndex = profileIndex
+        val selectedProfile = _state.value.profiles.find { it.profileIndex == profileIndex }
         _state.value = _state.value.copy(
-            activeProfile = _state.value.profiles.find { it.profileIndex == profileIndex },
+            activeProfile = selectedProfile,
+            hasEverSelectedProfile = selectedProfile != null || _state.value.hasEverSelectedProfile,
         )
         persist()
         WatchedRepository.onProfileChanged(profileIndex)
         TraktSettingsRepository.onProfileChanged()
+        TraktAuthRepository.onProfileChanged()
         LibraryRepository.onProfileChanged(profileIndex)
         WatchProgressRepository.onProfileChanged(profileIndex)
         AddonRepository.onProfileChanged(profileIndex)
@@ -146,15 +163,18 @@ object ProfileRepository {
         }
         ThemeSettingsRepository.onProfileChanged()
         PosterCardStyleRepository.onProfileChanged()
+        CardDepthStyleRepository.onProfileChanged()
         PlayerSettingsRepository.onProfileChanged()
+        StreamBadgeSettingsRepository.onProfileChanged()
+        P2pSettingsRepository.onProfileChanged()
         HomeCatalogSettingsRepository.onProfileChanged()
         HomeRepository.clear()
         MetaScreenSettingsRepository.onProfileChanged()
         ContinueWatchingPreferencesRepository.onProfileChanged()
+        com.nuvio.app.features.watchprogress.ContinueWatchingEnrichmentCache.onProfileChanged()
         EpisodeReleaseNotificationsRepository.onProfileChanged()
         TmdbSettingsRepository.onProfileChanged()
         MdbListSettingsRepository.onProfileChanged()
-        TraktAuthRepository.onProfileChanged()
         SearchHistoryRepository.onProfileChanged()
         CollectionRepository.onProfileChanged()
         CollectionMobileSettingsRepository.onProfileChanged()
@@ -166,13 +186,16 @@ object ProfileRepository {
             applyPayloadsLocally(profiles)
             return
         }
-        runCatching {
+        try {
             val params = buildJsonObject {
+                put("p_client_max_profiles", MAX_PROFILES)
                 put("p_profiles", json.encodeToJsonElement(profiles))
+                putSyncOriginClientId()
             }
             SupabaseProvider.client.postgrest.rpc("sync_push_profiles", params)
             pullProfiles()
-        }.onFailure { e ->
+        } catch (e: Throwable) {
+            if (AuthRepository.signOutIfSessionInvalid(e, "Profile push")) return
             log.e(e) { "Failed to push profiles" }
         }
     }
@@ -185,7 +208,7 @@ object ProfileRepository {
         usesPrimaryAddons: Boolean = false,
     ) {
         val existing = _state.value.profiles
-        val nextIndex = ((1..4).toSet() - existing.map { it.profileIndex }.toSet()).minOrNull() ?: return
+        val nextIndex = ((1..MAX_PROFILES).toSet() - existing.map { it.profileIndex }.toSet()).minOrNull() ?: return
 
         val allPayloads = existing.map { profile ->
             ProfilePushPayload(
@@ -257,11 +280,15 @@ object ProfileRepository {
             persist()
             return
         }
-        runCatching {
-            val params = buildJsonObject { put("p_profile_id", profileIndex) }
+        try {
+            val params = buildJsonObject {
+                put("p_profile_id", profileIndex)
+                putSyncOriginClientId()
+            }
             SupabaseProvider.client.postgrest.rpc("sync_delete_profile_data", params)
             pullProfiles()
-        }.onFailure { e ->
+        } catch (e: Throwable) {
+            if (AuthRepository.signOutIfSessionInvalid(e, "Profile delete")) return
             log.e(e) { "Failed to delete profile $profileIndex" }
         }
     }
@@ -398,6 +425,8 @@ object ProfileRepository {
             profiles = profiles,
             activeProfile = profiles.find { it.profileIndex == activeProfileIndex } ?: profiles.firstOrNull(),
             isLoaded = profiles.isNotEmpty(),
+            hasEverSelectedProfile = stored.hasEverSelectedProfile,
+            rememberLastProfileEnabled = stored.rememberLastProfileEnabled,
         )
         _state.value.activeProfile?.let { activeProfileIndex = it.profileIndex }
         syncPinCache(profiles)
@@ -457,7 +486,7 @@ object ProfileRepository {
 
     private fun syncPinCache(profiles: List<NuvioProfile>) {
         val profilesByIndex = profiles.associateBy { it.profileIndex }
-        for (profileIndex in 1..4) {
+        for (profileIndex in 1..MAX_PROFILES) {
             val profile = profilesByIndex[profileIndex]
             if (profile == null || !profile.pinEnabled) {
                 ProfilePinCacheStorage.removePayload(profileIndex)
@@ -486,12 +515,15 @@ object ProfileRepository {
 
     private fun persist() {
         val authState = AuthRepository.state.value as? AuthState.Authenticated ?: return
+        val state = _state.value
         ProfileStorage.savePayload(
             json.encodeToString(
                 StoredProfilePayload(
                     userId = authState.userId,
                     activeProfileIndex = activeProfileIndex,
-                    profiles = _state.value.profiles,
+                    hasEverSelectedProfile = state.hasEverSelectedProfile,
+                    rememberLastProfileEnabled = state.rememberLastProfileEnabled,
+                    profiles = state.profiles,
                 ),
             ),
         )

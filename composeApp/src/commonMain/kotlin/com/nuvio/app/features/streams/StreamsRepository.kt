@@ -4,15 +4,17 @@ import co.touchlab.kermit.Logger
 import com.nuvio.app.core.build.AppFeaturePolicy
 import com.nuvio.app.features.addons.AddonRepository
 import com.nuvio.app.features.addons.buildAddonResourceUrl
+import com.nuvio.app.features.addons.enabledAddons
 import com.nuvio.app.features.addons.httpGetText
+import com.nuvio.app.features.debrid.DirectDebridStreamPreparer
+import com.nuvio.app.features.debrid.DebridSettingsRepository
+import com.nuvio.app.features.debrid.DebridStreamPresentation
+import com.nuvio.app.features.debrid.LocalDebridAvailabilityService
 import com.nuvio.app.features.details.MetaDetailsRepository
 import com.nuvio.app.features.player.PlayerSettingsRepository
 import com.nuvio.app.features.plugins.PluginRepository
 import com.nuvio.app.features.plugins.pluginContentId
 import com.nuvio.app.features.plugins.PluginsUiState
-import com.nuvio.app.features.plugins.PluginRepositoryItem
-import com.nuvio.app.features.plugins.PluginRuntimeResult
-import com.nuvio.app.features.plugins.PluginScraper
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -45,10 +47,11 @@ object StreamsRepository {
     ): String =
         "$type::$videoId::$season::$episode::$manualSelection"
 
-    fun load(type: String, videoId: String, season: Int? = null, episode: Int? = null, manualSelection: Boolean = false) {
+    fun load(type: String, videoId: String, parentMetaId: String? = null, season: Int? = null, episode: Int? = null, manualSelection: Boolean = false) {
         load(
             type = type,
             videoId = videoId,
+            parentMetaId = parentMetaId,
             season = season,
             episode = episode,
             manualSelection = manualSelection,
@@ -56,10 +59,11 @@ object StreamsRepository {
         )
     }
 
-    fun reload(type: String, videoId: String, season: Int? = null, episode: Int? = null, manualSelection: Boolean = false) {
+    fun reload(type: String, videoId: String, parentMetaId: String? = null, season: Int? = null, episode: Int? = null, manualSelection: Boolean = false) {
         load(
             type = type,
             videoId = videoId,
+            parentMetaId = parentMetaId,
             season = season,
             episode = episode,
             manualSelection = manualSelection,
@@ -67,7 +71,7 @@ object StreamsRepository {
         )
     }
 
-    private fun load(type: String, videoId: String, season: Int?, episode: Int?, manualSelection: Boolean, forceRefresh: Boolean) {
+    private fun load(type: String, videoId: String, parentMetaId: String?, season: Int?, episode: Int?, manualSelection: Boolean, forceRefresh: Boolean) {
         val pluginUiState = if (AppFeaturePolicy.pluginsEnabled) {
             PluginRepository.initialize()
             PluginRepository.uiState.value
@@ -98,11 +102,27 @@ object StreamsRepository {
 
         PlayerSettingsRepository.ensureLoaded()
         val playerSettings = PlayerSettingsRepository.uiState.value
+        val debridSettings = DebridSettingsRepository.snapshot()
+        val streamBadgeRules = StreamBadgeSettingsRepository.snapshot()
         val autoPlayMode = playerSettings.streamAutoPlayMode
         val isAutoPlayEnabled = !manualSelection && autoPlayMode != StreamAutoPlayMode.MANUAL &&
             !(autoPlayMode == StreamAutoPlayMode.REGEX_MATCH &&
                 !StreamAutoPlayPolicy.isRegexSelectionConfigured(playerSettings.streamAutoPlayRegex))
-        val isDirectAutoPlayFlow = isAutoPlayEnabled
+
+        // Look up persisted binge group when both settings are enabled
+        val persistedBingeGroup = if (
+            playerSettings.streamAutoPlayPreferBingeGroup &&
+            playerSettings.streamAutoPlayReuseBingeGroup
+        ) {
+            parentMetaId?.let { BingeGroupCacheRepository.get(it) }
+        } else null
+
+        // Enable direct auto-play flow if normal auto-play is enabled,
+        // OR if we have a persisted binge group in MANUAL mode
+        val bingeGroupDirectFlow = !manualSelection &&
+            persistedBingeGroup != null &&
+            autoPlayMode == StreamAutoPlayMode.MANUAL
+        val isDirectAutoPlayFlow = isAutoPlayEnabled || bingeGroupDirectFlow
 
         if (isDirectAutoPlayFlow) {
             _uiState.value = StreamsUiState(
@@ -121,16 +141,20 @@ object StreamsRepository {
                 streams = embeddedStreams,
                 isLoading = false,
             )
+            val presentedGroup = StreamBadgePresentation.apply(
+                groups = listOf(group),
+                rules = streamBadgeRules,
+            ).firstOrNull() ?: group
             _uiState.value = StreamsUiState(
                 requestToken = requestToken,
-                groups = listOf(group),
+                groups = listOf(presentedGroup),
                 activeAddonIds = setOf("embedded"),
                 isAnyLoading = false,
             )
             return
         }
 
-        val installedAddons = AddonRepository.uiState.value.addons
+        val installedAddons = AddonRepository.uiState.value.addons.enabledAddons()
         val pluginScrapers = if (AppFeaturePolicy.pluginsEnabled) {
             PluginRepository.getEnabledScrapersForType(type)
         } else {
@@ -180,7 +204,8 @@ object StreamsRepository {
         }
 
         // Initialise loading placeholders
-        val initialGroups = streamAddons.map { addon ->
+        val installedAddonOrder = streamAddons.map { it.addonName }
+        val initialGroups = StreamAutoPlaySelector.orderAddonStreams(streamAddons.map { addon ->
             AddonStreamGroup(
                 addonName = addon.addonName,
                 addonId = addon.addonId,
@@ -194,12 +219,13 @@ object StreamsRepository {
                 streams = emptyList(),
                 isLoading = true,
             )
-        }
+        }, installedAddonOrder)
+        val isInitiallyLoading = initialGroups.any { it.isLoading }
         _uiState.value = StreamsUiState(
             requestToken = requestToken,
             groups = initialGroups,
             activeAddonIds = initialGroups.map { it.addonId }.toSet(),
-            isAnyLoading = true,
+            isAnyLoading = isInitiallyLoading,
             emptyStateReason = null,
             isDirectAutoPlayFlow = isDirectAutoPlayFlow,
             showDirectAutoPlayOverlay = isDirectAutoPlayFlow,
@@ -211,25 +237,159 @@ object StreamsRepository {
                 .associate { it.addonId to it.scrapers.size }
                 .toMutableMap()
             val pluginFirstErrorByAddonId = mutableMapOf<String, String>()
-            val totalTasks = streamAddons.size + pluginRemainingByAddonId.values.sum()
+            val totalTasks = streamAddons.size +
+                pluginProviderGroups.sumOf { it.scrapers.size }
 
-            val installedAddonNames = installedAddons
-                .map { it.displayTitle }
-                .toSet()
+            val installedAddonNames = installedAddonOrder.toSet()
+            val installedAddonIds = streamAddons.map { it.addonId }.toSet()
+            val debridAvailabilityJobs = mutableListOf<Job>()
             var autoSelectTriggered = false
             var timeoutElapsed = false
+            fun publishCompletion(completion: StreamLoadCompletion) {
+                if (completions.trySend(completion).isFailure) {
+                    log.d { "Ignoring late stream load completion after channel close" }
+                }
+            }
+            fun presentStreamGroup(group: AddonStreamGroup): AddonStreamGroup {
+                val badgeGroup = StreamBadgePresentation.apply(
+                    groups = listOf(group),
+                    rules = streamBadgeRules,
+                ).firstOrNull() ?: group
+                return DebridStreamPresentation.apply(
+                    groups = listOf(badgeGroup),
+                    settings = debridSettings,
+                ).firstOrNull() ?: badgeGroup
+            }
 
-            val timeoutJob = if (isAutoPlayEnabled) {
-                val timeoutMs = playerSettings.streamAutoPlayTimeoutSeconds * 1_000L
-                if (timeoutMs > 0L && playerSettings.streamAutoPlayTimeoutSeconds < 11) {
+            fun publishAddonGroup(group: AddonStreamGroup) {
+                _uiState.update { current ->
+                    val updated = StreamAutoPlaySelector.orderAddonStreams(
+                        groups = current.groups.map { currentGroup ->
+                            if (currentGroup.addonId == group.addonId) group else currentGroup
+                        },
+                        installedOrder = installedAddonOrder,
+                    )
+                    val anyLoading = updated.any { it.isLoading }
+                    current.copy(
+                        groups = updated,
+                        isAnyLoading = anyLoading,
+                        emptyStateReason = updated.toEmptyStateReason(anyLoading),
+                    )
+                }
+            }
+
+            fun publishAddonGroupAfterCacheCheck(group: AddonStreamGroup) {
+                if (group.addonId !in installedAddonIds || group.streams.isEmpty()) {
+                    publishAddonGroup(presentStreamGroup(group))
+                    return
+                }
+
+                val eligibleGroupIds = setOf(group.addonId)
+                val shouldWaitForCacheCheck = LocalDebridAvailabilityService.hasPendingCacheCheck(
+                    groups = listOf(group),
+                    eligibleGroupIds = eligibleGroupIds,
+                )
+                if (!shouldWaitForCacheCheck) {
+                    publishAddonGroup(presentStreamGroup(group))
+                    return
+                }
+
+                val checkingGroup = LocalDebridAvailabilityService.markChecking(
+                    groups = listOf(group),
+                    eligibleGroupIds = eligibleGroupIds,
+                ).firstOrNull() ?: group
+
+                val availabilityJob = launch {
+                    val availabilityGroup = LocalDebridAvailabilityService.annotateCachedAvailability(
+                        groups = listOf(checkingGroup),
+                        eligibleGroupIds = eligibleGroupIds,
+                    ).firstOrNull() ?: checkingGroup
+                    publishAddonGroup(presentStreamGroup(availabilityGroup))
+
+                    // Early binge-group match right after this addon's availability is resolved
+                    if (isDirectAutoPlayFlow && !autoSelectTriggered && persistedBingeGroup != null && !timeoutElapsed) {
+                        val allStreams = _uiState.value.groups.flatMap { it.streams }
+                        if (allStreams.isNotEmpty()) {
+                            val earlyMatch = StreamAutoPlaySelector.selectAutoPlayStream(
+                                streams = allStreams,
+                                mode = autoPlayMode,
+                                regexPattern = playerSettings.streamAutoPlayRegex,
+                                source = playerSettings.streamAutoPlaySource,
+                                installedAddonNames = installedAddonNames,
+                                selectedAddons = playerSettings.streamAutoPlaySelectedAddons,
+                                selectedPlugins = playerSettings.streamAutoPlaySelectedPlugins,
+                                preferredBingeGroup = persistedBingeGroup,
+                                preferBingeGroupInSelection = true,
+                                bingeGroupOnly = true,
+                                debridEnabled = debridSettings.canResolvePlayableLinks,
+                                activeResolverProviderId = debridSettings.activeResolverProviderId,
+                            )
+                            if (earlyMatch != null) {
+                                autoSelectTriggered = true
+                                _uiState.update { it.copy(autoPlayStream = earlyMatch) }
+                            }
+                        }
+                    }
+                }
+                debridAvailabilityJobs += availabilityJob
+            }
+
+            val timeoutJob = if (isDirectAutoPlayFlow) {
+                val timeoutSeconds = playerSettings.streamAutoPlayTimeoutSeconds
+                val isUnlimitedTimeout = timeoutSeconds == Int.MAX_VALUE
+                // Timeout semantics:
+                // - 0 (instant): timeoutElapsed immediately, full select on each response
+                // - 1-30 (bounded): wait the configured delay, then full select
+                // - unlimited (Int.MAX_VALUE): timeoutElapsed immediately, full select on each response,
+                //   with 60s hard fallback to stream picker
+                if (timeoutSeconds <= 0 || isUnlimitedTimeout) {
+                    timeoutElapsed = true
+                    // For unlimited: launch a hard 60s fallback to dismiss overlay
+                    if (isUnlimitedTimeout) {
+                        launch {
+                            delay(60_000L)
+                            if (!autoSelectTriggered) {
+                                autoSelectTriggered = true
+                                val allStreams = _uiState.value.groups.flatMap { it.streams }
+                                if (allStreams.isNotEmpty()) {
+                                    val selected = StreamAutoPlaySelector.selectAutoPlayStream(
+                                        streams = allStreams,
+                                        mode = autoPlayMode,
+                                        regexPattern = playerSettings.streamAutoPlayRegex,
+                                        source = playerSettings.streamAutoPlaySource,
+                                        installedAddonNames = installedAddonNames,
+                                        selectedAddons = playerSettings.streamAutoPlaySelectedAddons,
+                                        selectedPlugins = playerSettings.streamAutoPlaySelectedPlugins,
+                                        preferredBingeGroup = persistedBingeGroup,
+                                        preferBingeGroupInSelection = persistedBingeGroup != null,
+                                        bingeGroupOnly = false,
+                                        debridEnabled = debridSettings.canResolvePlayableLinks,
+                                        activeResolverProviderId = debridSettings.activeResolverProviderId,
+                                    )
+                                    _uiState.update { it.copy(autoPlayStream = selected) }
+                                }
+                                if (_uiState.value.autoPlayStream == null) {
+                                    _uiState.update {
+                                        it.copy(
+                                            isDirectAutoPlayFlow = false,
+                                            showDirectAutoPlayOverlay = false,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        null
+                    }
+                } else {
+                    // Bounded timeout (1-30s)
                     launch {
-                        delay(timeoutMs)
+                        delay(timeoutSeconds * 1_000L)
                         timeoutElapsed = true
                         if (!autoSelectTriggered) {
                             val allStreams = _uiState.value.groups.flatMap { it.streams }
                             if (allStreams.isNotEmpty()) {
-                                autoSelectTriggered = true
-                                val selected = StreamAutoPlaySelector.selectAutoPlayStream(
+                                val evaluation = StreamAutoPlaySelector.evaluateAutoPlayStream(
                                     streams = allStreams,
                                     mode = autoPlayMode,
                                     regexPattern = playerSettings.streamAutoPlayRegex,
@@ -237,9 +397,22 @@ object StreamsRepository {
                                     installedAddonNames = installedAddonNames,
                                     selectedAddons = playerSettings.streamAutoPlaySelectedAddons,
                                     selectedPlugins = playerSettings.streamAutoPlaySelectedPlugins,
+                                    preferredBingeGroup = persistedBingeGroup,
+                                    preferBingeGroupInSelection = persistedBingeGroup != null,
+                                    bingeGroupOnly = false,
+                                    debridEnabled = debridSettings.canResolvePlayableLinks,
+                                    activeResolverProviderId = debridSettings.activeResolverProviderId,
                                 )
-                                _uiState.update { it.copy(autoPlayStream = selected) }
-                                if (selected == null) {
+                                if (evaluation.stream != null || !evaluation.hasPendingDebridCandidate) {
+                                    autoSelectTriggered = true
+                                    _uiState.update {
+                                        it.copy(
+                                            autoPlayStream = evaluation.stream,
+                                            autoPlayCandidates = evaluation.readyStreams,
+                                        )
+                                    }
+                                }
+                                if (evaluation.stream == null && !evaluation.hasPendingDebridCandidate) {
                                     _uiState.update {
                                         it.copy(
                                             isDirectAutoPlayFlow = false,
@@ -250,11 +423,6 @@ object StreamsRepository {
                             }
                         }
                     }
-                } else if (timeoutMs <= 0L) {
-                    timeoutElapsed = true
-                    null
-                } else {
-                    null
                 }
             } else {
                 null
@@ -271,12 +439,13 @@ object StreamsRepository {
                     log.d { "Fetching streams from: $url" }
 
                     val displayName = addon.addonName
-                    val group = runCatching {
+                    val group = runCatchingUnlessCancelled {
                         val payload = httpGetText(url)
                         StreamParser.parse(
                             payload = payload,
                             addonName = displayName,
                             addonId = addon.addonId,
+                            addonLogo = addon.manifest.logoUrl,
                         )
                     }.fold(
                         onSuccess = { streams ->
@@ -299,7 +468,7 @@ object StreamsRepository {
                             )
                         },
                     )
-                    completions.send(StreamLoadCompletion.Addon(group))
+                    publishCompletion(StreamLoadCompletion.Addon(group))
                 }
             }
 
@@ -340,7 +509,7 @@ object StreamsRepository {
                                 )
                             },
                         )
-                        completions.send(completion)
+                        publishCompletion(completion)
                     }
                 }
             }
@@ -349,17 +518,7 @@ object StreamsRepository {
                 when (val completion = completions.receive()) {
                     is StreamLoadCompletion.Addon -> {
                         val result = completion.group
-                        _uiState.update { current ->
-                            val updated = current.groups.map { group ->
-                                if (group.addonId == result.addonId) result else group
-                            }
-                            val anyLoading = updated.any { it.isLoading }
-                            current.copy(
-                                groups = updated,
-                                isAnyLoading = anyLoading,
-                                emptyStateReason = updated.toEmptyStateReason(anyLoading),
-                            )
-                        }
+                        publishAddonGroupAfterCacheCheck(result)
                     }
 
                     is StreamLoadCompletion.PluginScraper -> {
@@ -370,28 +529,31 @@ object StreamsRepository {
                         }
 
                         _uiState.update { current ->
-                            val updated = current.groups.map { group ->
-                                if (group.addonId != completion.addonId) {
-                                    group
-                                } else {
-                                    val mergedStreams = if (completion.streams.isEmpty()) {
-                                        group.streams
+                            val updated = StreamAutoPlaySelector.orderAddonStreams(
+                                groups = current.groups.map { group ->
+                                    if (group.addonId != completion.addonId) {
+                                        group
                                     } else {
-                                        (group.streams + completion.streams).sortedForGroupedDisplay()
+                                        val mergedStreams = if (completion.streams.isEmpty()) {
+                                            group.streams
+                                        } else {
+                                            (group.streams + completion.streams).sortedForGroupedDisplay()
+                                        }
+                                        val stillLoading = remaining > 0
+                                        val finalError = if (mergedStreams.isEmpty() && !stillLoading) {
+                                            pluginFirstErrorByAddonId[completion.addonId]
+                                        } else {
+                                            null
+                                        }
+                                        group.copy(
+                                            streams = mergedStreams,
+                                            isLoading = stillLoading,
+                                            error = finalError,
+                                        )
                                     }
-                                    val stillLoading = remaining > 0
-                                    val finalError = if (mergedStreams.isEmpty() && !stillLoading) {
-                                        pluginFirstErrorByAddonId[completion.addonId]
-                                    } else {
-                                        null
-                                    }
-                                    group.copy(
-                                        streams = mergedStreams,
-                                        isLoading = stillLoading,
-                                        error = finalError,
-                                    )
-                                }
-                            }
+                                },
+                                installedOrder = installedAddonOrder,
+                            )
                             val anyLoading = updated.any { it.isLoading }
                             current.copy(
                                 groups = updated,
@@ -400,15 +562,141 @@ object StreamsRepository {
                             )
                         }
                     }
+
                 }
             }
 
-            completions.close()
+            for (availabilityJob in debridAvailabilityJobs) {
+                availabilityJob.join()
 
-            if (isAutoPlayEnabled && !autoSelectTriggered) {
+                // Early binge-group match after each availability job completes
+                if (isDirectAutoPlayFlow && !autoSelectTriggered && persistedBingeGroup != null) {
+                    val allStreams = _uiState.value.groups.flatMap { it.streams }
+                    if (allStreams.isNotEmpty()) {
+                        val earlyMatch = StreamAutoPlaySelector.selectAutoPlayStream(
+                            streams = allStreams,
+                            mode = autoPlayMode,
+                            regexPattern = playerSettings.streamAutoPlayRegex,
+                            source = playerSettings.streamAutoPlaySource,
+                            installedAddonNames = installedAddonNames,
+                            selectedAddons = playerSettings.streamAutoPlaySelectedAddons,
+                            selectedPlugins = playerSettings.streamAutoPlaySelectedPlugins,
+                            preferredBingeGroup = persistedBingeGroup,
+                            preferBingeGroupInSelection = true,
+                            bingeGroupOnly = !timeoutElapsed,
+                            debridEnabled = debridSettings.canResolvePlayableLinks,
+                            activeResolverProviderId = debridSettings.activeResolverProviderId,
+                        )
+                        if (earlyMatch != null) {
+                            autoSelectTriggered = true
+                            _uiState.update { it.copy(autoPlayStream = earlyMatch) }
+                            break
+                        }
+                    }
+                }
+            }
+
+            launch {
+                DirectDebridStreamPreparer.prepare(
+                    streams = _uiState.value.groups
+                        .filter { it.addonId in installedAddonIds }
+                        .flatMap { it.streams },
+                    season = season,
+                    episode = episode,
+                    playerSettings = playerSettings,
+                    installedAddonNames = installedAddonNames,
+                ) { original, prepared ->
+                    _uiState.update { current ->
+                        current.copy(
+                            groups = DirectDebridStreamPreparer.replacePreparedStream(
+                                groups = current.groups,
+                                original = original,
+                                prepared = prepared,
+                                eligibleGroupIds = installedAddonIds,
+                            ),
+                        )
+                    }
+
+                    // Early binge-group match after each debrid-prepared stream
+                    if (isDirectAutoPlayFlow && !autoSelectTriggered && persistedBingeGroup != null) {
+                        val allStreams = _uiState.value.groups.flatMap { it.streams }
+                        if (allStreams.isNotEmpty()) {
+                            val earlyMatch = StreamAutoPlaySelector.selectAutoPlayStream(
+                                streams = allStreams,
+                                mode = autoPlayMode,
+                                regexPattern = playerSettings.streamAutoPlayRegex,
+                                source = playerSettings.streamAutoPlaySource,
+                                installedAddonNames = installedAddonNames,
+                                selectedAddons = playerSettings.streamAutoPlaySelectedAddons,
+                                selectedPlugins = playerSettings.streamAutoPlaySelectedPlugins,
+                                preferredBingeGroup = persistedBingeGroup,
+                                preferBingeGroupInSelection = true,
+                                bingeGroupOnly = !timeoutElapsed,
+                                debridEnabled = debridSettings.canResolvePlayableLinks,
+                                activeResolverProviderId = debridSettings.activeResolverProviderId,
+                            )
+                            if (earlyMatch != null) {
+                                autoSelectTriggered = true
+                                _uiState.update { it.copy(autoPlayStream = earlyMatch) }
+                            }
+                        }
+                    }
+                }
+
+                // Early match / timeout-elapsed auto-select on each addon response
+                if (isDirectAutoPlayFlow && !autoSelectTriggered) {
+                    val allStreams = _uiState.value.groups.flatMap { it.streams }
+                    if (allStreams.isNotEmpty()) {
+                        if (timeoutElapsed) {
+                            // After timeout: full fallback (bingeGroupOnly = false)
+                            val selected = StreamAutoPlaySelector.selectAutoPlayStream(
+                                streams = allStreams,
+                                mode = autoPlayMode,
+                                regexPattern = playerSettings.streamAutoPlayRegex,
+                                source = playerSettings.streamAutoPlaySource,
+                                installedAddonNames = installedAddonNames,
+                                selectedAddons = playerSettings.streamAutoPlaySelectedAddons,
+                                selectedPlugins = playerSettings.streamAutoPlaySelectedPlugins,
+                                preferredBingeGroup = persistedBingeGroup,
+                                preferBingeGroupInSelection = persistedBingeGroup != null,
+                                bingeGroupOnly = false,
+                                debridEnabled = debridSettings.canResolvePlayableLinks,
+                                activeResolverProviderId = debridSettings.activeResolverProviderId,
+                            )
+                            if (selected != null) {
+                                autoSelectTriggered = true
+                                _uiState.update { it.copy(autoPlayStream = selected) }
+                            }
+                        } else if (persistedBingeGroup != null) {
+                            // Before timeout: try binge-group-only early match
+                            val earlyMatch = StreamAutoPlaySelector.selectAutoPlayStream(
+                                streams = allStreams,
+                                mode = autoPlayMode,
+                                regexPattern = playerSettings.streamAutoPlayRegex,
+                                source = playerSettings.streamAutoPlaySource,
+                                installedAddonNames = installedAddonNames,
+                                selectedAddons = playerSettings.streamAutoPlaySelectedAddons,
+                                selectedPlugins = playerSettings.streamAutoPlaySelectedPlugins,
+                                preferredBingeGroup = persistedBingeGroup,
+                                preferBingeGroupInSelection = true,
+                                bingeGroupOnly = true,
+                                debridEnabled = debridSettings.canResolvePlayableLinks,
+                                activeResolverProviderId = debridSettings.activeResolverProviderId,
+                            )
+                            if (earlyMatch != null) {
+                                autoSelectTriggered = true
+                                _uiState.update { it.copy(autoPlayStream = earlyMatch) }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // All addons finished — run final auto-select if not yet triggered
+            if (isDirectAutoPlayFlow && !autoSelectTriggered) {
                 autoSelectTriggered = true
                 val allStreams = _uiState.value.groups.flatMap { it.streams }
-                val selected = StreamAutoPlaySelector.selectAutoPlayStream(
+                val evaluation = StreamAutoPlaySelector.evaluateAutoPlayStream(
                     streams = allStreams,
                     mode = autoPlayMode,
                     regexPattern = playerSettings.streamAutoPlayRegex,
@@ -416,8 +704,18 @@ object StreamsRepository {
                     installedAddonNames = installedAddonNames,
                     selectedAddons = playerSettings.streamAutoPlaySelectedAddons,
                     selectedPlugins = playerSettings.streamAutoPlaySelectedPlugins,
+                    preferredBingeGroup = persistedBingeGroup,
+                    preferBingeGroupInSelection = persistedBingeGroup != null,
+                    bingeGroupOnly = false,
+                    debridEnabled = debridSettings.canResolvePlayableLinks,
+                    activeResolverProviderId = debridSettings.activeResolverProviderId,
                 )
-                _uiState.update { it.copy(autoPlayStream = selected) }
+                _uiState.update {
+                    it.copy(
+                        autoPlayStream = evaluation.stream,
+                        autoPlayCandidates = evaluation.readyStreams,
+                    )
+                }
             }
             if (isDirectAutoPlayFlow && _uiState.value.autoPlayStream == null) {
                 _uiState.update {
@@ -436,13 +734,35 @@ object StreamsRepository {
     }
 
     fun consumeAutoPlay() {
+        activeRequestKey = null
         _uiState.update {
             it.copy(
                 autoPlayStream = null,
+                autoPlayCandidates = emptyList(),
                 isDirectAutoPlayFlow = false,
                 showDirectAutoPlayOverlay = false,
             )
         }
+    }
+
+    fun skipAutoPlayStream(stream: StreamItem): Boolean {
+        var hasNext = false
+        _uiState.update { current ->
+            val failedIndex = current.autoPlayCandidates.indexOf(stream)
+            val remaining = if (failedIndex >= 0) {
+                current.autoPlayCandidates.drop(failedIndex + 1)
+            } else {
+                current.autoPlayCandidates.drop(1)
+            }
+            hasNext = remaining.isNotEmpty()
+            current.copy(
+                autoPlayStream = remaining.firstOrNull(),
+                autoPlayCandidates = remaining,
+                isDirectAutoPlayFlow = remaining.isNotEmpty(),
+                showDirectAutoPlayOverlay = remaining.isNotEmpty(),
+            )
+        }
+        return hasNext
     }
 
     fun cancelLoading() {
@@ -474,128 +794,9 @@ object StreamsRepository {
         activeRequestKey = null
         _uiState.value = StreamsUiState()
     }
-}
 
-private data class InstalledStreamAddonTarget(
-    val addonName: String,
-    val addonId: String,
-    val manifest: com.nuvio.app.features.addons.AddonManifest,
-)
-
-private fun com.nuvio.app.features.addons.ManagedAddon.streamAddonInstanceId(manifestId: String): String =
-    "addon:$manifestId:$manifestUrl"
-
-private data class PluginProviderGroup(
-    val addonId: String,
-    val addonName: String,
-    val scrapers: List<PluginScraper>,
-)
-
-private sealed interface StreamLoadCompletion {
-    data class Addon(val group: AddonStreamGroup) : StreamLoadCompletion
-    data class PluginScraper(
-        val addonId: String,
-        val streams: List<StreamItem>,
-        val error: String?,
-    ) : StreamLoadCompletion
-}
-
-private fun List<PluginScraper>.toPluginProviderGroups(
-    repositories: List<PluginRepositoryItem>,
-    groupByRepository: Boolean,
-): List<PluginProviderGroup> {
-    if (!groupByRepository) {
-        return map { scraper ->
-            PluginProviderGroup(
-                addonId = "plugin:${scraper.id}",
-                addonName = scraper.name,
-                scrapers = listOf(scraper),
-            )
-        }
-    }
-
-    val repoNameByUrl = repositories.associate { it.manifestUrl to it.name }
-    return groupBy { it.repositoryUrl }
-        .map { (repositoryUrl, scrapers) ->
-            PluginProviderGroup(
-                addonId = "plugin-repo:${repositoryUrl.lowercase()}",
-                addonName = repoNameByUrl[repositoryUrl].orEmpty().ifBlank { repositoryUrl.fallbackRepositoryLabel() },
-                scrapers = scrapers.sortedBy { it.name.lowercase() },
-            )
-        }
-        .sortedBy { it.addonName.lowercase() }
-}
-
-private fun List<AddonStreamGroup>.toEmptyStateReason(anyLoading: Boolean): StreamsEmptyStateReason? {
-    if (anyLoading || any { it.streams.isNotEmpty() }) {
-        return null
-    }
-
-    return if (isNotEmpty() && all { !it.error.isNullOrBlank() }) {
-        StreamsEmptyStateReason.StreamFetchFailed
-    } else {
-        StreamsEmptyStateReason.NoStreamsFound
+    fun setOverlayVisible(visible: Boolean, message: String? = null) {
+        _uiState.update { it.copy(showDirectAutoPlayOverlay = visible, overlayMessage = message) }
     }
 }
 
-private fun PluginRuntimeResult.toStreamItem(
-    scraper: PluginScraper,
-    addonName: String = scraper.name,
-    addonId: String = "plugin:${scraper.id}",
-    includeScraperNameInSubtitle: Boolean = false,
-): StreamItem {
-    val subtitleParts = listOfNotNull(
-        scraper.name.takeIf { includeScraperNameInSubtitle && it.isNotBlank() },
-        quality?.takeIf { it.isNotBlank() },
-        size?.takeIf { it.isNotBlank() },
-        language?.takeIf { it.isNotBlank() },
-    )
-    val requestHeaders = headers
-        .orEmpty()
-        .mapNotNull { (key, value) ->
-            val headerName = key.trim()
-            val headerValue = value.trim()
-            if (headerName.isBlank() || headerValue.isBlank() || headerName.equals("Range", ignoreCase = true)) {
-                null
-            } else {
-                headerName to headerValue
-            }
-        }
-        .toMap()
-
-    return StreamItem(
-        name = name ?: title,
-        description = subtitleParts.joinToString(" • ").ifBlank { null },
-        url = url,
-        infoHash = infoHash,
-        sourceName = scraper.name,
-        addonName = addonName,
-        addonId = addonId,
-        behaviorHints = if (requestHeaders.isEmpty()) {
-            StreamBehaviorHints()
-        } else {
-            StreamBehaviorHints(
-                notWebReady = true,
-                proxyHeaders = StreamProxyHeaders(request = requestHeaders),
-            )
-        },
-    )
-}
-
-private fun List<StreamItem>.sortedForGroupedDisplay(): List<StreamItem> =
-    sortedWith(
-        compareBy<StreamItem>(
-            { it.sourceName.orEmpty().lowercase() },
-            { it.streamLabel.lowercase() },
-            { it.streamSubtitle.orEmpty().lowercase() },
-        ),
-    )
-
-private fun String.fallbackRepositoryLabel(): String {
-    val withoutQuery = substringBefore("?")
-    val withoutManifest = withoutQuery.removeSuffix("/manifest.json")
-    val host = withoutManifest.substringAfter("://", withoutManifest).substringBefore('/')
-    return host.ifBlank {
-        withoutManifest.substringAfterLast('/').ifBlank { "Plugin repository" }
-    }
-}

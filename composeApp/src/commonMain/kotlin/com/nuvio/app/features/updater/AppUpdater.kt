@@ -15,7 +15,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.BasicAlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
+import com.nuvio.app.core.ui.NuvioLoadingIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -49,14 +49,15 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
+import kotlinx.coroutines.runBlocking
 import nuvio.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.stringResource
 
-private const val gitHubOwner = "115jon"
-private const val gitHubRepo = "Kino"
+private const val gitHubOwner = "NuvioMedia"
+private const val gitHubRepo = "NuvioMobile"
 private const val gitHubApiBase = "https://api.github.com"
-private const val releaseChannelBranch = "kino"
+private const val releaseChannelBranch = "cmp-rewrite"
 
 data class AppUpdate(
     val tag: String,
@@ -106,7 +107,7 @@ private val appUpdaterJson = Json {
 }
 
 private class NoChannelReleaseException : IllegalStateException(
-    "No Kino release has been published yet.",
+    runBlocking { getString(Res.string.updates_no_channel_release) },
 )
 
 private object VersionUtils {
@@ -158,7 +159,7 @@ private object AppUpdaterRepository {
             body = "",
         )
         if (response.status !in 200..299) {
-            error("GitHub releases API error: ${response.status}")
+            error(getString(Res.string.updates_github_api_error, response.status))
         }
 
         val releases = appUpdaterJson.decodeFromString<List<GitHubReleaseDto>>(response.body)
@@ -167,10 +168,10 @@ private object AppUpdaterRepository {
 
         val tag = release.tagName?.takeIf { it.isNotBlank() }
             ?: release.name?.takeIf { it.isNotBlank() }
-            ?: error("Release has no tag or name")
+            ?: error(getString(Res.string.updates_release_missing_title))
 
-        val asset = chooseBestReleaseAsset(release.assets)
-            ?: error("No compatible asset found in the Kino release")
+        val asset = chooseBestApkAsset(release.assets)
+            ?: error(getString(Res.string.updates_apk_asset_missing))
 
         AppUpdate(
             tag = tag,
@@ -194,30 +195,26 @@ private object AppUpdaterRepository {
             .any { value -> value.contains(channel, ignoreCase = true) }
     }
 
-    private fun chooseBestReleaseAsset(assets: List<GitHubAssetDto>): GitHubAssetDto? {
-        val compatibleAssets = if (AppUpdaterPlatform.isDesktop) {
-            assets.filter { it.name.endsWith(".exe", ignoreCase = true) }
-        } else {
-            assets.filter { asset ->
-                asset.name.endsWith(".apk", ignoreCase = true) ||
-                    asset.contentType == "application/vnd.android.package-archive"
-            }
+    private fun chooseBestApkAsset(assets: List<GitHubAssetDto>): GitHubAssetDto? {
+        val apkAssets = assets.filter { asset ->
+            asset.name.endsWith(".apk", ignoreCase = true) ||
+                asset.contentType == "application/vnd.android.package-archive"
         }
-        if (compatibleAssets.isEmpty()) return null
-        if (compatibleAssets.size == 1) return compatibleAssets.first()
+        if (apkAssets.isEmpty()) return null
+        if (apkAssets.size == 1) return apkAssets.first()
 
         val supportedAbis = AppUpdaterPlatform.getSupportedAbis()
         for (abi in supportedAbis) {
-            val candidate = compatibleAssets.firstOrNull { asset ->
+            val candidate = apkAssets.firstOrNull { asset ->
                 asset.name.contains(abi, ignoreCase = true)
             }
             if (candidate != null) return candidate
         }
 
-        return compatibleAssets.firstOrNull { asset ->
+        return apkAssets.firstOrNull { asset ->
             val name = asset.name.lowercase()
             name.contains("universal") || name.contains("all")
-        } ?: compatibleAssets.first()
+        } ?: apkAssets.first()
     }
 }
 
@@ -491,9 +488,8 @@ fun AppUpdaterHost(
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             if (state.isChecking) {
-                                CircularProgressIndicator(
+                                NuvioLoadingIndicator(
                                     modifier = Modifier.size(18.dp),
-                                    strokeWidth = 2.dp,
                                 )
                                 Spacer(modifier = Modifier.width(10.dp))
                             }

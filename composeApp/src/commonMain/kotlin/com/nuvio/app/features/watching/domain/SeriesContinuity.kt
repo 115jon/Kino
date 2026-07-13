@@ -6,25 +6,56 @@ import com.nuvio.app.core.i18n.localizedUpNextLabel
 
 const val DefaultContinueWatchingLimit = 20
 
+private val watchingProgressRecencyComparator =
+    compareBy<WatchingProgressRecord> { record -> record.lastUpdatedEpochMs }
+        .thenBy { record -> record.seasonNumber ?: 0 }
+        .thenBy { record -> record.episodeNumber ?: 0 }
+        .thenBy(WatchingProgressRecord::lastPositionMs)
+        .thenBy(WatchingProgressRecord::isCompleted)
+        .thenBy(WatchingProgressRecord::identityKey)
+        .thenBy(WatchingProgressRecord::videoId)
+
+internal fun String?.isSeriesLikeWatchingContentType(): Boolean {
+    val type = this?.trim() ?: return false
+    return type.equals("series", ignoreCase = true) ||
+        type.equals("tv", ignoreCase = true) ||
+        type.equals("show", ignoreCase = true) ||
+        type.equals("tvshow", ignoreCase = true)
+}
+
+private fun WatchingContentRef.matchesWatchingContent(content: WatchingContentRef): Boolean {
+    val bothSeriesLike = type.isSeriesLikeWatchingContentType() &&
+        content.type.isSeriesLikeWatchingContentType()
+    return if (bothSeriesLike) {
+        id.trim() == content.id.trim()
+    } else {
+        this == content
+    }
+}
+
 fun resumeProgressForSeries(
     content: WatchingContentRef,
     progressRecords: List<WatchingProgressRecord>,
 ): WatchingProgressRecord? = progressRecords
-    .filter { record -> record.content == content && !record.isCompleted }
-    .maxByOrNull { record -> record.lastUpdatedEpochMs }
+    .filter { record -> record.content.matchesWatchingContent(content) }
+    .maxWithOrNull(watchingProgressRecencyComparator)
+    ?.takeUnless { record -> record.isCompleted }
 
 fun continueWatchingProgressEntries(
     progressRecords: List<WatchingProgressRecord>,
     limit: Int = DefaultContinueWatchingLimit,
 ): List<WatchingProgressRecord> {
-    val inProgress = progressRecords.filterNot { record -> record.isCompleted }
-    val (episodes, nonEpisodes) = inProgress.partition { record ->
-        record.seasonNumber != null && record.episodeNumber != null
+    val (seriesEntries, nonSeriesEntries) = progressRecords.partition { record ->
+        record.content.type.isSeriesLikeWatchingContentType() ||
+            (record.seasonNumber != null && record.episodeNumber != null)
     }
-    val latestPerSeries = episodes
-        .sortedByDescending { record -> record.lastUpdatedEpochMs }
-        .distinctBy { record -> record.content.id }
-    return (nonEpisodes + latestPerSeries)
+    val latestPerSeries = seriesEntries
+        .groupBy { record -> record.content.id.trim() }
+        .values
+        .mapNotNull { entries -> entries.maxWithOrNull(watchingProgressRecencyComparator) }
+
+    return (nonSeriesEntries + latestPerSeries)
+        .filterNot { record -> record.isCompleted }
         .sortedByDescending { record -> record.lastUpdatedEpochMs }
         .take(limit)
 }
@@ -41,6 +72,7 @@ fun nextReleasedEpisodeAfter(
     seasonNumber: Int?,
     episodeNumber: Int?,
     todayIsoDate: String,
+    showUnairedNextUp: Boolean = false,
 ): WatchingReleasedEpisode? {
     val sortedEpisodes = episodes.sortedWith(
         compareBy<WatchingReleasedEpisode>({ normalizeSeasonNumber(it.seasonNumber) }, { it.episodeNumber ?: 0 }),
@@ -76,7 +108,8 @@ fun nextReleasedEpisodeAfter(
                 candidateSeasonNumber = episode.seasonNumber,
                 todayIsoDate = todayIsoDate,
                 releasedDate = episode.releasedDate,
-                showUnairedNextUp = false,
+                showUnairedNextUp = showUnairedNextUp,
+                available = episode.available,
             )
         }
     return candidates.firstOrNull { normalizeSeasonNumber(it.seasonNumber) > 0 }
@@ -89,6 +122,7 @@ fun decideSeriesPrimaryAction(
     watchedRecords: List<WatchingWatchedRecord>,
     todayIsoDate: String,
     preferFurthestEpisode: Boolean = true,
+    showUnairedNextUp: Boolean = false,
 ): WatchingSeriesPrimaryAction? {
     val resumeRecord = resumeProgressForSeries(
         content = content,
@@ -112,11 +146,18 @@ fun decideSeriesPrimaryAction(
             seasonNumber = latestCompletedEpisode.seasonNumber,
             episodeNumber = latestCompletedEpisode.episodeNumber,
             todayIsoDate = todayIsoDate,
+            showUnairedNextUp = showUnairedNextUp,
         )
     } else {
         val sorted = episodes
             .sortedWith(compareBy<WatchingReleasedEpisode>({ normalizeSeasonNumber(it.seasonNumber) }, { it.episodeNumber ?: 0 }))
-        val released = sorted.filter { episode -> isReleasedBy(todayIsoDate = todayIsoDate, releasedDate = episode.releasedDate) }
+        val released = sorted.filter { episode ->
+            isReleasedBy(
+                todayIsoDate = todayIsoDate,
+                releasedDate = episode.releasedDate,
+                available = episode.available,
+            )
+        }
         released.firstOrNull { normalizeSeasonNumber(it.seasonNumber) > 0 } ?: released.firstOrNull()
     }
 

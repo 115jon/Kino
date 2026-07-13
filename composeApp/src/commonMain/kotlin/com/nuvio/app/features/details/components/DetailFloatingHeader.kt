@@ -16,8 +16,8 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Bookmark
-import androidx.compose.material.icons.filled.BookmarkBorder
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -39,8 +39,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.lerp
 import coil3.compose.AsyncImage
 import com.nuvio.app.core.ui.NuvioBackButton
+import com.nuvio.app.core.ui.platformPhysicalTopInset
 import com.nuvio.app.features.details.MetaDetails
 import com.nuvio.app.isIos
+import com.nuvio.app.navigation.LocalUseNativeNavigation
 import nuvio.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.stringResource
 
@@ -49,14 +51,20 @@ fun DetailFloatingHeader(
     meta: MetaDetails,
     isSaved: Boolean,
     progress: Float,
+    backgroundColor: Color? = null,
     onBack: () -> Unit,
     onToggleSaved: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val safeAreaTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val useNativeNavigation = LocalUseNativeNavigation.current
+    val safeAreaTop = if (useNativeNavigation) {
+        platformPhysicalTopInset()
+    } else {
+        WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    }
     val headerTopPadding = (safeAreaTop - 6.dp).coerceAtLeast(safeAreaTop * 0.8f)
     val interactive = progress > 0.05f
-    val surfaceColor = if (isIos) {
+    val surfaceColor = backgroundColor ?: if (isIos) {
         MaterialTheme.colorScheme.surface.copy(alpha = 1.0f)
     } else {
         MaterialTheme.colorScheme.background
@@ -92,7 +100,7 @@ fun DetailFloatingHeader(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                if (interactive) {
+                if (interactive && !useNativeNavigation) {
                     NuvioBackButton(
                         onClick = onBack,
                         modifier = Modifier.size(40.dp),
@@ -102,6 +110,9 @@ fun DetailFloatingHeader(
                         iconSize = 24.dp,
                     )
                 } else {
+                    // Native iOS navigation owns the back button, but retaining
+                    // this slot keeps the Compose logo centered as the floating
+                    // header replaces the hero while scrolling.
                     Box(modifier = Modifier.size(40.dp))
                 }
 
@@ -111,7 +122,7 @@ fun DetailFloatingHeader(
                         .padding(horizontal = 10.dp),
                     contentAlignment = Alignment.Center,
                 ) {
-                    if (meta.logo != null && !logoLoadError) {
+                    if (!meta.logo.isNullOrBlank() && !logoLoadError) {
                         AsyncImage(
                             model = meta.logo,
                             contentDescription = stringResource(Res.string.detail_logo_content_description, meta.name),
@@ -167,7 +178,7 @@ private fun DetailFloatingHeaderAction(
         contentAlignment = Alignment.Center,
     ) {
         Icon(
-            imageVector = if (isSaved) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
+            imageVector = if (isSaved) Icons.Default.Check else Icons.Default.Add,
             contentDescription = if (isSaved) {
                 stringResource(Res.string.hero_remove_from_library)
             } else {

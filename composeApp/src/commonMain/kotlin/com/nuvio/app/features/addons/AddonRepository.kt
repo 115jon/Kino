@@ -2,6 +2,7 @@ package com.nuvio.app.features.addons
 
 import co.touchlab.kermit.Logger
 import com.nuvio.app.core.network.SupabaseProvider
+import com.nuvio.app.core.sync.putSyncOriginClientId
 import com.nuvio.app.features.profiles.ProfileRepository
 import io.github.jan.supabase.postgrest.postgrest
 import io.github.jan.supabase.postgrest.query.Order
@@ -16,6 +17,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -62,19 +64,24 @@ object AddonRepository {
         log.d { "initialize() — loading local addons for profile $currentProfileId" }
 
         val storedUrls = dedupeManifestUrls(AddonStorage.loadInstalledAddonUrls(currentProfileId))
+        val enabledByUrl = loadLocalEnabledStates()
         log.d { "initialize() — local addon count: ${storedUrls.size}" }
         if (storedUrls.isEmpty()) return
 
         val existingByUrl = _uiState.value.addons.associateBy(ManagedAddon::manifestUrl)
         _uiState.value = AddonsUiState(
             addons = storedUrls.map { manifestUrl ->
-                existingByUrl[manifestUrl].toPendingAddon(manifestUrl)
+                existingByUrl[manifestUrl].toPendingAddon(
+                    manifestUrl = manifestUrl,
+                    enabled = enabledByUrl[manifestUrl],
+                )
             },
         )
 
         storedUrls.forEach { manifestUrl ->
             val existing = existingByUrl[manifestUrl]
-            if (existing == null || (existing.manifest == null && !existing.isRefreshing)) {
+            val addon = _uiState.value.addons.firstOrNull { it.manifestUrl == manifestUrl }
+            if (addon?.enabled == true && (existing == null || (addon.manifest == null && !addon.isRefreshing))) {
                 refreshAddon(manifestUrl)
             }
         }
@@ -110,36 +117,42 @@ object AddonRepository {
                 }
                 .decodeList<AddonRow>()
 
-            val namesByUrl = mutableMapOf<String, String>()
+            val rowsByUrl = linkedMapOf<String, AddonRow>()
             rows.forEach { row ->
-                if (!row.name.isNullOrBlank()) {
-                    namesByUrl[ensureManifestSuffix(row.url)] = row.name
+                val manifestUrl = ensureManifestSuffix(row.url)
+                if (!rowsByUrl.containsKey(manifestUrl)) {
+                    rowsByUrl[manifestUrl] = row.copy(url = manifestUrl)
                 }
             }
 
-            val urls = dedupeManifestUrls(rows.map { it.url })
+            val urls = rowsByUrl.keys.toList()
             log.i { "pullFromServer() — server returned ${rows.size} addons" }
             urls.forEachIndexed { i, u -> log.d { "  server[$i]: $u" } }
 
             if (urls.isEmpty() && !pulledFromServer) {
-                val localUrls = AddonStorage.loadInstalledAddonUrls(currentProfileId)
+                val localUrls = dedupeManifestUrls(AddonStorage.loadInstalledAddonUrls(currentProfileId))
                 log.i { "pullFromServer() — server empty, local has ${localUrls.size} addons" }
                 if (localUrls.isNotEmpty()) {
                     log.i { "pullFromServer() — migrating local addons to server for profile $currentProfileId" }
                     initialize()
                     pulledFromServer = true
+                    val enabledByUrl = loadLocalEnabledStates()
                     val addons = localUrls.mapIndexed { index, addonUrl ->
+                        val manifestUrl = ensureManifestSuffix(addonUrl)
                         AddonPushItem(
-                            url = addonUrl,
+                            url = manifestUrl,
                             name = _uiState.value.addons
-                                .find { it.manifestUrl == addonUrl }?.manifest?.name ?: "",
-                            enabled = true,
+                                .find { it.manifestUrl == manifestUrl }?.manifest?.name ?: "",
+                            enabled = enabledByUrl[manifestUrl]
+                                ?: _uiState.value.addons.find { it.manifestUrl == manifestUrl }?.enabled
+                                ?: true,
                             sortOrder = index,
                         )
                     }
                     val params = buildJsonObject {
                         put("p_profile_id", currentProfileId)
                         put("p_addons", json.encodeToJsonElement(addons))
+                        putSyncOriginClientId()
                     }
                     SupabaseProvider.client.postgrest.rpc("sync_push_addons", params)
                     log.i { "pullFromServer() — migration push done (${addons.size} addons)" }
@@ -151,16 +164,21 @@ object AddonRepository {
                 val localUrls = dedupeManifestUrls(AddonStorage.loadInstalledAddonUrls(currentProfileId))
                 if (localUrls.isNotEmpty()) {
                     log.w { "pullFromServer() — remote empty while local has ${localUrls.size} addons; preserving local addons" }
+                    val enabledByUrl = loadLocalEnabledStates()
                     val existingByUrl = _uiState.value.addons.associateBy(ManagedAddon::manifestUrl)
                     _uiState.value = AddonsUiState(
                         addons = localUrls.map { url ->
-                            existingByUrl[url].toPendingAddon(url)
+                            existingByUrl[url].toPendingAddon(
+                                manifestUrl = url,
+                                enabled = enabledByUrl[url],
+                            )
                         },
                     )
                     persist()
                     localUrls.forEach { url ->
                         val existing = existingByUrl[url]
-                        if (existing == null || (existing.manifest == null && !existing.isRefreshing)) {
+                        val addon = _uiState.value.addons.firstOrNull { it.manifestUrl == url }
+                        if (addon?.enabled == true && (existing == null || (addon.manifest == null && !addon.isRefreshing))) {
                             refreshAddon(url)
                         }
                     }
@@ -173,13 +191,19 @@ object AddonRepository {
             val existingByUrl = _uiState.value.addons.associateBy(ManagedAddon::manifestUrl)
             _uiState.value = AddonsUiState(
                 addons = urls.map { url ->
-                    existingByUrl[url].toPendingAddon(url, namesByUrl[url])
+                    val row = rowsByUrl[url]
+                    existingByUrl[url].toPendingAddon(
+                        manifestUrl = url,
+                        userSetName = row?.name?.takeIf { it.isNotBlank() },
+                        enabled = row?.enabled,
+                    )
                 },
             )
             persist()
             urls.forEach { url ->
                 val existing = existingByUrl[url]
-                if (existing == null || (existing.manifest == null && !existing.isRefreshing)) {
+                val addon = _uiState.value.addons.firstOrNull { it.manifestUrl == url }
+                if (addon?.enabled == true && (existing == null || (addon.manifest == null && !addon.isRefreshing))) {
                     refreshAddon(url)
                 }
             }
@@ -194,7 +218,9 @@ object AddonRepository {
     suspend fun awaitManifestsLoaded() {
         if (_uiState.value.addons.isEmpty()) return
         uiState.first { state ->
-            state.addons.isEmpty() || state.addons.any { it.manifest != null }
+            state.addons.isEmpty() ||
+                state.addons.any { it.manifest != null } ||
+                state.addons.none { it.isRefreshing }
         }
     }
 
@@ -273,8 +299,30 @@ object AddonRepository {
         pushToServer()
     }
 
+    fun setAddonEnabled(manifestUrl: String, enabled: Boolean) {
+        if (isUsingPrimaryAddonsFromSecondaryProfile()) return
+        var shouldRefresh = false
+        _uiState.update { current ->
+            current.copy(
+                addons = current.addons.map { addon ->
+                    if (addon.manifestUrl != manifestUrl || addon.enabled == enabled) {
+                        addon
+                    } else {
+                        shouldRefresh = enabled && addon.manifest == null && !addon.isRefreshing
+                        addon.copy(enabled = enabled)
+                    }
+                },
+            )
+        }
+        persist()
+        pushToServer()
+        if (shouldRefresh) {
+            refreshAddon(manifestUrl)
+        }
+    }
+
     fun refreshAll() {
-        _uiState.value.addons.distinctBy { it.manifestUrl }.forEach { addon ->
+        _uiState.value.addons.filter { it.enabled }.distinctBy { it.manifestUrl }.forEach { addon ->
             refreshAddon(addon.manifestUrl)
         }
     }
@@ -339,17 +387,18 @@ object AddonRepository {
                 val addons = _uiState.value.addons
                     .distinctBy { it.manifestUrl }
                     .mapIndexed { index, addon ->
-                    AddonPushItem(
-                        url = addon.manifestUrl,
-                        name = addon.userSetName?.takeIf { it.isNotBlank() } ?: addon.manifest?.name ?: "",
-                        enabled = true,
-                        sortOrder = index,
-                    )
-                }
+                        AddonPushItem(
+                            url = addon.manifestUrl,
+                            name = addon.userSetName?.takeIf { it.isNotBlank() } ?: addon.manifest?.name ?: "",
+                            enabled = addon.enabled,
+                            sortOrder = index,
+                        )
+                    }
                 log.d { "pushToServer() — profileId=$profileId, pushing ${addons.size} addons" }
                 val params = buildJsonObject {
                     put("p_profile_id", profileId)
                     put("p_addons", json.encodeToJsonElement(addons))
+                    putSyncOriginClientId()
                 }
                 SupabaseProvider.client.postgrest.rpc("sync_push_addons", params)
                 log.d { "pushToServer() — success" }
@@ -377,11 +426,20 @@ object AddonRepository {
     }
 
     private fun persist() {
+        val addons = _uiState.value.addons
         AddonStorage.saveInstalledAddonUrls(
             currentProfileId,
-            dedupeManifestUrls(_uiState.value.addons.map { it.manifestUrl }),
+            dedupeManifestUrls(addons.map { it.manifestUrl }),
+        )
+        AddonStorage.saveAddonEnabledStates(
+            currentProfileId,
+            addons.associate { it.manifestUrl to it.enabled },
         )
     }
+
+    private fun loadLocalEnabledStates(): Map<String, Boolean> =
+        AddonStorage.loadAddonEnabledStates(currentProfileId)
+            .mapKeys { (url, _) -> ensureManifestSuffix(url) }
 
     private fun cancelActiveRefreshes() {
         activeRefreshJobs.values.forEach(Job::cancel)
@@ -399,27 +457,35 @@ object AddonRepository {
     }
 }
 
-private fun ManagedAddon?.toPendingAddon(manifestUrl: String, userSetName: String? = null): ManagedAddon =
+private fun ManagedAddon?.toPendingAddon(
+    manifestUrl: String,
+    userSetName: String? = null,
+    enabled: Boolean? = null,
+): ManagedAddon =
     when {
         this == null -> ManagedAddon(
             manifestUrl = manifestUrl,
-            isRefreshing = true,
+            isRefreshing = enabled ?: true,
             userSetName = userSetName,
+            enabled = enabled ?: true,
         )
         manifest != null -> copy(
             manifestUrl = manifestUrl,
             isRefreshing = false,
             userSetName = userSetName ?: this.userSetName,
+            enabled = enabled ?: this.enabled,
         )
         isRefreshing -> copy(
             manifestUrl = manifestUrl,
             userSetName = userSetName ?: this.userSetName,
+            enabled = enabled ?: this.enabled,
         )
         else -> copy(
             manifestUrl = manifestUrl,
-            isRefreshing = true,
+            isRefreshing = enabled ?: this.enabled,
             errorMessage = null,
             userSetName = userSetName ?: this.userSetName,
+            enabled = enabled ?: this.enabled,
         )
     }
 
@@ -435,7 +501,7 @@ private fun ensureManifestSuffix(url: String): String {
 
 private fun normalizeManifestUrl(rawUrl: String): String {
     val trimmed = rawUrl.trim()
-    require(trimmed.isNotEmpty()) { "Enter an addon URL." }
+    require(trimmed.isNotEmpty()) { runBlocking { getString(Res.string.addons_error_enter_url) } }
 
     val normalizedScheme = when {
         trimmed.startsWith("http://") || trimmed.startsWith("https://") -> trimmed

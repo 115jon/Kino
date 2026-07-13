@@ -1,6 +1,12 @@
 package com.nuvio.app.features.watchprogress
 
 import com.nuvio.app.core.storage.ProfileScopedKey
+import com.nuvio.app.features.trakt.WatchProgressSource
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -25,6 +31,8 @@ data class CachedNextUpItem(
     val sortTimestamp: Long,
     val seedSeason: Int? = null,
     val seedEpisode: Int? = null,
+    val isReleaseAlert: Boolean = false,
+    val isNewSeasonRelease: Boolean = false,
 )
 
 @Serializable
@@ -45,7 +53,16 @@ data class CachedInProgressItem(
     val duration: Long,
     val lastWatched: Long,
     val progressPercent: Float? = null,
+    val progressKey: String? = null,
 )
+
+internal fun CachedInProgressItem.resolvedProgressKey(): String =
+    progressKey?.takeIf(String::isNotBlank)
+        ?: buildWatchProgressKey(
+            contentId = contentId,
+            seasonNumber = season,
+            episodeNumber = episode,
+        )
 
 @Serializable
 private data class CachedEnrichmentPayload(
@@ -60,33 +77,140 @@ internal object ContinueWatchingEnrichmentCache {
     }
 
     private const val storageKey = "cw_enrichment_cache"
+    private val cacheLock = SynchronizedObject()
+    private val lastPayloadHashByScope = mutableMapOf<CacheScope, Int>()
+    private val _generation = MutableStateFlow(0)
+    val generation: StateFlow<Int> = _generation.asStateFlow()
 
-    fun getNextUpSnapshot(): List<CachedNextUpItem> =
-        loadPayload()?.nextUp ?: emptyList()
+    fun getNextUpSnapshot(
+        profileId: Int,
+        source: WatchProgressSource,
+    ): List<CachedNextUpItem> =
+        loadPayload(profileId = profileId, source = source)?.nextUp ?: emptyList()
 
-    fun getInProgressSnapshot(): List<CachedInProgressItem> =
-        loadPayload()?.inProgress ?: emptyList()
+    fun getInProgressSnapshot(
+        profileId: Int,
+        source: WatchProgressSource,
+    ): List<CachedInProgressItem> =
+        loadPayload(profileId = profileId, source = source)?.inProgress ?: emptyList()
 
-    fun getSnapshots(): Pair<List<CachedNextUpItem>, List<CachedInProgressItem>> {
-        val payload = loadPayload()
-        return (payload?.nextUp ?: emptyList()) to (payload?.inProgress ?: emptyList())
+    fun getSnapshots(
+        profileId: Int,
+        source: WatchProgressSource,
+    ): Pair<List<CachedNextUpItem>, List<CachedInProgressItem>> {
+        val payload = loadPayload(profileId = profileId, source = source)
+        val nextUp = payload?.nextUp ?: emptyList()
+        val inProgress = payload?.inProgress ?: emptyList()
+        return nextUp to inProgress
     }
 
     fun saveSnapshots(
+        profileId: Int,
+        source: WatchProgressSource,
+        generation: Int,
         nextUp: List<CachedNextUpItem>,
         inProgress: List<CachedInProgressItem>,
-    ) {
+        force: Boolean = false,
+    ): Boolean = synchronized(cacheLock) {
+        if (generation != _generation.value) return@synchronized false
+
+        removeLegacyPayload(profileId)
+        val payload = CachedEnrichmentPayload(nextUp = nextUp, inProgress = inProgress)
+        val payloadHash = payload.hashCode()
+        val scope = CacheScope(profileId = profileId, source = source)
+        if (!force && lastPayloadHashByScope[scope] == payloadHash) {
+            return@synchronized true
+        }
+
         val encoded = runCatching {
-            json.encodeToString(CachedEnrichmentPayload(nextUp = nextUp, inProgress = inProgress))
-        }.getOrNull() ?: return
-        ContinueWatchingEnrichmentStorage.savePayload(ProfileScopedKey.of(storageKey), encoded)
+            json.encodeToString(payload)
+        }.getOrNull() ?: return@synchronized false
+        ContinueWatchingEnrichmentStorage.savePayload(
+            continueWatchingEnrichmentStorageKey(profileId = profileId, source = source),
+            encoded,
+        )
+        lastPayloadHashByScope[scope] = payloadHash
+        true
     }
 
-    private fun loadPayload(): CachedEnrichmentPayload? {
-        val raw = ContinueWatchingEnrichmentStorage.loadPayload(ProfileScopedKey.of(storageKey))
-            ?: return null
-        return runCatching {
-            json.decodeFromString<CachedEnrichmentPayload>(raw)
-        }.getOrNull()
+    fun invalidate(
+        profileId: Int,
+        source: WatchProgressSource,
+    ) = synchronized(cacheLock) {
+        ContinueWatchingEnrichmentStorage.removePayload(
+            continueWatchingEnrichmentStorageKey(profileId = profileId, source = source),
+        )
+        removeLegacyPayload(profileId)
+        lastPayloadHashByScope.remove(CacheScope(profileId = profileId, source = source))
+        advanceGeneration()
     }
+
+    fun clearAll(profileId: Int) = synchronized(cacheLock) {
+        WatchProgressSource.entries.forEach { source ->
+            ContinueWatchingEnrichmentStorage.removePayload(
+                continueWatchingEnrichmentStorageKey(profileId = profileId, source = source),
+            )
+            lastPayloadHashByScope.remove(CacheScope(profileId = profileId, source = source))
+        }
+        removeLegacyPayload(profileId)
+        advanceGeneration()
+    }
+
+    fun clearLocalState() = synchronized(cacheLock) {
+        lastPayloadHashByScope.clear()
+        advanceGeneration()
+    }
+
+    fun onProfileChanged() = synchronized(cacheLock) {
+        advanceGeneration()
+    }
+
+    private fun loadPayload(
+        profileId: Int,
+        source: WatchProgressSource,
+    ): CachedEnrichmentPayload? = synchronized(cacheLock) {
+        removeLegacyPayload(profileId)
+        val scope = CacheScope(profileId = profileId, source = source)
+        val raw = ContinueWatchingEnrichmentStorage.loadPayload(
+            continueWatchingEnrichmentStorageKey(profileId = profileId, source = source),
+        ) ?: run {
+            lastPayloadHashByScope.remove(scope)
+            return@synchronized null
+        }
+        runCatching {
+            json.decodeFromString<CachedEnrichmentPayload>(raw)
+        }.getOrNull()?.also { payload ->
+            lastPayloadHashByScope[scope] = payload.hashCode()
+        } ?: run {
+            lastPayloadHashByScope.remove(scope)
+            ContinueWatchingEnrichmentStorage.removePayload(
+                continueWatchingEnrichmentStorageKey(profileId = profileId, source = source),
+            )
+            null
+        }
+    }
+
+    private fun removeLegacyPayload(profileId: Int) {
+        ContinueWatchingEnrichmentStorage.removePayload(legacyStorageKey(profileId))
+    }
+
+    private fun advanceGeneration() {
+        _generation.value += 1
+    }
+
+    private data class CacheScope(
+        val profileId: Int,
+        val source: WatchProgressSource,
+    )
+
+    internal fun continueWatchingEnrichmentStorageKey(
+        profileId: Int,
+        source: WatchProgressSource,
+    ): String = ProfileScopedKey.of(
+        baseKey = "${storageKey}_${source.name.lowercase()}",
+        profileId = profileId,
+    )
+
+    internal fun legacyStorageKey(profileId: Int): String =
+        ProfileScopedKey.of(storageKey, profileId)
 }

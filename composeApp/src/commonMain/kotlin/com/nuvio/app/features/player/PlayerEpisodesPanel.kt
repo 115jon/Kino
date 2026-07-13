@@ -10,16 +10,12 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -33,12 +29,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
-import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Refresh
-import androidx.compose.material3.CircularProgressIndicator
+import com.nuvio.app.core.ui.NuvioLoadingIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -55,15 +49,19 @@ import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
+import com.nuvio.app.core.ui.NuvioTokens
+import com.nuvio.app.core.ui.nuvio
+import com.nuvio.app.features.debrid.DebridSettingsRepository
 import com.nuvio.app.features.details.MetaVideo
+import com.nuvio.app.features.streams.StreamBadgeSettingsRepository
+import com.nuvio.app.features.streams.StreamCard
 import com.nuvio.app.features.streams.StreamItem
 import com.nuvio.app.features.streams.StreamsUiState
+import com.nuvio.app.features.streams.isSelectableForPlayback
 import com.nuvio.app.features.watchprogress.WatchProgressEntry
 import com.nuvio.app.features.watchprogress.buildPlaybackVideoId
 import com.nuvio.app.features.watching.application.WatchingState
@@ -78,7 +76,6 @@ import org.jetbrains.compose.resources.stringResource
 @Composable
 fun PlayerEpisodesPanel(
     visible: Boolean,
-    desktopLayout: Boolean,
     episodes: List<MetaVideo>,
     parentMetaType: String,
     parentMetaId: String,
@@ -98,12 +95,12 @@ fun PlayerEpisodesPanel(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val colorScheme = MaterialTheme.colorScheme
+    val tokens = MaterialTheme.nuvio
 
     AnimatedVisibility(
         visible = visible,
-        enter = fadeIn(tween(200)),
-        exit = fadeOut(tween(200)),
+        enter = fadeIn(tween(NuvioTokens.Motion.normalMillis)),
+        exit = fadeOut(tween(NuvioTokens.Motion.normalMillis)),
     ) {
         Box(
             modifier = modifier
@@ -113,25 +110,24 @@ fun PlayerEpisodesPanel(
                     interactionSource = remember { MutableInteractionSource() },
                     onClick = onDismiss,
                 )
-                .background(colorScheme.scrim.copy(alpha = 0.52f)),
+                .background(tokens.colors.overlayScrim.copy(alpha = tokens.opacity.medium)),
             contentAlignment = Alignment.Center,
         ) {
             AnimatedVisibility(
                 visible = visible,
-                enter = slideInVertically(tween(300)) { it / 3 } + fadeIn(tween(300)),
-                exit = slideOutVertically(tween(250)) { it / 3 } + fadeOut(tween(250)),
+                enter = slideInVertically(tween(NuvioTokens.Motion.sheetEnterMillis)) { it / 3 } +
+                    fadeIn(tween(NuvioTokens.Motion.sheetEnterMillis)),
+                exit = slideOutVertically(tween(NuvioTokens.Motion.sheetExitMillis)) { it / 3 } +
+                    fadeOut(tween(NuvioTokens.Motion.sheetExitMillis)),
             ) {
                 Box(
                     modifier = Modifier
-                        .widthIn(max = if (desktopLayout) 960.dp else 520.dp)
+                        .widthIn(max = tokens.components.playerPanelMaxWidth)
                         .fillMaxWidth(0.92f)
-                        .heightIn(
-                            min = if (desktopLayout) 560.dp else 0.dp,
-                            max = if (desktopLayout) 760.dp else 620.dp,
-                        )
-                        .clip(RoundedCornerShape(24.dp))
-                        .background(colorScheme.surface)
-                        .border(1.dp, colorScheme.outlineVariant.copy(alpha = 0.8f), RoundedCornerShape(24.dp))
+                        .heightIn(max = tokens.components.dialogMaxWidth + NuvioTokens.Space.s64)
+                        .clip(tokens.shapes.playerPanel)
+                        .background(tokens.colors.surfaceSheet)
+                        .border(tokens.borders.thin, tokens.colors.borderDefault, tokens.shapes.playerPanel)
                         .clickable(
                             indication = null,
                             interactionSource = remember { MutableInteractionSource() },
@@ -149,7 +145,6 @@ fun PlayerEpisodesPanel(
                         )
                     } else {
                         EpisodesListSubView(
-                            desktopLayout = desktopLayout,
                             episodes = episodes,
                             parentMetaType = parentMetaType,
                             parentMetaId = parentMetaId,
@@ -179,7 +174,6 @@ data class EpisodeStreamsPanelState(
 
 @Composable
 private fun EpisodesListSubView(
-    desktopLayout: Boolean,
     episodes: List<MetaVideo>,
     parentMetaType: String,
     parentMetaId: String,
@@ -192,7 +186,7 @@ private fun EpisodesListSubView(
     onEpisodeSelected: (MetaVideo) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val colorScheme = MaterialTheme.colorScheme
+    val tokens = MaterialTheme.nuvio
 
     val groupedEpisodes = remember(episodes) {
         episodes
@@ -257,177 +251,94 @@ private fun EpisodesListSubView(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 16.dp),
+                .padding(horizontal = tokens.spacing.sheetPadding, vertical = tokens.spacing.cardPadding),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
                 text = stringResource(Res.string.compose_player_panel_episodes),
-                color = colorScheme.onSurface,
-                fontSize = 18.sp,
+                color = tokens.colors.textPrimary,
+                style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Bold,
             )
             PanelChipButton(label = stringResource(Res.string.action_close), onClick = onDismiss)
         }
 
-        if (desktopLayout) {
-            Row(
+        // Season tabs
+        if (availableSeasons.size > 1) {
+            LazyRow(
+                state = seasonListState,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(560.dp),
+                    .padding(horizontal = tokens.spacing.sheetPadding)
+                    .padding(bottom = tokens.spacing.listGap),
+                horizontalArrangement = Arrangement.spacedBy(tokens.spacing.controlGap),
             ) {
-                if (availableSeasons.size > 1) {
-                    LazyColumn(
-                        state = seasonListState,
-                        modifier = Modifier
-                            .width(190.dp)
-                            .fillMaxHeight()
-                            .padding(horizontal = 16.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                        contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 16.dp),
-                    ) {
-                        items(availableSeasons, key = { season -> season }) { season ->
-                            val label = if (season == 0) {
-                                stringResource(Res.string.episodes_specials)
-                            } else {
-                                stringResource(Res.string.episodes_season, season)
-                            }
-                            AddonFilterChip(
-                                label = label,
-                                isSelected = selectedSeason == season,
-                                onClick = {
-                                    selectedSeason = season
-                                    onSeasonSelected(season)
-                                },
-                            )
-                        }
+                items(availableSeasons, key = { season -> season }) { season ->
+                    val label = if (season == 0) {
+                        stringResource(Res.string.episodes_specials)
+                    } else {
+                        stringResource(Res.string.episodes_season, season)
                     }
+                    AddonFilterChip(
+                        label = label,
+                        isSelected = selectedSeason == season,
+                        onClick = {
+                            selectedSeason = season
+                            onSeasonSelected(season)
+                        },
+                    )
                 }
-                EpisodeListContent(
-                    desktopLayout = desktopLayout,
-                    seasonEpisodes = seasonEpisodes,
-                    currentSeason = currentSeason,
-                    currentEpisode = currentEpisode,
-                    progressByVideoId = progressByVideoId,
-                    watchedKeys = watchedKeys,
-                    blurUnwatchedEpisodes = blurUnwatchedEpisodes,
-                    parentMetaType = parentMetaType,
-                    parentMetaId = parentMetaId,
-                    episodeListState = episodeListState,
-                    onEpisodeSelected = onEpisodeSelected,
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .padding(horizontal = 12.dp),
+            }
+        }
+
+        // Episode list
+        if (seasonEpisodes.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = NuvioTokens.Space.s40),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = stringResource(Res.string.compose_player_no_episodes_available),
+                    color = tokens.colors.textMuted,
+                    style = MaterialTheme.typography.bodyMedium,
                 )
             }
         } else {
-            if (availableSeasons.size > 1) {
-                LazyRow(
-                    state = seasonListState,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 20.dp)
-                        .padding(bottom = 12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    items(availableSeasons, key = { season -> season }) { season ->
-                        val label = if (season == 0) {
-                            stringResource(Res.string.episodes_specials)
-                        } else {
-                            stringResource(Res.string.episodes_season, season)
-                        }
-                        AddonFilterChip(
-                            label = label,
-                            isSelected = selectedSeason == season,
-                            onClick = {
-                                selectedSeason = season
-                                onSeasonSelected(season)
-                            },
-                        )
-                    }
-                }
-            }
-            EpisodeListContent(
-                desktopLayout = desktopLayout,
-                seasonEpisodes = seasonEpisodes,
-                currentSeason = currentSeason,
-                currentEpisode = currentEpisode,
-                progressByVideoId = progressByVideoId,
-                watchedKeys = watchedKeys,
-                blurUnwatchedEpisodes = blurUnwatchedEpisodes,
-                parentMetaType = parentMetaType,
-                parentMetaId = parentMetaId,
-                episodeListState = episodeListState,
-                onEpisodeSelected = onEpisodeSelected,
-                modifier = Modifier.padding(horizontal = 12.dp),
-            )
-        }
-    }
-}
-
-@Composable
-private fun EpisodeListContent(
-    desktopLayout: Boolean,
-    seasonEpisodes: List<MetaVideo>,
-    currentSeason: Int?,
-    currentEpisode: Int?,
-    progressByVideoId: Map<String, WatchProgressEntry>,
-    watchedKeys: Set<String>,
-    blurUnwatchedEpisodes: Boolean,
-    parentMetaType: String,
-    parentMetaId: String,
-    episodeListState: androidx.compose.foundation.lazy.LazyListState,
-    onEpisodeSelected: (MetaVideo) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val colorScheme = MaterialTheme.colorScheme
-    if (seasonEpisodes.isEmpty()) {
-        Box(
-            modifier = modifier
-                .fillMaxWidth()
-                .padding(vertical = 40.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                text = stringResource(Res.string.compose_player_no_episodes_available),
-                color = colorScheme.onSurfaceVariant,
-                fontSize = 14.sp,
-            )
-        }
-    } else {
-        LazyColumn(
-            state = episodeListState,
-            modifier = modifier,
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 16.dp),
-        ) {
-            itemsIndexed(
-                items = seasonEpisodes,
-                key = { index, episode -> "${episode.season}:${episode.episode}:${episode.id}#$index" },
-            ) { _, episode ->
-                val isCurrent = episode.season == currentSeason && episode.episode == currentEpisode
-                val episodeVideoId = buildPlaybackVideoId(
-                    parentMetaId = parentMetaId,
-                    seasonNumber = episode.season,
-                    episodeNumber = episode.episode,
-                    fallbackVideoId = episode.id,
-                )
-                val isWatched = progressByVideoId[episodeVideoId]?.isEffectivelyCompleted == true ||
-                    WatchingState.isEpisodeWatched(
-                        watchedKeys = watchedKeys,
-                        metaType = parentMetaType,
-                        metaId = parentMetaId,
-                        episode = episode,
+            LazyColumn(
+                state = episodeListState,
+                modifier = Modifier.padding(horizontal = tokens.spacing.cardPaddingCompact),
+                verticalArrangement = Arrangement.spacedBy(NuvioTokens.Space.s4),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = tokens.spacing.cardPadding),
+            ) {
+                itemsIndexed(
+                    items = seasonEpisodes,
+                    key = { index, episode -> "${episode.season}:${episode.episode}:${episode.id}#$index" },
+                ) { _, episode ->
+                    val isCurrent = episode.season == currentSeason && episode.episode == currentEpisode
+                    val episodeVideoId = buildPlaybackVideoId(
+                        parentMetaId = parentMetaId,
+                        seasonNumber = episode.season,
+                        episodeNumber = episode.episode,
+                        fallbackVideoId = episode.id,
                     )
-                EpisodeRow(
-                    episode = episode,
-                    isCurrent = isCurrent,
-                    isWatched = isWatched,
-                    blurUnwatchedEpisodes = blurUnwatchedEpisodes,
-                    desktopLayout = desktopLayout,
-                    onClick = { onEpisodeSelected(episode) },
-                )
+                    val isWatched = progressByVideoId[episodeVideoId]?.isEffectivelyCompleted == true ||
+                        WatchingState.isEpisodeWatched(
+                            watchedKeys = watchedKeys,
+                            metaType = parentMetaType,
+                            metaId = parentMetaId,
+                            episode = episode,
+                        )
+                    EpisodeRow(
+                        episode = episode,
+                        isCurrent = isCurrent,
+                        isWatched = isWatched,
+                        blurUnwatchedEpisodes = blurUnwatchedEpisodes,
+                        onClick = { onEpisodeSelected(episode) },
+                    )
+                }
             }
         }
     }
@@ -439,37 +350,29 @@ private fun EpisodeRow(
     isCurrent: Boolean,
     isWatched: Boolean,
     blurUnwatchedEpisodes: Boolean,
-    desktopLayout: Boolean,
     onClick: () -> Unit,
 ) {
-    val colorScheme = MaterialTheme.colorScheme
+    val tokens = MaterialTheme.nuvio
     val shouldBlurArtwork = blurUnwatchedEpisodes && !isWatched && !isCurrent
-    val interactionSource = remember { MutableInteractionSource() }
-    val isHovered by interactionSource.collectIsHoveredAsState()
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
+            .clip(tokens.shapes.compactCard)
             .background(
-                when {
-                    isCurrent -> colorScheme.primaryContainer.copy(alpha = 0.55f)
-                    desktopLayout && isHovered -> colorScheme.surfaceVariant.copy(alpha = 0.55f)
-                    else -> Color.Transparent
-                },
+                if (isCurrent) tokens.colors.overlaySelected else Color.Transparent,
             )
             .then(
                 if (isCurrent) {
-                    Modifier.border(1.dp, colorScheme.primary.copy(alpha = 0.45f), RoundedCornerShape(12.dp))
+                    Modifier.border(tokens.borders.thin, tokens.colors.borderSelected, tokens.shapes.compactCard)
                 } else {
                     Modifier
                 },
             )
             .clickable(onClick = onClick)
-            .then(if (desktopLayout) Modifier.hoverable(interactionSource) else Modifier)
-            .padding(horizontal = 12.dp, vertical = 10.dp),
+            .padding(horizontal = NuvioTokens.Space.s12, vertical = NuvioTokens.Space.s10),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(tokens.spacing.listGap),
     ) {
         // Thumbnail
         if (episode.thumbnail != null) {
@@ -477,10 +380,10 @@ private fun EpisodeRow(
                 model = episode.thumbnail,
                 contentDescription = null,
                 modifier = Modifier
-                    .width(80.dp)
-                    .height(48.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .then(if (shouldBlurArtwork) Modifier.blur(18.dp) else Modifier),
+                    .width(NuvioTokens.Space.s80)
+                    .height(NuvioTokens.Space.s48)
+                    .clip(tokens.shapes.compactCard)
+                    .then(if (shouldBlurArtwork) Modifier.blur(NuvioTokens.Space.s18) else Modifier),
                 contentScale = ContentScale.Crop,
             )
         }
@@ -488,7 +391,7 @@ private fun EpisodeRow(
         Column(modifier = Modifier.weight(1f)) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(tokens.spacing.controlGap),
             ) {
                 val episodeLabel = buildString {
                     if (episode.season != null && episode.episode != null) {
@@ -506,22 +409,22 @@ private fun EpisodeRow(
                 if (episodeLabel.isNotBlank()) {
                     Text(
                         text = episodeLabel,
-                        color = colorScheme.onSurfaceVariant,
-                        fontSize = 11.sp,
+                        color = tokens.colors.textMuted,
+                        fontSize = NuvioTokens.Type.labelXs,
                         fontWeight = FontWeight.SemiBold,
                     )
                 }
                 if (isCurrent) {
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(999.dp))
-                            .background(colorScheme.primaryContainer)
-                            .padding(horizontal = 6.dp, vertical = 2.dp),
+                            .clip(tokens.shapes.chip)
+                            .background(tokens.colors.accent)
+                            .padding(horizontal = NuvioTokens.Space.s6, vertical = NuvioTokens.Space.s2),
                     ) {
                         Text(
                             text = stringResource(Res.string.compose_player_playing),
-                            color = colorScheme.onPrimaryContainer,
-                            fontSize = 9.sp,
+                            color = tokens.colors.onAccent,
+                            fontSize = NuvioTokens.Type.labelXs,
                             fontWeight = FontWeight.SemiBold,
                         )
                     }
@@ -529,8 +432,8 @@ private fun EpisodeRow(
             }
             Text(
                 text = episode.title,
-                color = colorScheme.onSurface,
-                fontSize = 13.sp,
+                color = tokens.colors.textPrimary,
+                fontSize = NuvioTokens.Type.bodySm,
                 fontWeight = FontWeight.Medium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -538,8 +441,8 @@ private fun EpisodeRow(
             episode.overview?.let { overview ->
                 Text(
                     text = overview,
-                    color = colorScheme.onSurfaceVariant,
-                    fontSize = 11.sp,
+                    color = tokens.colors.textSecondary,
+                    fontSize = NuvioTokens.Type.labelXs,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -559,7 +462,15 @@ private fun EpisodeStreamsSubView(
     onReload: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val colorScheme = MaterialTheme.colorScheme
+    val tokens = MaterialTheme.nuvio
+    val debridSettings by remember {
+        DebridSettingsRepository.ensureLoaded()
+        DebridSettingsRepository.uiState
+    }.collectAsStateWithLifecycle()
+    val streamBadgeSettings by remember {
+        StreamBadgeSettingsRepository.ensureLoaded()
+        StreamBadgeSettingsRepository.uiState
+    }.collectAsStateWithLifecycle()
 
     val episode = state.selectedEpisode ?: return
     val streamsUiState = state.streamsUiState
@@ -569,14 +480,14 @@ private fun EpisodeStreamsSubView(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 16.dp),
+                .padding(horizontal = tokens.spacing.sheetPadding, vertical = tokens.spacing.cardPadding),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
                 text = stringResource(Res.string.compose_player_panel_streams),
-                color = colorScheme.onSurface,
-                fontSize = 18.sp,
+                color = tokens.colors.textPrimary,
+                style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Bold,
             )
             PanelChipButton(label = stringResource(Res.string.action_close), onClick = onDismiss)
@@ -586,10 +497,10 @@ private fun EpisodeStreamsSubView(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp)
-                .padding(bottom = 8.dp),
+                .padding(horizontal = tokens.spacing.sheetPadding)
+                .padding(bottom = tokens.spacing.controlGap),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(tokens.spacing.controlGap),
         ) {
             PanelChipButton(
                 label = stringResource(Res.string.action_back),
@@ -617,8 +528,8 @@ private fun EpisodeStreamsSubView(
                         append(episode.title)
                     }
                 },
-                color = colorScheme.onSurfaceVariant,
-                fontSize = 12.sp,
+                color = tokens.colors.textMuted,
+                fontSize = NuvioTokens.Type.labelSm,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
@@ -634,9 +545,9 @@ private fun EpisodeStreamsSubView(
                 modifier = Modifier
                     .fillMaxWidth()
                     .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 20.dp)
-                    .padding(bottom = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    .padding(horizontal = tokens.spacing.sheetPadding)
+                    .padding(bottom = tokens.spacing.listGap),
+                horizontalArrangement = Arrangement.spacedBy(tokens.spacing.controlGap),
             ) {
                 AddonFilterChip(
                     label = stringResource(Res.string.collections_tab_all),
@@ -662,13 +573,12 @@ private fun EpisodeStreamsSubView(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(vertical = 40.dp),
+                        .padding(vertical = NuvioTokens.Space.s40),
                     contentAlignment = Alignment.Center,
                 ) {
-                    CircularProgressIndicator(
-                        color = colorScheme.primary,
-                        strokeWidth = 2.dp,
-                        modifier = Modifier.size(28.dp),
+                    NuvioLoadingIndicator(
+                        color = tokens.colors.accent,
+                        modifier = Modifier.size(tokens.icons.lg + NuvioTokens.Space.s4),
                     )
                 }
             }
@@ -677,13 +587,13 @@ private fun EpisodeStreamsSubView(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(vertical = 40.dp),
+                        .padding(vertical = NuvioTokens.Space.s40),
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
                         text = stringResource(Res.string.compose_player_no_streams_found),
-                        color = colorScheme.onSurfaceVariant,
-                        fontSize = 14.sp,
+                        color = tokens.colors.textMuted,
+                        style = MaterialTheme.typography.bodyMedium,
                     )
                 }
             }
@@ -691,70 +601,27 @@ private fun EpisodeStreamsSubView(
             else -> {
                 val streams = streamsUiState.filteredGroups.flatMap { it.streams }
                 LazyColumn(
-                    modifier = Modifier.padding(horizontal = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 16.dp),
+                    modifier = Modifier.padding(horizontal = tokens.spacing.cardPadding),
+                    verticalArrangement = Arrangement.spacedBy(NuvioTokens.Space.s6),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = tokens.spacing.cardPadding),
                 ) {
                     itemsIndexed(
                         items = streams,
-                        key = { index, stream -> "${stream.addonId}::${index}::${stream.url ?: stream.infoHash ?: stream.name}" },
+                        key = { index, stream -> "${stream.addonId}::${index}::${stream.url ?: stream.infoHash ?: stream.externalUrl ?: stream.clientResolve?.infoHash ?: stream.name}" },
                     ) { _, stream ->
-                        EpisodeSourceStreamRow(
+                        StreamCard(
                             stream = stream,
+                            enabled = stream.isSelectableForPlayback(debridSettings.canResolvePlayableLinks),
+                            appendInstantServiceToDefaultName = debridSettings.canResolvePlayableLinks &&
+                                !debridSettings.hasCustomStreamFormatting,
+                            showFileSizeBadges = streamBadgeSettings.showFileSizeBadges,
+                            showAddonLogo = streamBadgeSettings.showAddonLogo,
+                            badgePlacement = streamBadgeSettings.badgePlacement,
                             onClick = { onStreamSelected(stream, episode) },
                         )
                     }
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun EpisodeSourceStreamRow(
-    stream: StreamItem,
-    onClick: () -> Unit,
-) {
-    val colorScheme = MaterialTheme.colorScheme
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(colorScheme.surfaceVariant.copy(alpha = 0.35f))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = stream.streamLabel,
-                color = colorScheme.onSurface,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Medium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            stream.streamSubtitle?.let { subtitle ->
-                if (subtitle != stream.streamLabel) {
-                    Text(
-                        text = subtitle,
-                        color = colorScheme.onSurfaceVariant,
-                        fontSize = 12.sp,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            }
-            Text(
-                text = stream.addonName,
-                color = colorScheme.onSurfaceVariant,
-                fontSize = 11.sp,
-                fontStyle = FontStyle.Italic,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
         }
     }
 }

@@ -4,6 +4,8 @@ import androidx.compose.ui.graphics.Color
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
+const val MAX_PROFILES = 6
+
 @Serializable
 data class NuvioProfile(
     val id: String = "",
@@ -43,6 +45,8 @@ data class ProfileState(
     val profiles: List<NuvioProfile> = emptyList(),
     val activeProfile: NuvioProfile? = null,
     val isLoaded: Boolean = false,
+    val hasEverSelectedProfile: Boolean = false,
+    val rememberLastProfileEnabled: Boolean = false,
 )
 
 @Serializable

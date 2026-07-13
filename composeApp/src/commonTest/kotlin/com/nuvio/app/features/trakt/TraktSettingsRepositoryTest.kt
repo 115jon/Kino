@@ -4,9 +4,36 @@ import com.nuvio.app.features.library.LibrarySourceMode
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class TraktSettingsRepositoryTest {
+
+    @Test
+    fun `watch source outbox survives restart and a stale push cannot clear a newer choice`() {
+        val disk = mutableMapOf<Int, String>()
+        fun newOutbox() = WatchProgressSourceSettingsOutbox(
+            loadPayload = disk::get,
+            savePayload = disk::set,
+            clearPayload = disk::remove,
+        )
+        val traktChoice = PendingWatchProgressSourceChange(
+            accountId = "account-a",
+            profileId = 2,
+            source = WatchProgressSource.TRAKT,
+        )
+        val nuvioChoice = traktChoice.copy(source = WatchProgressSource.NUVIO_SYNC)
+
+        newOutbox().record(traktChoice)
+        val afterProcessRestart = newOutbox()
+        assertEquals(traktChoice, afterProcessRestart.pendingFor("account-a", 2))
+
+        afterProcessRestart.record(nuvioChoice)
+        assertFalse(afterProcessRestart.clearIfMatches(traktChoice))
+        assertEquals(nuvioChoice, afterProcessRestart.pendingFor("account-a", 2))
+        assertTrue(afterProcessRestart.clearIfMatches(nuvioChoice))
+        assertNull(afterProcessRestart.pendingFor("account-a", 2))
+    }
 
     @Test
     fun `watch progress source defaults to Trakt for unset or invalid storage`() {
@@ -35,6 +62,19 @@ class TraktSettingsRepositoryTest {
     }
 
     @Test
+    fun `more like this source defaults to Trakt for unset or invalid storage`() {
+        assertEquals(MoreLikeThisSourcePreference.TRAKT, MoreLikeThisSourcePreference.fromStorage(null))
+        assertEquals(MoreLikeThisSourcePreference.TRAKT, MoreLikeThisSourcePreference.fromStorage(""))
+        assertEquals(MoreLikeThisSourcePreference.TRAKT, MoreLikeThisSourcePreference.fromStorage("not-a-source"))
+    }
+
+    @Test
+    fun `more like this source restores valid storage values`() {
+        assertEquals(MoreLikeThisSourcePreference.TRAKT, MoreLikeThisSourcePreference.fromStorage("TRAKT"))
+        assertEquals(MoreLikeThisSourcePreference.TMDB, MoreLikeThisSourcePreference.fromStorage("TMDB"))
+    }
+
+    @Test
     fun `continue watching cap normalizes finite windows and all history`() {
         assertEquals(TRAKT_CONTINUE_WATCHING_DAYS_CAP_ALL, normalizeTraktContinueWatchingDaysCap(0))
         assertEquals(7, normalizeTraktContinueWatchingDaysCap(1))
@@ -50,6 +90,31 @@ class TraktSettingsRepositoryTest {
     }
 
     @Test
+    fun `effective progress source falls back to Nuvio when Trakt is unavailable`() {
+        assertEquals(
+            WatchProgressSource.NUVIO_SYNC,
+            effectiveWatchProgressSource(
+                isTraktAuthenticated = false,
+                requestedSource = WatchProgressSource.TRAKT,
+            ),
+        )
+        assertEquals(
+            WatchProgressSource.NUVIO_SYNC,
+            effectiveWatchProgressSource(
+                isTraktAuthenticated = true,
+                requestedSource = WatchProgressSource.NUVIO_SYNC,
+            ),
+        )
+        assertEquals(
+            WatchProgressSource.TRAKT,
+            effectiveWatchProgressSource(
+                isTraktAuthenticated = true,
+                requestedSource = WatchProgressSource.TRAKT,
+            ),
+        )
+    }
+
+    @Test
     fun `effective library source uses Trakt only when authenticated and selected`() {
         assertEquals(
             LibrarySourceMode.LOCAL,
@@ -62,6 +127,28 @@ class TraktSettingsRepositoryTest {
         assertEquals(
             LibrarySourceMode.TRAKT,
             effectiveLibrarySourceMode(isAuthenticated = true, source = LibrarySourceMode.TRAKT),
+        )
+    }
+
+    @Test
+    fun `Trakt more like this is active only when authenticated and selected`() {
+        assertFalse(
+            shouldUseTraktMoreLikeThis(
+                isAuthenticated = false,
+                source = MoreLikeThisSourcePreference.TRAKT,
+            ),
+        )
+        assertFalse(
+            shouldUseTraktMoreLikeThis(
+                isAuthenticated = true,
+                source = MoreLikeThisSourcePreference.TMDB,
+            ),
+        )
+        assertTrue(
+            shouldUseTraktMoreLikeThis(
+                isAuthenticated = true,
+                source = MoreLikeThisSourcePreference.TRAKT,
+            ),
         )
     }
 }
