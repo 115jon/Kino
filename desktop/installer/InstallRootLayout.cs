@@ -7,7 +7,7 @@ namespace Installer
 {
     public sealed class InstallRootLayout
     {
-        public const string DefaultInstallDirectoryName = "Nuvio";
+        public const string DefaultInstallDirectoryName = "Kino";
         public const string CurrentStateFileName = "current.json";
         public const string RootLauncherFileName = "Update.exe";
         public const string RootIconFileName = "app.ico";

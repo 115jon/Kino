@@ -31,7 +31,7 @@ namespace Installer
             {
                 StatusText.Text = "Installing desktop app...";
                 await InstallerLogic.RunInstallationAsync();
-                StatusText.Text = "Launching Nuvio...";
+                StatusText.Text = "Launching Kino...";
                 await Task.Delay(900);
                 Application.Current.Shutdown();
             }
@@ -47,9 +47,9 @@ namespace Installer
 
         private void ConfigureForUninstall()
         {
-            Title = "Nuvio Uninstall";
-            StatusText.Text = "Uninstall Nuvio?";
-            DetailText.Text = "This removes Nuvio, its shortcuts, and installer registration. Your app data is kept.";
+            Title = "Kino Uninstall";
+            StatusText.Text = "Uninstall Kino?";
+            DetailText.Text = "This removes Kino, its shortcuts, and installer registration. Your app data is kept.";
             DetailText.Visibility = Visibility.Visible;
             ProgressContainer.Visibility = Visibility.Collapsed;
             ActionButtonsPanel.Visibility = Visibility.Visible;
@@ -62,12 +62,12 @@ namespace Installer
             ActionButtonsPanel.Visibility = Visibility.Collapsed;
             ProgressContainer.Visibility = Visibility.Visible;
             StatusText.Text = "Uninstalling...";
-            DetailText.Text = "Removing Nuvio from this PC.";
+            DetailText.Text = "Removing Kino from this PC.";
 
             try
             {
                 await InstallerLogic.RunUninstallationAsync();
-                StatusText.Text = "Nuvio was removed.";
+                StatusText.Text = "Kino was removed.";
                 await Task.Delay(900);
                 Application.Current.Shutdown();
             }

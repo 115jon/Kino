@@ -32,7 +32,7 @@ fun main() {
         Window(
             state = windowState,
             onCloseRequest = ::exitApplication,
-            title = "Nuvio",
+            title = "Kino",
             icon = painterResource(Res.drawable.app_logo_wordmark),
         ) {
             DisposableEffect(window) {

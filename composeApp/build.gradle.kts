@@ -495,7 +495,7 @@ compose.desktop {
             configurationFiles.from(project.file("desktop-proguard-rules.pro"))
         }
         nativeDistributions {
-            packageName = "Nuvio"
+            packageName = "Kino"
             packageVersion = releaseAppVersionName
             description = "Kino desktop streaming app"
             vendor = "Kino"
@@ -507,10 +507,10 @@ compose.desktop {
             )
             macOS {
                 dockName = "Kino"
-                iconFile.set(project.file("desktop-icons/nuvio.icns"))
+                iconFile.set(project.file("desktop-icons/kino.icns"))
             }
             windows {
-                iconFile.set(project.file("desktop-icons/nuvio.ico"))
+                iconFile.set(project.file("desktop-icons/kino.ico"))
                 menu = true
                 menuGroup = "Kino"
                 dirChooser = true

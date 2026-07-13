@@ -4,16 +4,16 @@
     <TargetFramework>net48</TargetFramework>
     <LangVersion>latest</LangVersion>
     <UseWPF>true</UseWPF>
-    <AssemblyName>NuvioSetup</AssemblyName>
+    <AssemblyName>KinoSetup</AssemblyName>
     <RootNamespace>Installer</RootNamespace>
-    <ApplicationIcon>..\..\composeApp\desktop-icons\nuvio.ico</ApplicationIcon>
-    <Company>Nuvio</Company>
-    <Product>Nuvio Setup</Product>
+    <ApplicationIcon>..\..\composeApp\desktop-icons\kino.ico</ApplicationIcon>
+    <Company>Kino</Company>
+    <Product>Kino Setup</Product>
     <Version>0.0.0</Version>
   </PropertyGroup>
 
   <ItemGroup>
-    <Resource Include="..\..\composeApp\desktop-icons\nuvio.ico" Link="Assets\icon.ico" />
+    <Resource Include="..\..\composeApp\desktop-icons\kino.ico" Link="Assets\icon.ico" />
     <EmbeddedResource Include="Assets\payload.zip" Condition="Exists('Assets\payload.zip')" />
   </ItemGroup>
 

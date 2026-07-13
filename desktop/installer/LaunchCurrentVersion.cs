@@ -48,7 +48,7 @@ namespace Installer
                 Path.GetFileName(command.ProcessName));
             if (!File.Exists(executablePath))
             {
-                throw new FileNotFoundException("The active Nuvio executable was not found.", executablePath);
+                throw new FileNotFoundException("The active Kino executable was not found.", executablePath);
             }
 
             return new LaunchRequest(

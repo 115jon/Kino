@@ -5,7 +5,7 @@ param(
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $gradlePath = Join-Path $repoRoot "gradlew.bat"
-$installerProject = Join-Path $repoRoot "desktop\installer\NuvioSetup.csproj"
+$installerProject = Join-Path $repoRoot "desktop\installer\KinoSetup.csproj"
 $runtimeScript = Join-Path $repoRoot "desktop\scripts\prepare-windows-mpv-runtime.ps1"
 $payloadZip = Join-Path $repoRoot "desktop\installer\Assets\payload.zip"
 $versionFile = Join-Path $repoRoot "iosApp\Configuration\Version.xcconfig"
@@ -20,7 +20,7 @@ $versionLine = Get-Content -LiteralPath $versionFile | Where-Object { $_ -match 
 if ($null -eq $versionLine -or $versionLine -notmatch '=\s*([^\s#]+)') { throw "MARKETING_VERSION is missing from $versionFile" }
 $version = $matches[1]
 
-Write-Host "Building Nuvio desktop distributable $version..."
+Write-Host "Building Kino desktop distributable $version..."
 & powershell -ExecutionPolicy Bypass -File $runtimeScript
 if ($LASTEXITCODE -ne 0) { throw "Windows MPV runtime preparation failed with exit code $LASTEXITCODE." }
 Push-Location $repoRoot
@@ -32,11 +32,11 @@ finally {
     Pop-Location
 }
 
-$payloadExecutable = Get-ChildItem -LiteralPath $distributableRoot -Filter "Nuvio.exe" -Recurse -File -ErrorAction SilentlyContinue |
+$payloadExecutable = Get-ChildItem -LiteralPath $distributableRoot -Filter "Kino.exe" -Recurse -File -ErrorAction SilentlyContinue |
     Sort-Object LastWriteTime -Descending |
     Select-Object -First 1
 if ($null -eq $payloadExecutable) {
-    throw "Nuvio.exe was not found under $distributableRoot"
+    throw "Kino.exe was not found under $distributableRoot"
 }
 
 $payloadDirectory = $payloadExecutable.Directory.FullName
@@ -60,13 +60,13 @@ Write-Host "Packaging payload from $payloadDirectory"
     "/p:AssemblyVersion=$version.0" `
     "/p:FileVersion=$version.0" `
     "/p:InformationalVersion=$version"
-if ($LASTEXITCODE -ne 0) { throw "Nuvio installer build failed with exit code $LASTEXITCODE." }
+if ($LASTEXITCODE -ne 0) { throw "Kino installer build failed with exit code $LASTEXITCODE." }
 
-$installerOutput = Join-Path $repoRoot "desktop\installer\bin\$Configuration\net48\NuvioSetup.exe"
+$installerOutput = Join-Path $repoRoot "desktop\installer\bin\$Configuration\net48\KinoSetup.exe"
 if (-not (Test-Path -LiteralPath $installerOutput)) {
     throw "Installer output was not found: $installerOutput"
 }
 
-$finalOutput = Join-Path $repoRoot "desktop\installer\bin\$Configuration\NuvioSetup-$version.exe"
+$finalOutput = Join-Path $repoRoot "desktop\installer\bin\$Configuration\KinoSetup-$version.exe"
 Copy-Item -LiteralPath $installerOutput -Destination $finalOutput -Force
 Write-Host "Installer created: $finalOutput"

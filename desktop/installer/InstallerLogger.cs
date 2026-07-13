@@ -14,7 +14,7 @@ namespace Installer
         public static void Initialize(string[] args)
         {
             EnsureInitialized();
-            Info("Nuvio installer started with args: " + FormatArgs(args));
+            Info("Kino installer started with args: " + FormatArgs(args));
         }
 
         public static void Info(string message) => Write("INFO", message, null);
@@ -34,7 +34,7 @@ namespace Installer
             {
                 if (logFilePath != null) return;
                 string roaming = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-                string directory = Path.Combine(roaming, "Nuvio", "logs", "installer");
+                string directory = Path.Combine(roaming, "Kino", "logs", "installer");
                 Directory.CreateDirectory(directory);
                 logFilePath = Path.Combine(directory, "installer-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + "-pid" + Process.GetCurrentProcess().Id + ".log");
             }

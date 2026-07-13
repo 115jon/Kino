@@ -23,8 +23,8 @@ namespace Installer
                 }
                 catch (Exception exception)
                 {
-                    InstallerLogger.Error("Could not launch the active Nuvio version.", exception);
-                    MessageBox.Show(InstallerLogger.AppendLogPath(exception.Message), "Nuvio Launch Failed", MessageBoxButton.OK, MessageBoxImage.Error);
+                    InstallerLogger.Error("Could not launch the active Kino version.", exception);
+                    MessageBox.Show(InstallerLogger.AppendLogPath(exception.Message), "Kino Launch Failed", MessageBoxButton.OK, MessageBoxImage.Error);
                     Environment.Exit(1);
                 }
             }

@@ -14,24 +14,28 @@ namespace Installer
 {
     public static class InstallerLogic
     {
-        private const string DisplayName = "Nuvio";
-        private const string Publisher = "Nuvio";
-        private const string UninstallKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\Nuvio";
-        private const string InstallLocationKeyPath = @"Software\Nuvio\Nuvio";
-        private const string LauncherArguments = "--processStart Nuvio.exe";
+        private const string DisplayName = "Kino";
+        private const string Publisher = "Kino";
+        private const string UninstallKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\Kino";
+        private const string InstallLocationKeyPath = @"Software\Kino\Kino";
+        private const string LauncherArguments = "--processStart Kino.exe";
         private const string UninstallerName = "Update.exe";
 
-        public const string ExecutableFileName = "Nuvio.exe";
+        public const string ExecutableFileName = "Kino.exe";
 
-        private static readonly string[] ManagedProcessNames = { "Nuvio" };
-        private static readonly string[] ShortcutFileNames = { "Nuvio.lnk", @"Nuvio\Nuvio.lnk" };
+        private static readonly string[] ManagedProcessNames = { "Kino" };
+        private static readonly string[] ShortcutFileNames =
+        {
+            "Kino.lnk",
+            @"Kino\Kino.lnk"
+        };
 
         public static async Task RunInstallationAsync()
         {
             await Task.Run(() =>
             {
                 InstallRootLayout layout = InstallRootLayout.FromLocalAppData(GetLocalAppDataDirectory());
-                InstallerLogger.Info("Installing Nuvio to " + layout.RootPath);
+                InstallerLogger.Info("Installing Kino to " + layout.RootPath);
 
                 WaitForProcessesToExit(layout, TimeSpan.FromSeconds(30));
                 DeleteShortcuts();
@@ -50,7 +54,7 @@ namespace Installer
                 CreateCompatibilityInstallLocationKey(layout.RootPath);
                 CreateShortcuts(layout.RootPath, layout.UpdateExePath, layout.RootIconPath);
                 LaunchApplication(layout.UpdateExePath, LauncherArguments, layout.RootPath);
-                InstallerLogger.Info("Nuvio installation completed.");
+                InstallerLogger.Info("Kino installation completed.");
             }).ConfigureAwait(false);
         }
 
@@ -59,14 +63,14 @@ namespace Installer
             await Task.Run(() =>
             {
                 InstallRootLayout layout = InstallRootLayout.FromLocalAppData(GetLocalAppDataDirectory());
-                InstallerLogger.Info("Uninstalling Nuvio from " + layout.RootPath);
+                InstallerLogger.Info("Uninstalling Kino from " + layout.RootPath);
 
                 WaitForProcessesToExit(layout, TimeSpan.FromSeconds(30));
                 DeleteShortcuts();
                 DeleteRegistryKeyTree(Registry.CurrentUser, UninstallKeyPath);
                 DeleteRegistryKeyTree(Registry.CurrentUser, InstallLocationKeyPath);
                 ScheduleDirectoryDeletion(layout.RootPath);
-                InstallerLogger.Info("Nuvio uninstall cleanup scheduled.");
+                InstallerLogger.Info("Kino uninstall cleanup scheduled.");
             }).ConfigureAwait(false);
         }
 
@@ -103,7 +107,7 @@ namespace Installer
                 Thread.Sleep(500);
             }
 
-            InstallerLogger.Warn("Timed out waiting for Nuvio processes to exit.");
+            InstallerLogger.Warn("Timed out waiting for Kino processes to exit.");
         }
 
         private static bool ProcessMatchesPath(Process process, IEnumerable<string> paths)
@@ -208,7 +212,7 @@ namespace Installer
             using (Icon icon = Icon.ExtractAssociatedIcon(GetCurrentProcessPath()))
             using (FileStream stream = File.Create(destinationPath))
             {
-                if (icon == null) throw new InvalidOperationException("Nuvio installer icon could not be extracted.");
+                if (icon == null) throw new InvalidOperationException("Kino installer icon could not be extracted.");
                 icon.Save(stream);
             }
         }
@@ -247,8 +251,8 @@ namespace Installer
             if (shellType == null) throw new InvalidOperationException("Windows shortcut support is unavailable.");
 
             dynamic shell = Activator.CreateInstance(shellType);
-            CreateShortcut(shell, Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), "Nuvio.lnk"), installRoot, launcherPath, iconPath);
-            CreateShortcut(shell, Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Programs), "Nuvio.lnk"), installRoot, launcherPath, iconPath);
+            CreateShortcut(shell, Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), "Kino.lnk"), installRoot, launcherPath, iconPath);
+            CreateShortcut(shell, Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Programs), "Kino.lnk"), installRoot, launcherPath, iconPath);
         }
 
         private static void CreateShortcut(dynamic shell, string path, string workingDirectory, string targetPath, string iconPath)
