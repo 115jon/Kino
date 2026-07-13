@@ -24,6 +24,8 @@ node_modules/
 logs/
 Docs
 keystore/
+.secrets/
+.env.kino.local
 scripts/build-distribution.sh
 desktop/installer/Assets/payload.zip
 desktop/installer/bin/
