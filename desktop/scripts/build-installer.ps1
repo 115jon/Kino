@@ -6,12 +6,14 @@ param(
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $gradlePath = Join-Path $repoRoot "gradlew.bat"
 $installerProject = Join-Path $repoRoot "desktop\installer\NuvioSetup.csproj"
+$runtimeScript = Join-Path $repoRoot "desktop\scripts\prepare-windows-mpv-runtime.ps1"
 $payloadZip = Join-Path $repoRoot "desktop\installer\Assets\payload.zip"
 $versionFile = Join-Path $repoRoot "iosApp\Configuration\Version.xcconfig"
 $distributableRoot = Join-Path $repoRoot "composeApp\build\compose\binaries\main-release\app"
 
 if (-not (Test-Path -LiteralPath $gradlePath)) { throw "Gradle wrapper not found: $gradlePath" }
 if (-not (Test-Path -LiteralPath $installerProject)) { throw "Installer project not found: $installerProject" }
+if (-not (Test-Path -LiteralPath $runtimeScript)) { throw "MPV runtime preparation script not found: $runtimeScript" }
 if (-not (Test-Path -LiteralPath $versionFile)) { throw "Version file not found: $versionFile" }
 
 $versionLine = Get-Content -LiteralPath $versionFile | Where-Object { $_ -match '^\s*MARKETING_VERSION\s*=' } | Select-Object -First 1
@@ -19,6 +21,8 @@ if ($null -eq $versionLine -or $versionLine -notmatch '=\s*([^\s#]+)') { throw "
 $version = $matches[1]
 
 Write-Host "Building Nuvio desktop distributable $version..."
+& powershell -ExecutionPolicy Bypass -File $runtimeScript
+if ($LASTEXITCODE -ne 0) { throw "Windows MPV runtime preparation failed with exit code $LASTEXITCODE." }
 Push-Location $repoRoot
 try {
     & $gradlePath ":composeApp:createReleaseDistributable"

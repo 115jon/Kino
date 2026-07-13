@@ -1,0 +1,14 @@
+Kino Windows MPV Runtime
+
+This archive contains the Windows MPV runtime used by Kino Desktop:
+
+- libmpv-2.dll
+- mpv.dll
+
+The binaries were built from mpv 0.41.0-744-g304426c39 for Windows amd64.
+They are distributed separately from the Kino source repository so generated
+native binaries do not become part of the application Git history.
+
+mpv and its bundled components are distributed under their applicable open
+source licenses. See https://github.com/mpv-player/mpv for source, license,
+and corresponding source-offer information.
