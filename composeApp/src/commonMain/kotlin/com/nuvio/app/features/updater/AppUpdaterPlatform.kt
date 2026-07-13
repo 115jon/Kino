@@ -3,6 +3,8 @@ package com.nuvio.app.features.updater
 expect object AppUpdaterPlatform {
     val isSupported: Boolean
 
+    val isDesktop: Boolean
+
     fun getSupportedAbis(): List<String>
 
     fun getIgnoredTag(): String?

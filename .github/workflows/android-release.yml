@@ -1,0 +1,57 @@
+name: Android Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'kino-*'
+
+permissions:
+  contents: write
+
+jobs:
+  android-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Decode signing keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KINO_RELEASE_KEYSTORE_BASE64 }}
+        run: printf '%s' "$KEYSTORE_BASE64" | base64 --decode > kino-release.keystore
+
+      - name: Configure runtime and signing properties
+        env:
+          SUPABASE_URL: ${{ secrets.KINO_SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.KINO_SUPABASE_ANON_KEY }}
+          INTRODB_API_URL: ${{ secrets.KINO_INTRODB_API_URL }}
+          STORE_PASSWORD: ${{ secrets.KINO_RELEASE_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KINO_RELEASE_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KINO_RELEASE_KEY_PASSWORD }}
+        run: |
+          cat > local.properties <<EOF
+          SUPABASE_URL=$SUPABASE_URL
+          SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY
+          INTRODB_API_URL=$INTRODB_API_URL
+          KINO_APPLICATION_ID=com.kino.app
+          NUVIO_RELEASE_STORE_FILE=$GITHUB_WORKSPACE/kino-release.keystore
+          NUVIO_RELEASE_STORE_PASSWORD=$STORE_PASSWORD
+          NUVIO_RELEASE_KEY_ALIAS=$KEY_ALIAS
+          NUVIO_RELEASE_KEY_PASSWORD=$KEY_PASSWORD
+          EOF
+
+      - name: Build full release APK
+        run: ./gradlew --no-daemon :composeApp:assembleFullRelease
+
+      - name: Publish APK
+        uses: softprops/action-gh-release@v2
+        with:
+          files: composeApp/build/outputs/apk/full/release/*.apk
+          generate_release_notes: true

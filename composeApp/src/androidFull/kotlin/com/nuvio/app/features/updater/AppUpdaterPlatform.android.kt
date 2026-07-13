@@ -2,6 +2,7 @@ package com.nuvio.app.features.updater
 
 actual object AppUpdaterPlatform {
     actual val isSupported: Boolean = true
+    actual val isDesktop: Boolean = false
 
     actual fun getSupportedAbis(): List<String> = AndroidAppUpdaterPlatform.getSupportedAbis()
 

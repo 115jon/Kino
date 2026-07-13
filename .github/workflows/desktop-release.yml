@@ -1,0 +1,46 @@
+name: Desktop Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'kino-*'
+
+permissions:
+  contents: write
+
+jobs:
+  windows-installer:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Configure runtime properties
+        shell: pwsh
+        env:
+          SUPABASE_URL: ${{ secrets.KINO_SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.KINO_SUPABASE_ANON_KEY }}
+          INTRODB_API_URL: ${{ secrets.KINO_INTRODB_API_URL }}
+        run: |
+          @"
+          SUPABASE_URL=$env:SUPABASE_URL
+          SUPABASE_ANON_KEY=$env:SUPABASE_ANON_KEY
+          INTRODB_API_URL=$env:INTRODB_API_URL
+          "@ | Set-Content -Path local.properties -Encoding ascii
+
+      - name: Build installer
+        shell: pwsh
+        run: powershell -ExecutionPolicy Bypass -File .\desktop\scripts\build-installer.ps1
+
+      - name: Publish installer
+        uses: softprops/action-gh-release@v2
+        with:
+          files: desktop/installer/bin/Release/NuvioSetup-*.exe
+          generate_release_notes: true

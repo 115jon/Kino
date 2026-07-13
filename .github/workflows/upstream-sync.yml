@@ -1,0 +1,50 @@
+name: Upstream Sync
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 3 * * 1'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  propose-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Kino desktop branch
+        uses: actions/checkout@v4
+        with:
+          ref: desktop
+          fetch-depth: 0
+
+      - name: Fetch upstream
+        run: |
+          git remote add upstream https://github.com/NuvioMedia/NuvioMobile.git
+          git fetch upstream cmp-rewrite
+
+      - name: Create synchronization branch
+        id: sync
+        run: |
+          branch="sync/upstream-cmp-rewrite-$(date -u +%Y%m%d-%H%M%S)"
+          git switch -c "$branch"
+          if git diff --quiet HEAD upstream/cmp-rewrite; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git merge --no-edit upstream/cmp-rewrite
+          git push origin "$branch"
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Open synchronization pull request
+        if: steps.sync.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh pr create \
+            --base desktop \
+            --head "${{ steps.sync.outputs.branch }}" \
+            --title "chore: sync upstream cmp-rewrite" \
+            --body "This pull request proposes the latest upstream cmp-rewrite changes for review. Resolve conflicts manually if the merge cannot be completed automatically."
