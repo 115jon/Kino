@@ -21,8 +21,15 @@ internal enum class PlayerWindowMode {
     Desktop,
 }
 
-internal fun playerWindowMode(widthDp: Float): PlayerWindowMode =
-    if (widthDp >= 1024f) PlayerWindowMode.Desktop else PlayerWindowMode.Mobile
+internal fun playerWindowMode(
+    widthDp: Float,
+    desktopPlatform: Boolean = false,
+): PlayerWindowMode =
+    if ((desktopPlatform && widthDp >= 768f) || widthDp >= 1024f) {
+        PlayerWindowMode.Desktop
+    } else {
+        PlayerWindowMode.Mobile
+    }
 
 internal data class PlayerLayoutMetrics(
     val horizontalPadding: Dp,

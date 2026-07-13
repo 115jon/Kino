@@ -10,4 +10,10 @@ class PlayerLayoutTest {
         assertEquals(PlayerWindowMode.Desktop, playerWindowMode(1024f))
         assertEquals(PlayerWindowMode.Desktop, playerWindowMode(1920f))
     }
+
+    @Test
+    fun `desktop platform keeps desktop controls available at usable scaled widths`() {
+        assertEquals(PlayerWindowMode.Mobile, playerWindowMode(767f, desktopPlatform = false))
+        assertEquals(PlayerWindowMode.Desktop, playerWindowMode(768f, desktopPlatform = true))
+    }
 }

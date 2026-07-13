@@ -46,6 +46,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.nuvio.app.getPlatform
 import com.nuvio.app.features.addons.AddonRepository
 import com.nuvio.app.features.details.MetaDetailsRepository
 import com.nuvio.app.features.details.MetaScreenSettingsRepository
@@ -249,7 +250,10 @@ fun PlayerScreen(
     ) {
         val horizontalSafePadding = playerHorizontalSafePadding()
         val metrics = remember(maxWidth) { PlayerLayoutMetrics.fromWidth(maxWidth) }
-        val windowMode = remember(maxWidth) { playerWindowMode(maxWidth.value) }
+        val isDesktopPlatform = remember { getPlatform().name == "Desktop" }
+        val windowMode = remember(maxWidth, isDesktopPlatform) {
+            playerWindowMode(maxWidth.value, desktopPlatform = isDesktopPlatform)
+        }
         val isDesktopLayout = windowMode == PlayerWindowMode.Desktop
         val sliderEdgePadding = horizontalSafePadding + metrics.horizontalPadding
         val scope = rememberCoroutineScope()

@@ -86,6 +86,8 @@ import com.nuvio.app.core.sync.AppForegroundMonitor
 import com.nuvio.app.core.sync.ProfileSettingsSync
 import com.nuvio.app.core.sync.SyncManager
 import com.nuvio.app.core.ui.NuvioNavigationBar
+import com.nuvio.app.core.ui.NuvioDesktopNavigationItem
+import com.nuvio.app.core.ui.NuvioDesktopNavigationRail
 import com.nuvio.app.core.ui.NuvioContinueWatchingActionSheet
 import com.nuvio.app.core.ui.NuvioPosterActionSheet
 import com.nuvio.app.core.ui.NuvioStatusModal
@@ -995,7 +997,9 @@ private fun MainAppContent(
                     )
 
                     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-                        val isTabletLayout = maxWidth >= 768.dp
+                        val navigationMode = appNavigationMode(maxWidth.value)
+                        val isTabletLayout = navigationMode != AppNavigationMode.Mobile
+                        val isDesktopLayout = navigationMode == AppNavigationMode.Desktop
                         val useNativeBottomTabs =
                             liquidGlassNativeTabBarSupported && liquidGlassNativeTabBarEnabled && initialHomeReady
                         val tabsRouteActive = currentBackStackEntry?.destination?.hasRoute<TabsRoute>() == true
@@ -1048,7 +1052,90 @@ private fun MainAppContent(
                                 }
                             },
                         ) { innerPadding ->
-                            Box(modifier = Modifier.fillMaxSize()) {
+                            Row(modifier = Modifier.fillMaxSize()) {
+                                if (isDesktopLayout) {
+                                    NuvioDesktopNavigationRail(
+                                        header = {
+                                            Text(
+                                                text = stringResource(Res.string.app_brand_name),
+                                                style = MaterialTheme.typography.titleLarge,
+                                                color = MaterialTheme.colorScheme.onSurface,
+                                                modifier = Modifier.padding(horizontal = 14.dp),
+                                            )
+                                        },
+                                        content = {
+                                            NuvioDesktopNavigationItem(
+                                                selected = selectedTab == AppScreenTab.Home,
+                                                onClick = { selectedTab = AppScreenTab.Home },
+                                                label = stringResource(Res.string.compose_nav_home),
+                                                contentDescription = stringResource(Res.string.compose_nav_home),
+                                                icon = {
+                                                    Icon(
+                                                        imageVector = Icons.Filled.Home,
+                                                        contentDescription = null,
+                                                        tint = if (selectedTab == AppScreenTab.Home) {
+                                                            MaterialTheme.colorScheme.primary
+                                                        } else {
+                                                            MaterialTheme.colorScheme.onSurfaceVariant
+                                                        },
+                                                    )
+                                                },
+                                            )
+                                            NuvioDesktopNavigationItem(
+                                                selected = selectedTab == AppScreenTab.Search,
+                                                onClick = { selectedTab = AppScreenTab.Search },
+                                                label = stringResource(Res.string.compose_nav_search),
+                                                contentDescription = stringResource(Res.string.compose_nav_search),
+                                                icon = {
+                                                    Icon(
+                                                        painter = painterResource(Res.drawable.sidebar_search),
+                                                        contentDescription = null,
+                                                        tint = if (selectedTab == AppScreenTab.Search) {
+                                                            MaterialTheme.colorScheme.primary
+                                                        } else {
+                                                            MaterialTheme.colorScheme.onSurfaceVariant
+                                                        },
+                                                    )
+                                                },
+                                            )
+                                            NuvioDesktopNavigationItem(
+                                                selected = selectedTab == AppScreenTab.Library,
+                                                onClick = { selectedTab = AppScreenTab.Library },
+                                                label = stringResource(Res.string.compose_nav_library),
+                                                contentDescription = stringResource(Res.string.compose_nav_library),
+                                                icon = {
+                                                    Icon(
+                                                        painter = painterResource(Res.drawable.sidebar_library),
+                                                        contentDescription = null,
+                                                        tint = if (selectedTab == AppScreenTab.Library) {
+                                                            MaterialTheme.colorScheme.primary
+                                                        } else {
+                                                            MaterialTheme.colorScheme.onSurfaceVariant
+                                                        },
+                                                    )
+                                                },
+                                            )
+                                        },
+                                        footer = {
+                                            NuvioDesktopNavigationItem(
+                                                selected = selectedTab == AppScreenTab.Settings,
+                                                onClick = { selectedTab = AppScreenTab.Settings },
+                                                label = stringResource(Res.string.compose_nav_profile),
+                                                contentDescription = stringResource(Res.string.compose_nav_profile),
+                                                icon = {
+                                                    ProfileSwitcherTab(
+                                                        selected = selectedTab == AppScreenTab.Settings,
+                                                        onClick = { selectedTab = AppScreenTab.Settings },
+                                                        onProfileSelected = onProfileSelected,
+                                                        onAddProfileRequested = onSwitchProfile,
+                                                        modifier = Modifier.size(28.dp),
+                                                    )
+                                                },
+                                            )
+                                        },
+                                    )
+                                }
+                                Box(modifier = Modifier.weight(1f).fillMaxSize()) {
                                 CompositionLocalProvider(
                                     LocalNuvioBottomNavigationOverlayPadding provides if (useNativeBottomTabs) 49.dp else 0.dp,
                                 ) {
@@ -1108,13 +1195,14 @@ private fun MainAppContent(
                                     )
                                 }
 
-                                if (isTabletLayout && !useNativeBottomTabs) {
+                                if (isTabletLayout && !isDesktopLayout && !useNativeBottomTabs) {
                                     TabletFloatingTopBar(
                                         selectedTab = selectedTab,
                                         onTabSelected = { selectedTab = it },
                                         onProfileSelected = onProfileSelected,
                                         onAddProfileRequested = onSwitchProfile,
                                     )
+                                }
                                 }
                             }
                         }

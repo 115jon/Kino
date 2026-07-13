@@ -4,11 +4,14 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
+import androidx.compose.ui.window.rememberWindowState
 import com.nuvio.app.core.logging.initializeDesktopAppLogging
 import com.nuvio.app.features.player.prewarmDesktopPlaybackBackend
 import nuvio.composeapp.generated.resources.Res
 import nuvio.composeapp.generated.resources.app_logo_wordmark
 import org.jetbrains.compose.resources.painterResource
+import androidx.compose.ui.unit.dp
+import java.awt.Dimension
 import java.awt.Color as AwtColor
 
 private val DesktopWindowBackground = AwtColor(0x0D, 0x0D, 0x0D)
@@ -25,12 +28,15 @@ fun main() {
     System.setProperty("compose.interop.blending", "true")
     initializeDesktopAppLogging()
     application {
+        val windowState = rememberWindowState(width = 1280.dp, height = 800.dp)
         Window(
+            state = windowState,
             onCloseRequest = ::exitApplication,
             title = "Nuvio",
             icon = painterResource(Res.drawable.app_logo_wordmark),
         ) {
             DisposableEffect(window) {
+                window.minimumSize = Dimension(960, 640)
                 window.background = DesktopWindowBackground
                 window.contentPane.background = DesktopWindowBackground
                 window.rootPane.background = DesktopWindowBackground
