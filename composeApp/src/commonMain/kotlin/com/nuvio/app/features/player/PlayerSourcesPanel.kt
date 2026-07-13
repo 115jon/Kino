@@ -30,13 +30,17 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -50,6 +54,7 @@ import androidx.compose.ui.unit.sp
 import com.nuvio.app.core.i18n.localizedByteUnit
 import com.nuvio.app.features.streams.StreamItem
 import com.nuvio.app.features.streams.StreamsUiState
+import kotlinx.coroutines.launch
 import kotlin.math.round
 import nuvio.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.stringResource
@@ -57,6 +62,7 @@ import org.jetbrains.compose.resources.stringResource
 @Composable
 fun PlayerSourcesPanel(
     visible: Boolean,
+    desktopLayout: Boolean,
     streamsUiState: StreamsUiState,
     currentStreamUrl: String?,
     currentStreamName: String?,
@@ -91,9 +97,12 @@ fun PlayerSourcesPanel(
             ) {
                 Box(
                     modifier = Modifier
-                        .widthIn(max = 520.dp)
+                        .widthIn(max = if (desktopLayout) 960.dp else 520.dp)
                         .fillMaxWidth(0.92f)
-                        .heightIn(max = 600.dp)
+                        .heightIn(
+                            min = if (desktopLayout) 560.dp else 0.dp,
+                            max = if (desktopLayout) 760.dp else 600.dp,
+                        )
                         .clip(RoundedCornerShape(24.dp))
                         .background(colorScheme.surface)
                         .border(1.dp, colorScheme.outlineVariant.copy(alpha = 0.8f), RoundedCornerShape(24.dp))
@@ -136,14 +145,9 @@ fun PlayerSourcesPanel(
                             streamsUiState.groups.map { it.addonName }.distinct()
                         }
                         if (addonNames.size > 1) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .horizontalScroll(rememberScrollState())
-                                    .padding(horizontal = 20.dp)
-                                    .padding(bottom = 12.dp),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            ) {
+                            val filterScrollState = rememberScrollState()
+                            val filterScope = rememberCoroutineScope()
+                            val filterContent: @Composable () -> Unit = {
                                 AddonFilterChip(
                                     label = stringResource(Res.string.collections_tab_all),
                                     isSelected = streamsUiState.selectedFilter == null,
@@ -158,6 +162,63 @@ fun PlayerSourcesPanel(
                                         hasError = group?.error != null,
                                         onClick = { onFilterSelected(group?.addonId) },
                                     )
+                                }
+                            }
+                            if (desktopLayout) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 12.dp)
+                                        .padding(bottom = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    IconButton(
+                                        enabled = filterScrollState.value > 0,
+                                        onClick = {
+                                            filterScope.launch {
+                                                filterScrollState.scrollTo((filterScrollState.value - 240).coerceAtLeast(0))
+                                            }
+                                        },
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+                                            contentDescription = stringResource(Res.string.action_back),
+                                        )
+                                    }
+                                    Row(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .horizontalScroll(filterScrollState),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    ) {
+                                        filterContent()
+                                    }
+                                    IconButton(
+                                        enabled = filterScrollState.value < filterScrollState.maxValue,
+                                        onClick = {
+                                            filterScope.launch {
+                                                filterScrollState.scrollTo(
+                                                    (filterScrollState.value + 240).coerceAtMost(filterScrollState.maxValue),
+                                                )
+                                            }
+                                        },
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                                            contentDescription = stringResource(Res.string.action_next),
+                                        )
+                                    }
+                                }
+                            } else {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .horizontalScroll(filterScrollState)
+                                        .padding(horizontal = 20.dp)
+                                        .padding(bottom = 12.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    filterContent()
                                 }
                             }
                         }

@@ -25,6 +25,10 @@ logs/
 Docs
 keystore/
 scripts/build-distribution.sh
+desktop/installer/Assets/payload.zip
+desktop/installer/bin/
+desktop/installer/obj/
+desktop/installer/.vs/
 asset
 scripts/scrape_android_compose_animation_docs.py
 tools

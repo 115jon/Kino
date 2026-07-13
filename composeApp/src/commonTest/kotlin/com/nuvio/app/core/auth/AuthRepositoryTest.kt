@@ -48,4 +48,36 @@ class AuthRepositoryTest {
             diagnostics.toLogFields(),
         )
     }
+
+    @Test
+    fun `auth error sanitizer hides raw transport details from the user`() {
+        val rawMessage = """Unknown Error
+            |URL: https://example.supabase.co/auth/v1/token?grant_type=password
+            |Headers: {Authorization=[Bearer sb... (len=46)], apikey=[sb... (len=46)]}
+            |Http Method: POST
+        """.trimMargin()
+
+        assertEquals(
+            "Sign-in failed",
+            sanitizeAuthErrorMessage(rawMessage, "Sign-in failed"),
+        )
+    }
+
+    @Test
+    fun `auth error sanitizer explains service quota failures without exposing transport details`() {
+        val rawMessage = "Service for this project is restricted due to the following violations: exceed_egress_quota"
+
+        assertEquals(
+            "The service is temporarily unavailable. Please try again later.",
+            sanitizeAuthErrorMessage(rawMessage, "Sign-in failed"),
+        )
+    }
+
+    @Test
+    fun `auth error sanitizer preserves concise server messages`() {
+        assertEquals(
+            "Invalid login credentials",
+            sanitizeAuthErrorMessage("Invalid login credentials", "Sign-in failed"),
+        )
+    }
 }

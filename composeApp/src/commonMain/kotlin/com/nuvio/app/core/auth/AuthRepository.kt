@@ -87,33 +87,8 @@ object AuthRepository {
     }
 
     private fun getCleanErrorMessage(e: Throwable, defaultMessage: String): String {
-        val msg = e.message ?: return defaultMessage
-        val trimmed = msg.trim()
-        val jsonStart = trimmed.indexOf('{')
-        val jsonEnd = trimmed.lastIndexOf('}')
-        if (jsonStart != -1 && jsonEnd != -1 && jsonEnd > jsonStart) {
-            val jsonStr = trimmed.substring(jsonStart, jsonEnd + 1)
-            try {
-                val element = Json.parseToJsonElement(jsonStr)
-                val obj = element.jsonObject
-                return obj["error_description"]?.jsonPrimitive?.content
-                    ?: obj["error"]?.jsonPrimitive?.content
-                    ?: obj["msg"]?.jsonPrimitive?.content
-                    ?: obj["message"]?.jsonPrimitive?.content
-                    ?: msg
-            } catch (_: Exception) {
-                // fall back
-            }
-        }
-        if (trimmed.contains("errorDescription=")) {
-            val description = trimmed.substringAfter("errorDescription=").substringBefore(")").trim()
-            if (description.isNotEmpty() && !description.startsWith("null")) return description
-        }
-        if (trimmed.contains("error_description=")) {
-            val description = trimmed.substringAfter("error_description=").substringBefore(")").trim()
-            if (description.isNotEmpty() && !description.startsWith("null")) return description
-        }
-        return msg
+        val message = e.message ?: return defaultMessage
+        return sanitizeAuthErrorMessage(message, defaultMessage)
     }
 
     private fun buildNormalizedAuthEmail(email: String): String = normalizeAuthEmail(email)
@@ -175,6 +150,50 @@ object AuthRepository {
     fun clearError() {
         _error.value = null
     }
+}
+
+internal fun sanitizeAuthErrorMessage(message: String?, defaultMessage: String): String {
+    val trimmed = message?.trim().orEmpty()
+    if (trimmed.isBlank()) return defaultMessage
+    if (trimmed.contains("exceed_egress_quota", ignoreCase = true) ||
+        trimmed.contains("project is restricted", ignoreCase = true)
+    ) {
+        return "The service is temporarily unavailable. Please try again later."
+    }
+
+    if (trimmed.contains("URL:", ignoreCase = true) ||
+        trimmed.contains("Headers:", ignoreCase = true) ||
+        trimmed.contains("Http Method:", ignoreCase = true) ||
+        trimmed.equals("Unknown Error", ignoreCase = true)
+    ) {
+        return defaultMessage
+    }
+
+    val jsonStart = trimmed.indexOf('{')
+    val jsonEnd = trimmed.lastIndexOf('}')
+    if (jsonStart != -1 && jsonEnd != -1 && jsonEnd > jsonStart) {
+        val jsonStr = trimmed.substring(jsonStart, jsonEnd + 1)
+        try {
+            val element = Json.parseToJsonElement(jsonStr)
+            val obj = element.jsonObject
+            return obj["error_description"]?.jsonPrimitive?.content
+                ?: obj["error"]?.jsonPrimitive?.content
+                ?: obj["msg"]?.jsonPrimitive?.content
+                ?: obj["message"]?.jsonPrimitive?.content
+                ?: trimmed
+        } catch (_: Exception) {
+            // fall back
+        }
+    }
+    if (trimmed.contains("errorDescription=")) {
+        val description = trimmed.substringAfter("errorDescription=").substringBefore(")").trim()
+        if (description.isNotEmpty() && !description.startsWith("null")) return description
+    }
+    if (trimmed.contains("error_description=")) {
+        val description = trimmed.substringAfter("error_description=").substringBefore(")").trim()
+        if (description.isNotEmpty() && !description.startsWith("null")) return description
+    }
+    return trimmed
 }
 
 internal fun normalizeAuthEmail(email: String): String = email.trim()

@@ -249,6 +249,8 @@ fun PlayerScreen(
     ) {
         val horizontalSafePadding = playerHorizontalSafePadding()
         val metrics = remember(maxWidth) { PlayerLayoutMetrics.fromWidth(maxWidth) }
+        val windowMode = remember(maxWidth) { playerWindowMode(maxWidth.value) }
+        val isDesktopLayout = windowMode == PlayerWindowMode.Desktop
         val sliderEdgePadding = horizontalSafePadding + metrics.horizontalPadding
         val scope = rememberCoroutineScope()
         val hapticFeedback = LocalHapticFeedback.current
@@ -794,8 +796,23 @@ fun PlayerScreen(
         }
 
         fun handlePreviewKeyEvent(event: androidx.compose.ui.input.key.KeyEvent): Boolean {
+            if (!isDesktopLayout) {
+                return false
+            }
             if (event.type != KeyEventType.KeyDown) {
                 return false
+            }
+            if (event.key == Key.Escape) {
+                when {
+                    showAudioModal -> showAudioModal = false
+                    showSubtitleModal -> showSubtitleModal = false
+                    showSourcesPanel -> showSourcesPanel = false
+                    showEpisodesPanel -> showEpisodesPanel = false
+                    showSubmitIntroModal -> showSubmitIntroModal = false
+                    else -> return false
+                }
+                restorePlayerInteractionFocus()
+                return true
             }
             if (showAudioModal || showSubtitleModal || showSourcesPanel || showEpisodesPanel || showSubmitIntroModal) {
                 return false
@@ -2223,12 +2240,14 @@ fun PlayerScreen(
                 )
             }
 
-            if ((desktopVolumeSupported && desktopVolumeLevel != null) || desktopFullscreenSupported) {
+            if (isDesktopLayout && ((desktopVolumeSupported && desktopVolumeLevel != null) || desktopFullscreenSupported)) {
                 DesktopPlayerSideControls(
                     volumeLevel = desktopVolumeLevel.takeIf { desktopVolumeSupported },
                     onVolumePreview = if (desktopVolumeSupported) ::previewDesktopVolume else null,
                     onVolumeCommit = if (desktopVolumeSupported) ::commitDesktopVolume else null,
                     onFullscreenClick = if (desktopFullscreenSupported) ::toggleFullscreen else null,
+                    isPlaying = playbackSnapshot.isPlaying,
+                    isLoading = playbackSnapshot.isLoading,
                     metrics = metrics,
                     horizontalSafePadding = horizontalSafePadding,
                     visible = controlsVisible && !playerControlsLocked,
@@ -2386,6 +2405,7 @@ fun PlayerScreen(
             // Sources Panel
             PlayerSourcesPanel(
                 visible = showSourcesPanel,
+                desktopLayout = isDesktopLayout,
                 streamsUiState = sourceStreamsState,
                 currentStreamUrl = activeSourceUrl,
                 currentStreamName = activeStreamTitle,
@@ -2412,6 +2432,7 @@ fun PlayerScreen(
             if (isSeries) {
                 PlayerEpisodesPanel(
                     visible = showEpisodesPanel,
+                    desktopLayout = isDesktopLayout,
                     episodes = allEpisodes,
                     parentMetaType = parentMetaType,
                     parentMetaId = parentMetaId,

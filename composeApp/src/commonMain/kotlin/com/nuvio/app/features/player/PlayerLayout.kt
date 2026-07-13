@@ -16,6 +16,14 @@ import nuvio.composeapp.generated.resources.compose_player_resize_zoom
 import org.jetbrains.compose.resources.StringResource
 import kotlin.math.max
 
+internal enum class PlayerWindowMode {
+    Mobile,
+    Desktop,
+}
+
+internal fun playerWindowMode(widthDp: Float): PlayerWindowMode =
+    if (widthDp >= 1024f) PlayerWindowMode.Desktop else PlayerWindowMode.Mobile
+
 internal data class PlayerLayoutMetrics(
     val horizontalPadding: Dp,
     val verticalPadding: Dp,

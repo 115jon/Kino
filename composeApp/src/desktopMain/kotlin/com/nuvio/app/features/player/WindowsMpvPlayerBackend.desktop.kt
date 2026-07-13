@@ -30,7 +30,10 @@ import com.sun.jna.Pointer
 import com.sun.jna.Structure
 import com.sun.jna.ptr.PointerByReference
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.withContext
 import java.awt.*
 import java.awt.event.*
@@ -46,6 +49,79 @@ private val desktopPlayerLog = Logger.withTag("DesktopPlayerTrace")
 
 private fun desktopPlayerTrace(message: String) {
     desktopPlayerLog.i { message }
+}
+
+private val desktopPlayerPerfLog = Logger.withTag("DesktopPlayerPerf")
+
+private class DesktopBackendPerfStats {
+    private var lastLogNs = System.nanoTime()
+    private var wakeupBursts = 0L
+    private var wakeupEvents = 0L
+    private var updateCallbacks = 0L
+    private var fallbackSignals = 0L
+    private var sourceLoadSignals = 0L
+    private var polls = 0L
+    private var pollDurationNsTotal = 0L
+
+    @Synchronized
+    fun recordWakeup(events: Int) {
+        wakeupBursts += 1
+        wakeupEvents += events.toLong()
+        maybeLog()
+    }
+
+    @Synchronized
+    fun recordRenderUpdateCallback() {
+        updateCallbacks += 1
+        maybeLog()
+    }
+
+    @Synchronized
+    fun recordFallbackSignal() {
+        fallbackSignals += 1
+        maybeLog()
+    }
+
+    @Synchronized
+    fun recordSourceLoadSignal() {
+        sourceLoadSignals += 1
+        maybeLog()
+    }
+
+    @Synchronized
+    fun recordPoll(durationNs: Long, playing: Boolean, loading: Boolean, idle: Boolean) {
+        polls += 1
+        pollDurationNsTotal += durationNs
+        maybeLog(playing, loading, idle)
+    }
+
+    @Synchronized
+    private fun maybeLog(
+        playing: Boolean = false,
+        loading: Boolean = false,
+        idle: Boolean = false,
+    ) {
+        val nowNs = System.nanoTime()
+        if (nowNs - lastLogNs < 2_000_000_000L) {
+            return
+        }
+        val averagePollMs = if (polls > 0L) {
+            (pollDurationNsTotal.toDouble() / polls.toDouble()) / 1_000_000.0
+        } else {
+            0.0
+        }
+        desktopPlayerPerfLog.i {
+            "backend wakeupBursts=$wakeupBursts wakeupEvents=$wakeupEvents updateCallbacks=$updateCallbacks fallbackSignals=$fallbackSignals sourceLoadSignals=$sourceLoadSignals polls=$polls avgPollMs=${"%.2f".format(averagePollMs)} playing=$playing loading=$loading idle=$idle"
+        }
+        lastLogNs = nowNs
+        wakeupBursts = 0L
+        wakeupEvents = 0L
+        updateCallbacks = 0L
+        fallbackSignals = 0L
+        sourceLoadSignals = 0L
+        polls = 0L
+        pollDurationNsTotal = 0L
+    }
 }
 
 
@@ -94,6 +170,21 @@ private const val MPV_EVENT_SHUTDOWN = 1
 private const val MPV_FORMAT_FLAG = 3
 private const val MPV_FORMAT_INT64 = 4
 private const val MPV_FORMAT_DOUBLE = 5
+
+internal class DesktopBackendPerfCollector {
+    private val stats = DesktopBackendPerfStats()
+
+    fun recordWakeup(events: Int) = stats.recordWakeup(events)
+
+    fun recordRenderUpdateCallback() = stats.recordRenderUpdateCallback()
+
+    fun recordFallbackSignal() = stats.recordFallbackSignal()
+
+    fun recordSourceLoadSignal() = stats.recordSourceLoadSignal()
+
+    fun recordPoll(durationNs: Long, playing: Boolean, loading: Boolean, idle: Boolean) =
+        stats.recordPoll(durationNs, playing, loading, idle)
+}
 
 private data class WindowsPlaybackPollResult(
     val snapshot: PlayerPlaybackSnapshot,
@@ -333,8 +424,15 @@ internal object WindowsMpvPlayerBackend : DesktopPlaybackBackend {
         onError: (String?) -> Unit,
     ) {
         val colorScheme = MaterialTheme.colorScheme
-        var playerStateSignal by remember { mutableStateOf(0L) }
         var lastTrackPollEpochMs by remember { mutableStateOf(0L) }
+        val backendPerfStats = remember { DesktopBackendPerfCollector() }
+        val playerStateSignals = remember {
+            MutableSharedFlow<Unit>(
+                replay = 0,
+                extraBufferCapacity = 1,
+                onBufferOverflow = BufferOverflow.DROP_OLDEST,
+            )
+        }
         var onCloseCallback by remember { mutableStateOf<(() -> Unit)?>(null) }
         var onAddonSubtitlesFetchCallback by remember { mutableStateOf<(() -> Unit)?>(null) }
         var onSourcesRequestedCallback by remember { mutableStateOf<(() -> Unit)?>(null) }
@@ -377,8 +475,9 @@ internal object WindowsMpvPlayerBackend : DesktopPlaybackBackend {
                             onCloseCallback?.invoke()
                         },
                         onPlayerStateChanged = {
-                            playerStateSignal = System.nanoTime()
+                            playerStateSignals.tryEmit(Unit)
                         },
+                        perfCollector = backendPerfStats,
                         onAddonSubtitlesFetch = { onAddonSubtitlesFetchCallback?.invoke() },
                         onSourcesRequested = { onSourcesRequestedCallback?.invoke() },
                         onSourceSelected = { url -> onSourceStreamSelectedCallback?.invoke(url) },
@@ -400,8 +499,9 @@ internal object WindowsMpvPlayerBackend : DesktopPlaybackBackend {
                             onCloseCallback?.invoke()
                         },
                         onPlayerStateChanged = {
-                            playerStateSignal = System.nanoTime()
+                            playerStateSignals.tryEmit(Unit)
                         },
+                        perfCollector = backendPerfStats,
                     )
                 }
             },
@@ -435,7 +535,8 @@ internal object WindowsMpvPlayerBackend : DesktopPlaybackBackend {
                 windowState.currentHeaders = playbackHeaders
                 SwingUtilities.invokeLater {
                     windowState.panelRef?.loadFile(sourceUrl, sourceAudioUrl, playbackHeaders)
-                    playerStateSignal = System.nanoTime()
+                    backendPerfStats.recordSourceLoadSignal()
+                    playerStateSignals.tryEmit(Unit)
                 }
             }
         }
@@ -773,144 +874,161 @@ internal object WindowsMpvPlayerBackend : DesktopPlaybackBackend {
             while (!windowState.isClosed) {
                 delay(WindowsPlayerFallbackPollIntervalMs)
                 if (windowState.playerPtr != null) {
-                    playerStateSignal = System.nanoTime()
+                    backendPerfStats.recordFallbackSignal()
+                    playerStateSignals.tryEmit(Unit)
                 }
             }
         }
 
-        LaunchedEffect(windowState, playerStateSignal) {
-            val lib = WindowsMpvLibrary.INSTANCE
-            if (windowState.isClosed) {
-                return@LaunchedEffect
-            }
-            val pollResult = withContext(Dispatchers.IO) {
-                val ptr = windowState.playerPtr ?: return@withContext null
-
-                fun getString(name: String): String? {
-                    val p = lib.mpv_get_property_string(ptr, name)
-                    if (p != null) {
-                        val str = p.getString(0)
-                        lib.mpv_free(p)
-                        return str
-                    }
-                    return null
+        LaunchedEffect(windowState) {
+            playerStateSignals.collectLatest {
+                val lib = WindowsMpvLibrary.INSTANCE
+                if (windowState.isClosed) {
+                    return@collectLatest
                 }
+                val pollResult = withContext(Dispatchers.IO) {
+                    val pollStartNs = System.nanoTime()
+                    val ptr = windowState.playerPtr ?: return@withContext null
 
-                val posSec = getString("time-pos")?.toDoubleOrNull() ?: 0.0
-                val durSec = getString("duration")?.toDoubleOrNull() ?: 0.0
-                val cacheSec = getString("demuxer-cache-time")?.toDoubleOrNull() ?: 0.0
-                val speed = getString("speed")?.toDoubleOrNull() ?: 1.0
-                val paused = getString("pause") == "yes"
-                val idle = getString("core-idle") == "yes"
-                val eofReached = getString("eof-reached") == "yes"
-                val seeking = getString("seeking") == "yes"
-                val bufferingCache = getString("paused-for-cache") == "yes"
-                val volumePercent = getString("volume")?.toDoubleOrNull() ?: (windowState.volumeLevel.fraction * 100f).toDouble()
-                val path = getString("path")
-                val mediaTitle = getString("media-title")
-                val fileFormat = getString("file-format")
-                val error = getString("error")
-
-                val durationMs = (durSec * 1000).toLong()
-                val positionMs = (posSec.coerceAtLeast(0.0) * 1000).toLong()
-                val bufferedMs = ((posSec + cacheSec).coerceAtLeast(0.0) * 1000).toLong()
-
-                val isPlayerLoading = (idle && !paused && !eofReached) || seeking || bufferingCache
-                val isPlayerPlaying = !paused && !idle && !eofReached
-                val isPlayerEnded = eofReached
-
-                val nowEpochMs = System.currentTimeMillis()
-                val shouldPollTracks =
-                    nowEpochMs - lastTrackPollEpochMs >= WindowsPlayerTrackPollIntervalMs ||
-                        isPlayerLoading ||
-                        windowState.audioTracks.isEmpty() ||
-                        windowState.subtitleTracks.isEmpty()
-
-                val audioTracksList: List<AudioTrack>
-                val subtitleTracksList: List<SubtitleTrack>
-                if (shouldPollTracks) {
-                    val trackCount = getString("track-list/count")?.toIntOrNull() ?: 0
-                    val nextAudioTracks = mutableListOf<AudioTrack>()
-                    val nextSubtitleTracks = mutableListOf<SubtitleTrack>()
-                    var audioIdx = 0
-                    var subIdx = 0
-
-                    for (i in 0 until trackCount) {
-                        val type = getString("track-list/$i/type") ?: ""
-                        val id = getString("track-list/$i/id") ?: ""
-                        val title = getString("track-list/$i/title") ?: ""
-                        val lang = getString("track-list/$i/lang") ?: ""
-                        val selected = getString("track-list/$i/selected") == "yes"
-
-                        if (type == "audio") {
-                            nextAudioTracks.add(
-                                AudioTrack(
-                                    index = audioIdx++,
-                                    id = id,
-                                    label = title,
-                                    language = lang,
-                                    isSelected = selected
-                                )
-                            )
-                        } else if (type == "sub") {
-                            nextSubtitleTracks.add(
-                                SubtitleTrack(
-                                    index = subIdx++,
-                                    id = id,
-                                    label = title,
-                                    language = lang,
-                                    isSelected = selected,
-                                    isForced = inferForcedSubtitleTrack(title, lang, id)
-                                )
-                            )
+                    fun getString(name: String): String? {
+                        val p = lib.mpv_get_property_string(ptr, name)
+                        if (p != null) {
+                            val str = p.getString(0)
+                            lib.mpv_free(p)
+                            return str
                         }
+                        return null
                     }
-                    audioTracksList = nextAudioTracks
-                    subtitleTracksList = nextSubtitleTracks
-                } else {
-                    audioTracksList = windowState.audioTracks
-                    subtitleTracksList = windowState.subtitleTracks
-                }
 
-                val snapshot = PlayerPlaybackSnapshot(
-                    isLoading = isPlayerLoading,
-                    isPlaying = isPlayerPlaying,
-                    isEnded = isPlayerEnded,
-                    positionMs = positionMs,
-                    durationMs = durationMs,
-                    bufferedPositionMs = bufferedMs,
-                    playbackSpeed = speed.toFloat(),
-                )
+                    val posSec = getString("time-pos")?.toDoubleOrNull() ?: 0.0
+                    val durSec = getString("duration")?.toDoubleOrNull() ?: 0.0
+                    val cacheSec = getString("demuxer-cache-time")?.toDoubleOrNull() ?: 0.0
+                    val speed = getString("speed")?.toDoubleOrNull() ?: 1.0
+                    val paused = getString("pause") == "yes"
+                    val idle = getString("core-idle") == "yes"
+                    val eofReached = getString("eof-reached") == "yes"
+                    val seeking = getString("seeking") == "yes"
+                    val bufferingCache = getString("paused-for-cache") == "yes"
+                    val volumePercent = getString("volume")?.toDoubleOrNull() ?: (windowState.volumeLevel.fraction * 100f).toDouble()
+                    val path = getString("path")
+                    val mediaTitle = getString("media-title")
+                    val fileFormat = getString("file-format")
+                    val error = getString("error")
 
-                WindowsPlaybackPollResult(
-                    snapshot = snapshot,
-                    audioTracks = audioTracksList,
-                    subtitleTracks = subtitleTracksList,
-                    volumeLevel = toPlayerAudioLevel(volumePercent),
-                    polledTracks = shouldPollTracks,
-                    logMessage = if (positionMs == 0L || isPlayerLoading || !error.isNullOrBlank()) {
-                        "mpv snapshot path=${path?.take(240)} mediaTitle=${mediaTitle ?: ""} format=${fileFormat ?: ""} error=${error ?: ""} durationMs=$durationMs positionMs=$positionMs bufferedMs=$bufferedMs paused=$paused idle=$idle eof=$eofReached seeking=$seeking buffering=$bufferingCache"
+                    val durationMs = (durSec * 1000).toLong()
+                    val positionMs = (posSec.coerceAtLeast(0.0) * 1000).toLong()
+                    val bufferedMs = ((posSec + cacheSec).coerceAtLeast(0.0) * 1000).toLong()
+
+                    val isPlayerLoading = (idle && !paused && !eofReached) || seeking || bufferingCache
+                    val isPlayerPlaying = !paused && !idle && !eofReached
+                    val isPlayerEnded = eofReached
+
+                    val nowEpochMs = System.currentTimeMillis()
+                    val shouldPollTracks =
+                        nowEpochMs - lastTrackPollEpochMs >= WindowsPlayerTrackPollIntervalMs ||
+                            isPlayerLoading ||
+                            windowState.audioTracks.isEmpty() ||
+                            windowState.subtitleTracks.isEmpty()
+
+                    val audioTracksList: List<AudioTrack>
+                    val subtitleTracksList: List<SubtitleTrack>
+                    if (shouldPollTracks) {
+                        val trackCount = getString("track-list/count")?.toIntOrNull() ?: 0
+                        val nextAudioTracks = mutableListOf<AudioTrack>()
+                        val nextSubtitleTracks = mutableListOf<SubtitleTrack>()
+                        var audioIdx = 0
+                        var subIdx = 0
+
+                        for (i in 0 until trackCount) {
+                            val type = getString("track-list/$i/type") ?: ""
+                            val id = getString("track-list/$i/id") ?: ""
+                            val title = getString("track-list/$i/title") ?: ""
+                            val lang = getString("track-list/$i/lang") ?: ""
+                            val selected = getString("track-list/$i/selected") == "yes"
+
+                            if (type == "audio") {
+                                nextAudioTracks.add(
+                                    AudioTrack(
+                                        index = audioIdx++,
+                                        id = id,
+                                        label = title,
+                                        language = lang,
+                                        isSelected = selected
+                                    )
+                                )
+                            } else if (type == "sub") {
+                                nextSubtitleTracks.add(
+                                    SubtitleTrack(
+                                        index = subIdx++,
+                                        id = id,
+                                        label = title,
+                                        language = lang,
+                                        isSelected = selected,
+                                        isForced = inferForcedSubtitleTrack(title, lang, id)
+                                    )
+                                )
+                            }
+                        }
+                        audioTracksList = nextAudioTracks
+                        subtitleTracksList = nextSubtitleTracks
                     } else {
-                        null
-                    },
-                )
-            } ?: return@LaunchedEffect
+                        audioTracksList = windowState.audioTracks
+                        subtitleTracksList = windowState.subtitleTracks
+                    }
 
-            if (pollResult.polledTracks) {
-                lastTrackPollEpochMs = System.currentTimeMillis()
+                    val snapshot = PlayerPlaybackSnapshot(
+                        isLoading = isPlayerLoading,
+                        isPlaying = isPlayerPlaying,
+                        isEnded = isPlayerEnded,
+                        positionMs = positionMs,
+                        durationMs = durationMs,
+                        bufferedPositionMs = bufferedMs,
+                        playbackSpeed = speed.toFloat(),
+                    )
+
+                    Triple(
+                        WindowsPlaybackPollResult(
+                            snapshot = snapshot,
+                            audioTracks = audioTracksList,
+                            subtitleTracks = subtitleTracksList,
+                            volumeLevel = toPlayerAudioLevel(volumePercent),
+                            polledTracks = shouldPollTracks,
+                            logMessage = if (positionMs == 0L || isPlayerLoading || !error.isNullOrBlank()) {
+                                "mpv snapshot path=${path?.take(240)} mediaTitle=${mediaTitle ?: ""} format=${fileFormat ?: ""} error=${error ?: ""} durationMs=$durationMs positionMs=$positionMs bufferedMs=$bufferedMs paused=$paused idle=$idle eof=$eofReached seeking=$seeking buffering=$bufferingCache"
+                            } else {
+                                null
+                            },
+                        ),
+                        Triple(isPlayerPlaying, isPlayerLoading, idle),
+                        System.nanoTime() - pollStartNs,
+                    )
+                } ?: return@collectLatest
+
+                val (pollPayload, playbackFlags, pollDurationNs) = pollResult
+                val (isPlaying, isLoading, isIdle) = playbackFlags
+
+                if (pollPayload.polledTracks) {
+                    lastTrackPollEpochMs = System.currentTimeMillis()
+                }
+                windowState.audioTracks = pollPayload.audioTracks
+                windowState.subtitleTracks = pollPayload.subtitleTracks
+                windowState.volumeLevel = pollPayload.volumeLevel
+                (windowState.panelRef as? WindowsPlayerPanel)?.updatePlaybackState(
+                    positionMs = pollPayload.snapshot.positionMs,
+                    durationMs = pollPayload.snapshot.durationMs,
+                    isPlaying = pollPayload.snapshot.isPlaying,
+                    isLoading = pollPayload.snapshot.isLoading,
+                    speed = pollPayload.snapshot.playbackSpeed,
+                )
+                onSnapshot(pollPayload.snapshot)
+                pollPayload.logMessage?.let(::desktopPlayerTrace)
+                backendPerfStats.recordPoll(
+                    durationNs = pollDurationNs,
+                    playing = isPlaying,
+                    loading = isLoading,
+                    idle = isIdle,
+                )
             }
-            windowState.audioTracks = pollResult.audioTracks
-            windowState.subtitleTracks = pollResult.subtitleTracks
-            windowState.volumeLevel = pollResult.volumeLevel
-            (windowState.panelRef as? WindowsPlayerPanel)?.updatePlaybackState(
-                positionMs = pollResult.snapshot.positionMs,
-                durationMs = pollResult.snapshot.durationMs,
-                isPlaying = pollResult.snapshot.isPlaying,
-                isLoading = pollResult.snapshot.isLoading,
-                speed = pollResult.snapshot.playbackSpeed,
-            )
-            onSnapshot(pollResult.snapshot)
-            pollResult.logMessage?.let(::desktopPlayerTrace)
         }
 
     }
@@ -989,6 +1107,7 @@ internal class EmbeddedWindowsPlayerPanel(
     private val state: WindowsPlayerWindowState,
     private val onClose: () -> Unit,
     private val onPlayerStateChanged: () -> Unit,
+    private val perfCollector: DesktopBackendPerfCollector? = null,
 ) : JPanel(BorderLayout()), WindowsPlaybackPanel {
     private val glPanel = GLJPanel(createGlCapabilities())
     private var mpvInitialized = false
@@ -1125,6 +1244,7 @@ internal class EmbeddedWindowsPlayerPanel(
         renderContext = createdRenderContext
         renderUpdateCallback = object : MpvRenderUpdateCallback {
             override fun invoke(ctx: Pointer?) {
+                perfCollector?.recordRenderUpdateCallback()
                 scheduleRender(force = false)
             }
         }
@@ -1155,6 +1275,7 @@ internal class EmbeddedWindowsPlayerPanel(
         val ptr = state.playerPtr ?: return
         val lib = WindowsMpvLibrary.INSTANCE
         var hasUpdates = false
+        var eventCount = 0
         while (true) {
             val eventPtr = lib.mpv_wait_event(ptr, 0.0) ?: break
             val event = MpvEvent(eventPtr)
@@ -1162,10 +1283,14 @@ internal class EmbeddedWindowsPlayerPanel(
             when (event.event_id) {
                 MPV_EVENT_NONE -> break
                 MPV_EVENT_SHUTDOWN -> return
-                else -> hasUpdates = true
+                else -> {
+                    hasUpdates = true
+                    eventCount += 1
+                }
             }
         }
         if (hasUpdates) {
+            perfCollector?.recordWakeup(eventCount)
             SwingUtilities.invokeLater(onPlayerStateChanged)
         }
     }
@@ -1461,6 +1586,7 @@ internal class WindowsPlayerPanel(
     private val state: WindowsPlayerWindowState,
     private val onClose: () -> Unit,
     private val onPlayerStateChanged: () -> Unit,
+    private val perfCollector: DesktopBackendPerfCollector? = null,
     private val onAddonSubtitlesFetch: () -> Unit,
     private val onSourcesRequested: () -> Unit,
     private val onSourceSelected: (String) -> Unit,
@@ -2200,6 +2326,7 @@ internal class WindowsPlayerPanel(
         val ptr = state.playerPtr ?: return
         val lib = WindowsMpvLibrary.INSTANCE
         var hasUpdates = false
+        var eventCount = 0
         while (true) {
             val eventPtr = lib.mpv_wait_event(ptr, 0.0) ?: break
             val event = MpvEvent(eventPtr)
@@ -2207,10 +2334,14 @@ internal class WindowsPlayerPanel(
             when (event.event_id) {
                 MPV_EVENT_NONE -> break
                 MPV_EVENT_SHUTDOWN -> return
-                else -> hasUpdates = true
+                else -> {
+                    hasUpdates = true
+                    eventCount += 1
+                }
             }
         }
         if (hasUpdates) {
+            perfCollector?.recordWakeup(eventCount)
             SwingUtilities.invokeLater(onPlayerStateChanged)
         }
     }

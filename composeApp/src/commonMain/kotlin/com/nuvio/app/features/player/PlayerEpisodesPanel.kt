@@ -10,13 +10,16 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -75,6 +78,7 @@ import org.jetbrains.compose.resources.stringResource
 @Composable
 fun PlayerEpisodesPanel(
     visible: Boolean,
+    desktopLayout: Boolean,
     episodes: List<MetaVideo>,
     parentMetaType: String,
     parentMetaId: String,
@@ -119,9 +123,12 @@ fun PlayerEpisodesPanel(
             ) {
                 Box(
                     modifier = Modifier
-                        .widthIn(max = 520.dp)
+                        .widthIn(max = if (desktopLayout) 960.dp else 520.dp)
                         .fillMaxWidth(0.92f)
-                        .heightIn(max = 620.dp)
+                        .heightIn(
+                            min = if (desktopLayout) 560.dp else 0.dp,
+                            max = if (desktopLayout) 760.dp else 620.dp,
+                        )
                         .clip(RoundedCornerShape(24.dp))
                         .background(colorScheme.surface)
                         .border(1.dp, colorScheme.outlineVariant.copy(alpha = 0.8f), RoundedCornerShape(24.dp))
@@ -142,6 +149,7 @@ fun PlayerEpisodesPanel(
                         )
                     } else {
                         EpisodesListSubView(
+                            desktopLayout = desktopLayout,
                             episodes = episodes,
                             parentMetaType = parentMetaType,
                             parentMetaId = parentMetaId,
@@ -171,6 +179,7 @@ data class EpisodeStreamsPanelState(
 
 @Composable
 private fun EpisodesListSubView(
+    desktopLayout: Boolean,
     episodes: List<MetaVideo>,
     parentMetaType: String,
     parentMetaId: String,
@@ -261,81 +270,164 @@ private fun EpisodesListSubView(
             PanelChipButton(label = stringResource(Res.string.action_close), onClick = onDismiss)
         }
 
-        // Season tabs
-        if (availableSeasons.size > 1) {
-            LazyRow(
-                state = seasonListState,
+        if (desktopLayout) {
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 20.dp)
-                    .padding(bottom = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    .height(560.dp),
             ) {
-                items(availableSeasons, key = { season -> season }) { season ->
-                    val label = if (season == 0) {
-                        stringResource(Res.string.episodes_specials)
-                    } else {
-                        stringResource(Res.string.episodes_season, season)
+                if (availableSeasons.size > 1) {
+                    LazyColumn(
+                        state = seasonListState,
+                        modifier = Modifier
+                            .width(190.dp)
+                            .fillMaxHeight()
+                            .padding(horizontal = 16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 16.dp),
+                    ) {
+                        items(availableSeasons, key = { season -> season }) { season ->
+                            val label = if (season == 0) {
+                                stringResource(Res.string.episodes_specials)
+                            } else {
+                                stringResource(Res.string.episodes_season, season)
+                            }
+                            AddonFilterChip(
+                                label = label,
+                                isSelected = selectedSeason == season,
+                                onClick = {
+                                    selectedSeason = season
+                                    onSeasonSelected(season)
+                                },
+                            )
+                        }
                     }
-                    AddonFilterChip(
-                        label = label,
-                        isSelected = selectedSeason == season,
-                        onClick = {
-                            selectedSeason = season
-                            onSeasonSelected(season)
-                        },
-                    )
                 }
-            }
-        }
-
-        // Episode list
-        if (seasonEpisodes.isEmpty()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 40.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = stringResource(Res.string.compose_player_no_episodes_available),
-                    color = colorScheme.onSurfaceVariant,
-                    fontSize = 14.sp,
+                EpisodeListContent(
+                    desktopLayout = desktopLayout,
+                    seasonEpisodes = seasonEpisodes,
+                    currentSeason = currentSeason,
+                    currentEpisode = currentEpisode,
+                    progressByVideoId = progressByVideoId,
+                    watchedKeys = watchedKeys,
+                    blurUnwatchedEpisodes = blurUnwatchedEpisodes,
+                    parentMetaType = parentMetaType,
+                    parentMetaId = parentMetaId,
+                    episodeListState = episodeListState,
+                    onEpisodeSelected = onEpisodeSelected,
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .padding(horizontal = 12.dp),
                 )
             }
         } else {
-            LazyColumn(
-                state = episodeListState,
-                modifier = Modifier.padding(horizontal = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 16.dp),
-            ) {
-                itemsIndexed(
-                    items = seasonEpisodes,
-                    key = { index, episode -> "${episode.season}:${episode.episode}:${episode.id}#$index" },
-                ) { _, episode ->
-                    val isCurrent = episode.season == currentSeason && episode.episode == currentEpisode
-                    val episodeVideoId = buildPlaybackVideoId(
-                        parentMetaId = parentMetaId,
-                        seasonNumber = episode.season,
-                        episodeNumber = episode.episode,
-                        fallbackVideoId = episode.id,
-                    )
-                    val isWatched = progressByVideoId[episodeVideoId]?.isEffectivelyCompleted == true ||
-                        WatchingState.isEpisodeWatched(
-                            watchedKeys = watchedKeys,
-                            metaType = parentMetaType,
-                            metaId = parentMetaId,
-                            episode = episode,
+            if (availableSeasons.size > 1) {
+                LazyRow(
+                    state = seasonListState,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp)
+                        .padding(bottom = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    items(availableSeasons, key = { season -> season }) { season ->
+                        val label = if (season == 0) {
+                            stringResource(Res.string.episodes_specials)
+                        } else {
+                            stringResource(Res.string.episodes_season, season)
+                        }
+                        AddonFilterChip(
+                            label = label,
+                            isSelected = selectedSeason == season,
+                            onClick = {
+                                selectedSeason = season
+                                onSeasonSelected(season)
+                            },
                         )
-                    EpisodeRow(
-                        episode = episode,
-                        isCurrent = isCurrent,
-                        isWatched = isWatched,
-                        blurUnwatchedEpisodes = blurUnwatchedEpisodes,
-                        onClick = { onEpisodeSelected(episode) },
-                    )
+                    }
                 }
+            }
+            EpisodeListContent(
+                desktopLayout = desktopLayout,
+                seasonEpisodes = seasonEpisodes,
+                currentSeason = currentSeason,
+                currentEpisode = currentEpisode,
+                progressByVideoId = progressByVideoId,
+                watchedKeys = watchedKeys,
+                blurUnwatchedEpisodes = blurUnwatchedEpisodes,
+                parentMetaType = parentMetaType,
+                parentMetaId = parentMetaId,
+                episodeListState = episodeListState,
+                onEpisodeSelected = onEpisodeSelected,
+                modifier = Modifier.padding(horizontal = 12.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun EpisodeListContent(
+    desktopLayout: Boolean,
+    seasonEpisodes: List<MetaVideo>,
+    currentSeason: Int?,
+    currentEpisode: Int?,
+    progressByVideoId: Map<String, WatchProgressEntry>,
+    watchedKeys: Set<String>,
+    blurUnwatchedEpisodes: Boolean,
+    parentMetaType: String,
+    parentMetaId: String,
+    episodeListState: androidx.compose.foundation.lazy.LazyListState,
+    onEpisodeSelected: (MetaVideo) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colorScheme = MaterialTheme.colorScheme
+    if (seasonEpisodes.isEmpty()) {
+        Box(
+            modifier = modifier
+                .fillMaxWidth()
+                .padding(vertical = 40.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = stringResource(Res.string.compose_player_no_episodes_available),
+                color = colorScheme.onSurfaceVariant,
+                fontSize = 14.sp,
+            )
+        }
+    } else {
+        LazyColumn(
+            state = episodeListState,
+            modifier = modifier,
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 16.dp),
+        ) {
+            itemsIndexed(
+                items = seasonEpisodes,
+                key = { index, episode -> "${episode.season}:${episode.episode}:${episode.id}#$index" },
+            ) { _, episode ->
+                val isCurrent = episode.season == currentSeason && episode.episode == currentEpisode
+                val episodeVideoId = buildPlaybackVideoId(
+                    parentMetaId = parentMetaId,
+                    seasonNumber = episode.season,
+                    episodeNumber = episode.episode,
+                    fallbackVideoId = episode.id,
+                )
+                val isWatched = progressByVideoId[episodeVideoId]?.isEffectivelyCompleted == true ||
+                    WatchingState.isEpisodeWatched(
+                        watchedKeys = watchedKeys,
+                        metaType = parentMetaType,
+                        metaId = parentMetaId,
+                        episode = episode,
+                    )
+                EpisodeRow(
+                    episode = episode,
+                    isCurrent = isCurrent,
+                    isWatched = isWatched,
+                    blurUnwatchedEpisodes = blurUnwatchedEpisodes,
+                    desktopLayout = desktopLayout,
+                    onClick = { onEpisodeSelected(episode) },
+                )
             }
         }
     }
@@ -347,17 +439,24 @@ private fun EpisodeRow(
     isCurrent: Boolean,
     isWatched: Boolean,
     blurUnwatchedEpisodes: Boolean,
+    desktopLayout: Boolean,
     onClick: () -> Unit,
 ) {
     val colorScheme = MaterialTheme.colorScheme
     val shouldBlurArtwork = blurUnwatchedEpisodes && !isWatched && !isCurrent
+    val interactionSource = remember { MutableInteractionSource() }
+    val isHovered by interactionSource.collectIsHoveredAsState()
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
             .background(
-                if (isCurrent) colorScheme.primaryContainer.copy(alpha = 0.55f) else Color.Transparent,
+                when {
+                    isCurrent -> colorScheme.primaryContainer.copy(alpha = 0.55f)
+                    desktopLayout && isHovered -> colorScheme.surfaceVariant.copy(alpha = 0.55f)
+                    else -> Color.Transparent
+                },
             )
             .then(
                 if (isCurrent) {
@@ -367,6 +466,7 @@ private fun EpisodeRow(
                 },
             )
             .clickable(onClick = onClick)
+            .then(if (desktopLayout) Modifier.hoverable(interactionSource) else Modifier)
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),

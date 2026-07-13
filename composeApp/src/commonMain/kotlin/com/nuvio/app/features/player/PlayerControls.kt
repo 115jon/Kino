@@ -69,13 +69,76 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import co.touchlab.kermit.Logger
 import com.nuvio.app.core.ui.AppIconResource
 import com.nuvio.app.core.ui.NuvioBackButton
 import com.nuvio.app.core.ui.appIconPainter
 import com.nuvio.app.core.ui.nuvioTypeScale
 import nuvio.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.stringResource
+import kotlin.time.TimeSource
 import kotlin.math.roundToInt
+
+private val desktopPlayerPerfLog = Logger.withTag("DesktopPlayerPerf")
+
+private class DesktopPlayerUiPerfStats(
+    private val source: String,
+) {
+    private var lastLogMark = TimeSource.Monotonic.markNow()
+    private var animationFrames = 0L
+    private var animationFrameNsTotal = 0L
+    private var displayedPositionSyncs = 0L
+    private var volumePreviewEvents = 0L
+    private var volumeCommitEvents = 0L
+
+    @Synchronized
+    fun recordAnimationFrame(durationNs: Long, playing: Boolean, loading: Boolean) {
+        if (durationNs > 0L) {
+            animationFrames += 1
+            animationFrameNsTotal += durationNs
+        }
+        maybeLog(playing, loading)
+    }
+
+    @Synchronized
+    fun recordDisplayedPositionSync() {
+        displayedPositionSyncs += 1
+    }
+
+    @Synchronized
+    fun recordVolumePreview(playing: Boolean, loading: Boolean) {
+        volumePreviewEvents += 1
+        maybeLog(playing, loading)
+    }
+
+    @Synchronized
+    fun recordVolumeCommit(playing: Boolean, loading: Boolean) {
+        volumeCommitEvents += 1
+        maybeLog(playing, loading)
+    }
+
+    @Synchronized
+    private fun maybeLog(playing: Boolean, loading: Boolean) {
+        val elapsedNs = lastLogMark.elapsedNow().inWholeNanoseconds
+        if (elapsedNs < 2_000_000_000L) {
+            return
+        }
+        val averageFrameMs = if (animationFrames > 0L) {
+            (animationFrameNsTotal.toDouble() / animationFrames.toDouble()) / 1_000_000.0
+        } else {
+            0.0
+        }
+        desktopPlayerPerfLog.i {
+            "ui source=$source frames=$animationFrames avgFrameMs=${"%.2f".format(averageFrameMs)} displayedPositionSyncs=$displayedPositionSyncs volumePreviewEvents=$volumePreviewEvents volumeCommitEvents=$volumeCommitEvents playing=$playing loading=$loading"
+        }
+        lastLogMark = TimeSource.Monotonic.markNow()
+        animationFrames = 0L
+        animationFrameNsTotal = 0L
+        displayedPositionSyncs = 0L
+        volumePreviewEvents = 0L
+        volumeCommitEvents = 0L
+    }
+}
 
 @Composable
 internal fun PlayerControlsShell(
@@ -211,6 +274,8 @@ internal fun DesktopPlayerSideControls(
     onVolumePreview: ((Float) -> Unit)?,
     onVolumeCommit: ((Float) -> Unit)?,
     onFullscreenClick: (() -> Unit)?,
+    isPlaying: Boolean,
+    isLoading: Boolean,
     metrics: PlayerLayoutMetrics,
     horizontalSafePadding: androidx.compose.ui.unit.Dp,
     visible: Boolean,
@@ -237,6 +302,8 @@ internal fun DesktopPlayerSideControls(
                 onVolumePreview = onVolumePreview,
                 onVolumeCommit = onVolumeCommit,
                 onFullscreenClick = onFullscreenClick,
+                isPlaying = isPlaying,
+                isLoading = isLoading,
             )
         }
     }
@@ -515,6 +582,7 @@ private fun ProgressControls(
     val aspectRatioPainter = appIconPainter(AppIconResource.PlayerAspectRatio)
     val subtitlesPainter = appIconPainter(AppIconResource.PlayerSubtitles)
     val audioPainter = appIconPainter(AppIconResource.PlayerAudioFilled)
+    val uiPerfStats = remember { DesktopPlayerUiPerfStats("progress") }
     var animatedPositionMs by remember { mutableStateOf(displayedPositionMs.coerceIn(0L, durationMs)) }
     var scrubValue by remember(durationMs) {
         mutableStateOf(displayedPositionMs.coerceIn(0L, durationMs).toFloat())
@@ -524,6 +592,7 @@ private fun ProgressControls(
     LaunchedEffect(displayedPositionMs, durationMs) {
         if (!isScrubbing) {
             animatedPositionMs = displayedPositionMs.coerceIn(0L, durationMs)
+            uiPerfStats.recordDisplayedPositionSync()
         }
     }
 
@@ -547,6 +616,11 @@ private fun ProgressControls(
                 val projectedPositionMs = animatedPositionMs +
                     ((frameDurationNs.toDouble() / 1_000_000.0) * playbackSnapshot.playbackSpeed.toDouble()).toLong()
                 animatedPositionMs = projectedPositionMs.coerceIn(0L, playbackSnapshot.durationMs.coerceAtLeast(0L))
+                uiPerfStats.recordAnimationFrame(
+                    durationNs = frameDurationNs,
+                    playing = playbackSnapshot.isPlaying,
+                    loading = playbackSnapshot.isLoading,
+                )
             }
         }
     }
@@ -672,6 +746,8 @@ private fun DesktopSideControlsOverlay(
     onVolumePreview: ((Float) -> Unit)?,
     onVolumeCommit: ((Float) -> Unit)?,
     onFullscreenClick: (() -> Unit)?,
+    isPlaying: Boolean,
+    isLoading: Boolean,
     modifier: Modifier = Modifier,
 ) {
     if (volumeLevel == null && onFullscreenClick == null) {
@@ -688,6 +764,8 @@ private fun DesktopSideControlsOverlay(
                 volumeLevel = volumeLevel,
                 onVolumePreview = onVolumePreview,
                 onVolumeCommit = onVolumeCommit,
+                isPlaying = isPlaying,
+                isLoading = isLoading,
             )
         }
 
@@ -717,9 +795,12 @@ private fun DesktopVolumeHoverControl(
     volumeLevel: PlayerAudioLevel,
     onVolumePreview: (Float) -> Unit,
     onVolumeCommit: (Float) -> Unit,
+    isPlaying: Boolean,
+    isLoading: Boolean,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isHovered by interactionSource.collectIsHoveredAsState()
+    val uiPerfStats = remember { DesktopPlayerUiPerfStats("side-controls") }
     var isPinnedOpen by remember { mutableStateOf(false) }
     var isAdjustingVolume by remember { mutableStateOf(false) }
     var volumeSliderValue by remember { mutableStateOf(volumeLevel.fraction.coerceIn(0f, 1f)) }
@@ -772,10 +853,18 @@ private fun DesktopVolumeHoverControl(
                             isAdjustingVolume = true
                             volumeSliderValue = value.coerceIn(0f, 1f)
                             onVolumePreview(volumeSliderValue)
+                            uiPerfStats.recordVolumePreview(
+                                playing = isPlaying,
+                                loading = isLoading,
+                            )
                         },
                         onValueChangeFinished = {
                             isAdjustingVolume = false
                             onVolumeCommit(volumeSliderValue.coerceIn(0f, 1f))
+                            uiPerfStats.recordVolumeCommit(
+                                playing = isPlaying,
+                                loading = isLoading,
+                            )
                         },
                         valueRange = 0f..1f,
                         colors = SliderDefaults.colors(
