@@ -715,6 +715,7 @@ internal object WindowsMpvPlayerBackend : DesktopPlaybackBackend {
                 override fun setSubtitleUri(url: String) {
                     val ptr = windowState.playerPtr ?: return
                     WindowsMpvLibrary.INSTANCE.mpv_command(ptr, arrayOf("sub-add", url, "select", null))
+                    applyWindowsMpvSubtitleStyle(ptr, windowState.subtitleStyle)
                 }
 
                 override fun clearExternalSubtitle() {
@@ -732,17 +733,7 @@ internal object WindowsMpvPlayerBackend : DesktopPlaybackBackend {
                 override fun applySubtitleStyle(style: SubtitleStyleState) {
                     windowState.subtitleStyle = style
                     val ptr = windowState.playerPtr ?: return
-                    val lib = WindowsMpvLibrary.INSTANCE
-                    val colorHex = style.textColor.toMpvColorString()
-                    val outline = if (style.outlineEnabled) "2.0" else "0.0"
-                    val subPos = (100 - style.bottomOffset).toString()
-
-                    lib.mpv_set_property_string(ptr, "sub-ass-override", "yes")
-                    lib.mpv_set_property_string(ptr, "sub-color", colorHex)
-                    lib.mpv_set_property_string(ptr, "sub-outline-color", "#000000FF")
-                    lib.mpv_set_property_string(ptr, "sub-outline-size", outline)
-                    lib.mpv_set_property_string(ptr, "sub-font-size", style.fontSizeSp.toString())
-                    lib.mpv_set_property_string(ptr, "sub-pos", subPos)
+                    applyWindowsMpvSubtitleStyle(ptr, style)
                 }
 
                 override fun setMetadata(
@@ -1263,6 +1254,7 @@ internal class EmbeddedWindowsPlayerPanel(
         lib.mpv_set_option_string(ptr, "input-media-keys", "yes")
         lib.mpv_set_option_string(ptr, "subs-match-os-language", "yes")
         lib.mpv_set_option_string(ptr, "subs-fallback", "yes")
+        lib.mpv_set_option_string(ptr, "sub-ass-override", "force")
         lib.mpv_set_option_string(ptr, "hwdec", "auto-copy-safe")
         lib.mpv_set_option_string(ptr, "keep-open", "yes")
         lib.mpv_set_option_string(ptr, "cache", "yes")
@@ -1350,8 +1342,11 @@ internal class EmbeddedWindowsPlayerPanel(
                 }
                 MPV_EVENT_START_FILE,
                 MPV_EVENT_END_FILE,
-                MPV_EVENT_FILE_LOADED,
                 -> desktopPlayerTrace("mpv event id=${event.event_id} error=${event.error}")
+                MPV_EVENT_FILE_LOADED -> {
+                    desktopPlayerTrace("mpv event id=${event.event_id} error=${event.error} applying subtitle style")
+                    applyWindowsMpvSubtitleStyle(ptr, state.subtitleStyle)
+                }
                 else -> {
                     hasUpdates = true
                     eventCount += 1
@@ -1390,6 +1385,7 @@ internal class EmbeddedWindowsPlayerPanel(
                 "headerKeys=${effectiveHeaders.keys.joinToString()} headerBlobLength=${headersStr.length}"
         )
         configureVideoPipeline()
+        applyWindowsMpvSubtitleStyle(ptr, state.subtitleStyle)
         lib.mpv_set_property_string(ptr, "http-header-fields", headersStr)
         val loadResult = lib.mpv_command(ptr, arrayOf("loadfile", effectiveUrl, "replace", null))
         if (loadResult < 0) {
@@ -1402,6 +1398,7 @@ internal class EmbeddedWindowsPlayerPanel(
                 }
             }
         }
+        reapplyWindowsMpvSubtitleStyleLater(state, ptr, state.subtitleStyle)
         requestFocusInWindow()
         glPanel.requestFocusInWindow()
         scheduleRender(force = true)
@@ -1410,6 +1407,8 @@ internal class EmbeddedWindowsPlayerPanel(
     override fun loadSubtitleUrl(url: String) {
         val ptr = state.playerPtr ?: return
         WindowsMpvLibrary.INSTANCE.mpv_command(ptr, arrayOf("sub-add", url, "select", null))
+        applyWindowsMpvSubtitleStyle(ptr, state.subtitleStyle)
+        reapplyWindowsMpvSubtitleStyleLater(state, ptr, state.subtitleStyle)
         scheduleRender(force = true)
     }
 
@@ -2107,6 +2106,7 @@ internal class WindowsPlayerPanel(
         lib.mpv_set_option_string(ptr, "input-media-keys", "yes")
         lib.mpv_set_option_string(ptr, "subs-match-os-language", "yes")
         lib.mpv_set_option_string(ptr, "subs-fallback", "yes")
+        lib.mpv_set_option_string(ptr, "sub-ass-override", "force")
         lib.mpv_set_option_string(ptr, "hwdec", "auto-copy-safe")
         lib.mpv_set_option_string(ptr, "target-colorspace-hint", "yes")
         lib.mpv_set_option_string(ptr, "hdr-compute-peak", "yes")
@@ -2156,6 +2156,7 @@ internal class WindowsPlayerPanel(
             "native panel loadFile host=${playbackUrlForLog(url)} " +
                 "audioHost=${playbackUrlForLog(audioUrl)} headerKeys=${headers.keys.joinToString()}"
         )
+        applyWindowsMpvSubtitleStyle(ptr, state.subtitleStyle)
         val loadResult = lib.mpv_command(ptr, arrayOf("loadfile", url, "replace", null))
         if (loadResult < 0) {
             desktopPlayerTrace("native panel loadFile failed commandResult=$loadResult")
@@ -2168,6 +2169,7 @@ internal class WindowsPlayerPanel(
                 }
             }
         }
+        reapplyWindowsMpvSubtitleStyleLater(state, ptr, state.subtitleStyle)
     }
 
     fun updatePlaybackState(
@@ -2268,6 +2270,8 @@ internal class WindowsPlayerPanel(
     override fun loadSubtitleUrl(url: String) {
         val ptr = state.playerPtr ?: return
         WindowsMpvLibrary.INSTANCE.mpv_command(ptr, arrayOf("sub-add", url, "select", null))
+        applyWindowsMpvSubtitleStyle(ptr, state.subtitleStyle)
+        reapplyWindowsMpvSubtitleStyleLater(state, ptr, state.subtitleStyle)
     }
 
     private fun selectAudio(idx: Int) {
@@ -2291,17 +2295,7 @@ internal class WindowsPlayerPanel(
     private fun applySubStyle(style: SubtitleStyleState) {
         state.subtitleStyle = style
         val ptr = state.playerPtr ?: return
-        val lib = WindowsMpvLibrary.INSTANCE
-        val colorHex = style.textColor.toMpvColorString()
-        val outline = if (style.outlineEnabled) "2.0" else "0.0"
-        val subPos = (100 - style.bottomOffset).toString()
-
-        lib.mpv_set_property_string(ptr, "sub-ass-override", "yes")
-        lib.mpv_set_property_string(ptr, "sub-color", colorHex)
-        lib.mpv_set_property_string(ptr, "sub-outline-color", "#000000FF")
-        lib.mpv_set_property_string(ptr, "sub-outline-size", outline)
-        lib.mpv_set_property_string(ptr, "sub-font-size", style.fontSizeSp.toString())
-        lib.mpv_set_property_string(ptr, "sub-pos", subPos)
+        applyWindowsMpvSubtitleStyle(ptr, style)
     }
 
     private fun togglePlayPause() {
@@ -2436,8 +2430,11 @@ internal class WindowsPlayerPanel(
                 }
                 MPV_EVENT_START_FILE,
                 MPV_EVENT_END_FILE,
-                MPV_EVENT_FILE_LOADED,
                 -> desktopPlayerTrace("mpv event id=${event.event_id} error=${event.error}")
+                MPV_EVENT_FILE_LOADED -> {
+                    desktopPlayerTrace("mpv event id=${event.event_id} error=${event.error} applying subtitle style")
+                    applyWindowsMpvSubtitleStyle(ptr, state.subtitleStyle)
+                }
                 else -> {
                     hasUpdates = true
                     eventCount += 1
@@ -2646,10 +2643,44 @@ private class ModernSliderUI(
     }
 }
 
-private fun androidx.compose.ui.graphics.Color.toMpvColorString(): String {
-    val r = (red * 255).toInt().coerceIn(0, 255)
-    val g = (green * 255).toInt().coerceIn(0, 255)
-    val b = (blue * 255).toInt().coerceIn(0, 255)
-    val a = (alpha * 255).toInt().coerceIn(0, 255)
-    return String.format("#%02X%02X%02X%02X", r, g, b, a)
+private fun applyWindowsMpvSubtitleStyle(ptr: Pointer, style: SubtitleStyleState) {
+    val lib = WindowsMpvLibrary.INSTANCE
+    val properties = listOf(
+        "sub-ass-override" to style.toMpvOverrideMode(),
+        "sub-color" to style.textColor.toMpvArgbColor(),
+        "sub-back-color" to style.backgroundColor.toMpvArgbColor(),
+        "sub-outline-color" to style.outlineColor.toMpvArgbColor(),
+        "sub-border-style" to style.toMpvBorderStyle(),
+        "sub-outline-size" to style.toMpvOutlineSize(),
+        "sub-font-size" to style.fontSizeSp.toString(),
+        "sub-bold" to if (style.bold) "yes" else "no",
+        "sub-pos" to style.toMpvPosition(),
+    )
+    desktopPlayerTrace(
+        "applying subtitle style text=${style.textColor.toMpvArgbColor()} " +
+            "background=${style.backgroundColor.toMpvArgbColor()} " +
+            "outline=${style.outlineColor.toMpvArgbColor()} " +
+            "outlineSize=${style.toMpvOutlineSize()} fontSize=${style.fontSizeSp} " +
+            "bold=${style.bold} position=${style.toMpvPosition()} override=${style.toMpvOverrideMode()}"
+    )
+    properties.forEach { (name, value) ->
+        val result = lib.mpv_set_property_string(ptr, name, value)
+        if (result < 0) {
+            desktopPlayerTrace("subtitle style property rejected name=$name value=$value result=$result")
+        }
+    }
+}
+
+private fun reapplyWindowsMpvSubtitleStyleLater(
+    state: WindowsPlayerWindowState,
+    ptr: Pointer,
+    style: SubtitleStyleState,
+) {
+    Timer().schedule(300) {
+        SwingUtilities.invokeLater {
+            if (!state.isClosed && state.playerPtr == ptr) {
+                applyWindowsMpvSubtitleStyle(ptr, style)
+            }
+        }
+    }
 }
