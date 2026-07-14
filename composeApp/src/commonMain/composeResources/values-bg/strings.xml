@@ -1046,7 +1046,7 @@
     <string name="theme_ocean">Океан</string>
     <string name="theme_rose">Розов</string>
     <string name="theme_violet">Виолетов</string>
-    <string name="theme_white">Бял</string>
+    <string name="theme_white">Kino</string>
     <string name="player_next_episode">Следващ епизод</string>
     <string name="player_next_episode_finding_source">Търсене на извор…</string>
     <string name="player_next_episode_playing_via_countdown">Пускане чрез %1$s след %2$d…</string>
@@ -1323,7 +1323,7 @@
     <string name="addon_already_installed">Тази добавка вече е инсталирана.</string>
     <string name="addon_invalid_url">Въведете валиден URL на добавка</string>
     <string name="addon_load_manifest_failed">Манифестът не можа да се зареди</string>
-    <string name="app_brand_name">Nuvio</string>
+    <string name="app_brand_name">Kino</string>
     <string name="auth_account_deletion_failed">Изтриването на акаунта не бе успешно</string>
     <string name="auth_sign_in_failed">Влизането не бе успешно</string>
     <string name="auth_sign_out_failed">Излизането не бе успешно</string>

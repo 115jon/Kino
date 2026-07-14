@@ -1086,7 +1086,7 @@
     <string name="theme_ocean">Đại dương</string>
     <string name="theme_rose">Hồng</string>
     <string name="theme_violet">Tím</string>
-    <string name="theme_white">Trắng</string>
+    <string name="theme_white">Kino</string>
     <string name="player_next_episode">Tập tiếp theo</string>
     <string name="player_next_episode_finding_source">Đang tìm nguồn phát…</string>
     <string name="player_next_episode_playing_via_countdown">Sẽ phát qua %1$s sau %2$d…</string>
@@ -1365,7 +1365,7 @@
     <string name="addon_already_installed">Addon này đã được cài đặt.</string>
     <string name="addon_invalid_url">Hãy nhập URL addon hợp lệ.</string>
     <string name="addon_load_manifest_failed">Không thể tải Manifest.</string>
-    <string name="app_brand_name">Nuvio</string>
+    <string name="app_brand_name">Kino</string>
     <string name="auth_account_deletion_failed">Xóa tài khoản thất bại.</string>
     <string name="auth_sign_in_failed">Đăng nhập thất bại.</string>
     <string name="auth_sign_out_failed">Đăng xuất thất bại.</string>

@@ -1,20 +1,68 @@
-# Kino
+<div align="center">
 
-Kino is an independent community fork of [Nuvio Mobile](https://github.com/NuvioMedia/NuvioMobile), extended for desktop use with Compose Multiplatform and a Windows installer.
+  <img src="composeApp/src/commonMain/composeResources/drawable/app_logo_wordmark.png" alt="Kino" width="360" />
+  <br />
+  <br />
 
-Kino is not affiliated with, endorsed by, or sponsored by NuvioMedia. The fork maintains its own releases, update channel, branding work, and desktop-specific changes.
+  [![Contributors][contributors-shield]][contributors-url]
+  [![Forks][forks-shield]][forks-url]
+  [![Stargazers][stars-shield]][stars-url]
+  [![Issues][issues-shield]][issues-url]
+  [![License][license-shield]][license-url]
 
-## What Changed
+  <p>
+    A modern media hub for Android, iOS, and desktop built with Kotlin Multiplatform and Compose Multiplatform.
+    <br />
+    Stremio addon ecosystem • Cross-platform playback
+  </p>
 
-- Desktop navigation, media detail layouts, season and episode selection, and player controls.
-- Windows desktop packaging with a bundled installer, Start Menu/Desktop shortcuts, and uninstall registration.
-- A separate release channel for this fork's mobile and desktop builds.
+</div>
 
-The shared application code still contains upstream package names and attribution strings where they are part of the inherited codebase. Product branding is being migrated incrementally; the upstream relationship remains disclosed throughout the project.
+## About
+
+Kino is an independent rebrand and community fork of [Nuvio Mobile](https://github.com/NuvioMedia/NuvioMobile). It keeps the shared Compose experience for browsing metadata, managing collections, tracking watch progress, downloading content, and using the Stremio addon ecosystem while extending the product with a dedicated desktop shell and Windows installer.
+
+The application is built from a shared Kotlin Multiplatform codebase in [composeApp](./composeApp), with native platform entry points for Android, iOS, and desktop.
 
 ## Installation
 
-Published installers and Android packages are available from the [Kino releases page](https://github.com/115jon/Kino/releases).
+### Android
+
+Download the latest Android build from the [Kino releases page](https://github.com/115jon/Kino/releases/latest).
+
+### Windows Desktop
+
+Download the latest Windows installer from the [Kino releases page](https://github.com/115jon/Kino/releases/latest).
+
+### iOS
+
+iOS builds are available for local development from the Xcode project in [iosApp](./iosApp).
+
+## Development
+
+```bash
+git clone https://github.com/115jon/Kino.git
+cd Kino
+./scripts/run-mobile.sh android
+# or
+./scripts/run-mobile.sh ios
+```
+
+### Project Structure
+
+- `composeApp/` contains the shared Kotlin Multiplatform and Compose Multiplatform app code.
+- `composeApp/src/commonMain/` contains shared UI, features, repositories, and platform-agnostic logic.
+- `composeApp/src/androidMain/` contains Android-specific integrations and resources.
+- `composeApp/src/desktopMain/` contains desktop-specific integrations and the native window shell.
+- `desktop/` contains the Windows installer and packaging scripts.
+- `iosApp/` contains the native Xcode project, iOS entry point, and shared version configuration.
+
+Useful commands:
+
+```bash
+./gradlew :composeApp:compileKotlinDesktop
+./gradlew :composeApp:compileKotlinIosSimulatorArm64
+```
 
 For local Windows installer development:
 
@@ -25,45 +73,40 @@ powershell -ExecutionPolicy Bypass -File ./desktop/scripts/build-installer.ps1
 
 The installer is produced under `desktop/installer/bin/Release/`.
 
-## Release Versioning
+Versioning is driven from `iosApp/Configuration/Version.xcconfig`, which is the shared source of truth for Android and desktop releases.
 
-`iosApp/Configuration/Version.xcconfig` is the shared version source for Android and desktop builds. Kino follows Semantic Versioning and Conventional Commit prefixes:
+## Legal & Disclosure
 
-```bash
-node scripts/bump-version.mjs --dry-run
-node scripts/bump-version.mjs
-git tag v<version>
-git push origin v<version>
-```
+Kino functions solely as a client-side interface for browsing metadata and playing media provided by user-installed extensions and/or user-provided sources. Users are responsible for content they access and for complying with applicable law and third-party service terms.
 
-Breaking changes produce a major bump, `feat` commits produce a minor bump, and fixes or maintenance commits produce a patch bump. The tag starts the Android and Windows release workflows.
+Kino is not affiliated with, endorsed by, or sponsored by NuvioMedia. It does not host, store, or distribute media content. See [FORK_NOTICE.md](FORK_NOTICE.md) for the complete fork disclosure.
 
-## Development
+## Built With
 
-```bash
-git clone https://github.com/115jon/Kino.git
-cd Kino
-./gradlew :composeApp:compileKotlinDesktop
-```
+- Kotlin Multiplatform
+- Compose Multiplatform
+- AndroidX Media3
+- MPV/libmpv and FFmpeg
+- Supabase, TMDB, Trakt, and IntroDB integrations
 
-The project is organized as follows:
+## Star History
 
-- `composeApp/` contains shared Kotlin Multiplatform and Compose Multiplatform code.
-- `composeApp/src/commonMain/` contains shared UI, features, repositories, and platform-agnostic logic.
-- `composeApp/src/desktopMain/` contains desktop-specific integrations.
-- `desktop/` contains the Windows installer and packaging scripts.
-- `iosApp/` contains shared version configuration and Apple platform project files.
+<a href="https://www.star-history.com/#115jon/Kino&type=date&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=115jon/Kino&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=115jon/Kino&type=date&legend=top-left" />
+   <img alt="Kino Star History Chart" src="https://api.star-history.com/svg?repos=115jon/Kino&type=date&legend=top-left" />
+ </picture>
+</a>
 
-## Upstream Synchronization
-
-The `desktop` branch is the maintained Kino product branch. Changes from upstream `NuvioMedia/NuvioMobile` are brought in through reviewed synchronization pull requests so desktop and fork-specific changes remain explicit and conflict resolution is auditable.
-
-## License and Disclosure
-
-Kino is distributed under the GNU General Public License v3.0, inherited from the upstream project. See [LICENSE](LICENSE) for the full license text and [FORK_NOTICE.md](FORK_NOTICE.md) for the fork disclosure and attribution details.
-
-Kino is a client-side application for metadata, user-installed extensions, and user-provided sources. Users are responsible for content they access and for complying with applicable law and third-party service terms. Kino does not host, store, or distribute media content.
-
-## Third-Party Components
-
-Kino uses Kotlin Multiplatform, Compose Multiplatform, MPV/libmpv, FFmpeg, Supabase, TMDB, Trakt, IMDb datasets, IntroDB, and other third-party services and libraries. Their names and trademarks belong to their respective owners.
+<!-- MARKDOWN LINKS & IMAGES -->
+[contributors-shield]: https://img.shields.io/github/contributors/115jon/Kino.svg?style=for-the-badge
+[contributors-url]: https://github.com/115jon/Kino/graphs/contributors
+[forks-shield]: https://img.shields.io/github/forks/115jon/Kino.svg?style=for-the-badge
+[forks-url]: https://github.com/115jon/Kino/network/members
+[stars-shield]: https://img.shields.io/github/stars/115jon/Kino.svg?style=for-the-badge
+[stars-url]: https://github.com/115jon/Kino/stargazers
+[issues-shield]: https://img.shields.io/github/issues/115jon/Kino.svg?style=for-the-badge
+[issues-url]: https://github.com/115jon/Kino/issues
+[license-shield]: https://img.shields.io/github/license/115jon/Kino.svg?style=for-the-badge
+[license-url]: https://github.com/115jon/Kino/blob/main/LICENSE

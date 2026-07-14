@@ -938,7 +938,7 @@
     <string name="theme_ocean">Ocean</string>
     <string name="theme_rose">Rose</string>
     <string name="theme_violet">Violet</string>
-    <string name="theme_white">Hvit</string>
+    <string name="theme_white">Kino</string>
     <string name="player_next_episode">Neste episode</string>
     <string name="player_next_episode_finding_source">Finner kilde…</string>
     <string name="player_next_episode_playing_via_countdown">Spiller via %1$s om %2$d…</string>
@@ -1204,7 +1204,7 @@
     <string name="addon_already_installed">Dette tillegget er allerede installert.</string>
     <string name="addon_invalid_url">Skriv inn en gyldig tilleggs-URL</string>
     <string name="addon_load_manifest_failed">Kunne ikke laste manifest</string>
-    <string name="app_brand_name">Nuvio</string>
+    <string name="app_brand_name">Kino</string>
     <string name="auth_account_deletion_failed">Konto-sletting mislyktes</string>
     <string name="auth_sign_in_failed">Innlogging mislyktes</string>
     <string name="auth_sign_out_failed">Utlogging mislyktes</string>

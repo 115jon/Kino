@@ -699,7 +699,7 @@
   <string name="theme_ocean">Ocean</string>
   <string name="theme_rose">Rose</string>
   <string name="theme_violet">Violet</string>
-  <string name="theme_white">White</string>
+  <string name="theme_white">Kino</string>
   <string name="theme_color_crimson">Cremisi</string>
   <string name="theme_color_ocean">Oceano</string>
   <string name="theme_color_violet">Violetto</string>
@@ -958,7 +958,7 @@
   <string name="addon_already_installed">Questo addon è già installato.</string>
   <string name="addon_invalid_url">Inserisci un URL addon valido</string>
   <string name="addon_load_manifest_failed">Impossibile caricare il manifest</string>
-  <string name="app_brand_name">Nuvio</string>
+  <string name="app_brand_name">Kino</string>
   <string name="auth_account_deletion_failed">Eliminazione account fallita</string>
   <string name="auth_sign_in_failed">Accesso fallito</string>
   <string name="auth_sign_out_failed">Disconnessione fallita</string>

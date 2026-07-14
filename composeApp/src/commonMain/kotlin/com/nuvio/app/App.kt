@@ -827,7 +827,7 @@ private fun MainAppContent(
         val profileState by ProfileRepository.state.collectAsStateWithLifecycle()
         val launchOverlayProfileColor = remember(profileState.activeProfile, profileState.profiles) {
             val sourceProfile = profileState.activeProfile ?: profileState.profiles.firstOrNull()
-            sourceProfile?.avatarColorHex?.let(::parseHexColor) ?: Color(0xFF1E88E5)
+            sourceProfile?.avatarColorHex?.let(::parseHexColor) ?: Color(0xFFA5DC96)
         }
     val playerSettingsUiState by remember {
         PlayerSettingsRepository.ensureLoaded()
@@ -1892,11 +1892,14 @@ private fun MainAppContent(
                                 if (isDesktopLayout) {
                                     NuvioDesktopNavigationRail(
                                         header = {
-                                            Text(
-                                                text = stringResource(Res.string.app_brand_name),
-                                                style = MaterialTheme.typography.titleLarge,
-                                                color = MaterialTheme.colorScheme.onSurface,
-                                                modifier = Modifier.padding(horizontal = 14.dp),
+                                            Image(
+                                                painter = painterResource(Res.drawable.app_logo_wordmark),
+                                                contentDescription = stringResource(Res.string.app_brand_name),
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .height(42.dp),
+                                                alignment = Alignment.CenterStart,
+                                                contentScale = ContentScale.Fit,
                                             )
                                         },
                                         content = {

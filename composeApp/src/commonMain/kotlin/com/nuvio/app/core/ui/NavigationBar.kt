@@ -24,6 +24,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
@@ -43,12 +45,13 @@ fun NuvioDesktopNavigationRail(
     content: @Composable ColumnScope.() -> Unit,
     footer: @Composable ColumnScope.() -> Unit,
 ) {
+    val tokens = MaterialTheme.nuvio
     Surface(
         modifier = modifier
             .widthIn(min = 220.dp, max = 240.dp)
             .fillMaxHeight(),
-        color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 1.dp,
+        color = tokens.colors.background,
+        tonalElevation = 0.dp,
     ) {
         Column(
             modifier = Modifier
@@ -81,13 +84,23 @@ fun NuvioDesktopNavigationItem(
     modifier: Modifier = Modifier,
     icon: @Composable () -> Unit,
 ) {
+    val tokens = MaterialTheme.nuvio
+    val selectedBackground = tokens.colors.accent.copy(alpha = 0.10f)
     Row(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
             .background(
-                if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
+                if (selected) selectedBackground else tokens.colors.background,
             )
+            .drawBehind {
+                if (selected) {
+                    drawRect(
+                        color = tokens.colors.accent,
+                        size = Size(width = 2.dp.toPx(), height = size.height),
+                    )
+                }
+            }
             .selectable(
                 selected = selected,
                 enabled = true,
@@ -103,9 +116,9 @@ fun NuvioDesktopNavigationItem(
             text = label,
             style = MaterialTheme.typography.labelLarge,
             color = if (selected) {
-                MaterialTheme.colorScheme.onPrimaryContainer
+                tokens.colors.textPrimary
             } else {
-                MaterialTheme.colorScheme.onSurfaceVariant
+                tokens.colors.textMuted
             },
         )
     }

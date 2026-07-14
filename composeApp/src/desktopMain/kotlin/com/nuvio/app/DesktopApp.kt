@@ -8,13 +8,13 @@ import androidx.compose.ui.window.rememberWindowState
 import com.nuvio.app.core.logging.initializeDesktopAppLogging
 import com.nuvio.app.features.player.prewarmDesktopPlaybackBackend
 import nuvio.composeapp.generated.resources.Res
-import nuvio.composeapp.generated.resources.app_logo_wordmark
+import nuvio.composeapp.generated.resources.app_logo
 import org.jetbrains.compose.resources.painterResource
 import androidx.compose.ui.unit.dp
 import java.awt.Dimension
 import java.awt.Color as AwtColor
 
-private val DesktopWindowBackground = AwtColor(0x0D, 0x0D, 0x0D)
+private val DesktopWindowBackground = AwtColor(0x0C, 0x0C, 0x0C)
 
 private fun configureMacOsNativeAppearance() {
     val osName = System.getProperty("os.name")?.lowercase() ?: return
@@ -33,7 +33,7 @@ fun main() {
             state = windowState,
             onCloseRequest = ::exitApplication,
             title = "Kino",
-            icon = painterResource(Res.drawable.app_logo_wordmark),
+            icon = painterResource(Res.drawable.app_logo),
         ) {
             DisposableEffect(window) {
                 window.minimumSize = Dimension(960, 640)

@@ -10,9 +10,9 @@ data class ThemeColorPalette(
     val onSecondaryVariant: Color = Color.White,
     val focusRing: Color,
     val focusBackground: Color,
-    val background: Color = Color(0xFF0D0D0D),
-    val backgroundElevated: Color = Color(0xFF1A1A1A),
-    val backgroundCard: Color = Color(0xFF242424),
+    val background: Color = Color(0xFF0C0C0C),
+    val backgroundElevated: Color = Color(0xFF141914),
+    val backgroundCard: Color = Color(0xFF1D231A),
 )
 
 object ThemeColors {
@@ -84,16 +84,16 @@ object ThemeColors {
     )
 
     val White = ThemeColorPalette(
-        secondary = Color(0xFFF5F5F5),
-        secondaryVariant = Color(0xFFE0E0E0),
-        nativeAccentHex = "#F5F5F5",
-        onSecondary = Color(0xFF111111),
-        onSecondaryVariant = Color(0xFF111111),
-        focusRing = Color(0xFFFFFFFF),
-        focusBackground = Color(0xFF303030),
-        background = Color(0xFF0D0D0D),
-        backgroundElevated = Color(0xFF1A1A1A),
-        backgroundCard = Color(0xFF222222),
+        secondary = Color(0xFFA5DC96),
+        secondaryVariant = Color(0xFF6B9565),
+        nativeAccentHex = "#A5DC96",
+        onSecondary = Color(0xFF0C0C0C),
+        onSecondaryVariant = Color(0xFF0C0C0C),
+        focusRing = Color(0xFFD9F8C7),
+        focusBackground = Color(0xFF243320),
+        background = Color(0xFF0C0C0C),
+        backgroundElevated = Color(0xFF141914),
+        backgroundCard = Color(0xFF1D231A),
     )
 
     fun getColorPalette(theme: AppTheme): ThemeColorPalette = when (theme) {

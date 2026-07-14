@@ -950,7 +950,7 @@
     <string name="theme_ocean">Okyanus</string>
     <string name="theme_rose">Gül</string>
     <string name="theme_violet">Mor</string>
-    <string name="theme_white">Beyaz</string>
+    <string name="theme_white">Kino</string>
     <string name="player_next_episode">Sonraki bölüm</string>
     <string name="player_next_episode_finding_source">Kaynak bulunuyor…</string>
     <string name="player_next_episode_playing_via_countdown">%1$s üzerinden %2$d içinde oynatılıyor…</string>
@@ -1218,7 +1218,7 @@
     <string name="addon_already_installed">Bu eklenti zaten kurulu.</string>
     <string name="addon_invalid_url">Geçerli bir eklenti URL'si gir</string>
     <string name="addon_load_manifest_failed">Manifest yüklenemedi</string>
-    <string name="app_brand_name">Nuvio</string>
+    <string name="app_brand_name">Kino</string>
     <string name="auth_account_deletion_failed">Hesap silinemedi</string>
     <string name="auth_sign_in_failed">Giriş yapılamadı</string>
     <string name="auth_sign_out_failed">Çıkış yapılamadı</string>

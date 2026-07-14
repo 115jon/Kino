@@ -371,15 +371,15 @@ internal fun defaultNuvioThemeTokens(
     colorScheme: ColorScheme?,
 ): NuvioThemeTokens {
     val background = if (amoled) Color.Black else palette.background
-    val textPrimary = Color(0xFFF5F7F8)
-    val textSecondary = Color(0xFFB8BEC5)
-    val textMuted = Color(0xFF969CA3)
+    val textPrimary = Color(0xFFF1EDE6)
+    val textSecondary = Color(0xFFC4C9B9)
+    val textMuted = Color(0xFF889482)
     val surface = palette.backgroundElevated
     val surfaceCard = palette.backgroundCard
     val accent = palette.secondary
     val accentStrong = palette.secondaryVariant
-    val borderSubtle = Color(0xFF252A2A).copy(alpha = 0.55f)
-    val borderDefault = Color(0xFF252A2A)
+    val borderSubtle = Color(0xFF2B342B).copy(alpha = 0.55f)
+    val borderDefault = Color(0xFF2B342B)
     val overlayScrim = Color.Black.copy(alpha = NuvioTokens.Opacity.overlayMedium)
 
     return NuvioThemeTokens(
@@ -397,7 +397,7 @@ internal fun defaultNuvioThemeTokens(
             textSecondary = textSecondary,
             textMuted = textMuted,
             textDisabled = textMuted.copy(alpha = NuvioTokens.Opacity.disabled),
-            textInverse = Color(0xFF111111),
+            textInverse = Color(0xFF0C0C0C),
             accent = accent,
             accentStrong = accentStrong,
             onAccent = palette.onSecondary,
@@ -405,13 +405,13 @@ internal fun defaultNuvioThemeTokens(
             focusBackground = palette.focusBackground,
             borderSubtle = borderSubtle,
             borderDefault = borderDefault,
-            borderStrong = Color(0xFF3A4040),
+            borderStrong = Color(0xFF41583B),
             borderFocus = palette.focusRing,
             borderSelected = accent.copy(alpha = NuvioTokens.Opacity.strong),
-            success = Color(0xFF66BB6A),
-            warning = Color(0xFFFFC857),
-            danger = colorScheme?.error ?: Color(0xFFE36A8A),
-            info = Color(0xFF42A5F5),
+            success = Color(0xFFA5DC96),
+            warning = Color(0xFFE4C27A),
+            danger = colorScheme?.error ?: Color(0xFFD86C6C),
+            info = Color(0xFF94B7C0),
             neutral = textMuted,
             overlayScrim = overlayScrim,
             overlayHover = Color.White.copy(alpha = NuvioTokens.Opacity.hover),
@@ -426,7 +426,7 @@ internal fun defaultNuvioThemeTokens(
             playerTimelineFill = accent,
             playerSubtitlePreview = Color.Black.copy(alpha = 0.55f),
             playerBuffering = accent,
-            parentalGuide = Color(0xFF5D1F1F),
+            parentalGuide = Color(0xFF4A2222),
         ),
         spacing = NuvioSpacingTokens(
             screenHorizontal = NuvioTokens.Space.s16,
