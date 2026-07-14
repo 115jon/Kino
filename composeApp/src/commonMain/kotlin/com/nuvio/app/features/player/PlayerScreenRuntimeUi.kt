@@ -22,6 +22,11 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi() {
     val runtime = this
     val displayedPositionMs = scrubbingPositionMs ?: playbackSnapshot.positionMs
     val isEpisode = activeSeasonNumber != null && activeEpisodeNumber != null
+    val resolvedMeta = metaUiState.meta?.takeIf { it.id == parentMetaId }
+    val displayLogo = logo ?: resolvedMeta?.logo
+    val displayPoster = poster ?: resolvedMeta?.poster
+    val displayBackground = background ?: resolvedMeta?.background
+    val displayArtwork = displayBackground ?: displayPoster
     val currentGestureFeedback = liveGestureFeedback ?: gestureFeedback
     val isP2pPlaybackActive = activeTorrentInfoHash != null
     val p2pStats = p2pStreamingState as? P2pStreamingState.Streaming
@@ -126,19 +131,37 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi() {
                 modifier = Modifier.fillMaxSize(),
                 playWhenReady = shouldPlay,
                 resizeMode = resizeMode,
-                onControllerReady = { controller ->
-                    playerController = controller
-                    playerControllerSourceUrl = activeSourceUrl
-                },
-                onSnapshot = { snapshot ->
+                 onControllerReady = { controller ->
+                     playerController = controller
+                     playerControllerSourceUrl = activeSourceUrl
+                     controller.currentVolumeLevel()?.let { level ->
+                         volumeLevel = level
+                         if (!level.isMuted && level.fraction > 0f) {
+                             lastUnmutedVolumeFraction = level.fraction
+                         }
+                     }
+                 },
+                 onSnapshot = { snapshot ->
                     playbackSnapshot = snapshot
                     if (!snapshot.isLoading) initialLoadCompleted = true
                     if (snapshot.isEnded) {
                         shouldPlay = false
                         controlsVisible = !playerControlsLocked
-                    }
-                },
-                onError = { message ->
+                     }
+                 },
+                  onSurfaceInteraction = { isTap ->
+                     if (isTap) {
+                         if (playerControlsLocked) {
+                             revealLockedOverlay()
+                         } else {
+                             controlsVisible = !controlsVisible
+                         }
+                     } else {
+                         controlsVisible = true
+                     }
+                     pausedOverlayVisible = false
+                  },
+                 onError = { message ->
                     if (message != null && tryRefreshCredentialedSourceAfterError(message)) {
                         return@PlatformPlayerSurface
                     }
@@ -158,7 +181,7 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi() {
         ) {
             PauseMetadataOverlay(
                 title = title,
-                logo = logo,
+                logo = displayLogo,
                 isEpisode = isEpisode,
                 seasonNumber = activeSeasonNumber,
                 episodeNumber = activeEpisodeNumber,
@@ -181,6 +204,8 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi() {
             showP2pRebufferStats = showP2pRebufferStats,
             p2pRebufferMessage = p2pRebufferMessage,
             p2pRebufferProgress = p2pRebufferProgress,
+            displayArtwork = displayArtwork,
+            displayLogo = displayLogo,
         )
         RenderPlayerModals(displayedPositionMs = displayedPositionMs)
     }
@@ -213,7 +238,13 @@ private fun PlayerScreenRuntime.RenderPlayerControls(displayedPositionMs: Long, 
                 flushWatchProgress()
                 args.onBack()
             },
-            onTogglePlayback = { togglePlayback() },
+             onTogglePlayback = { togglePlayback() },
+              volumeLevel = volumeLevel,
+              showVolumeControl = playerController?.supportsVolumeControl() == true,
+              onVolumeChanged = { level -> setVolumeLevel(level) },
+              showFullscreenControl = playerController?.supportsFullscreenToggle() == true,
+              onFullscreenClick = { playerController?.toggleFullscreen() },
+              desktopLayout = isDesktopLayout,
             onSeekBack = { seekBy(-10_000L) },
             onSeekForward = { seekBy(10_000L) },
             onResizeModeClick = { cycleResizeMode() },
@@ -303,6 +334,8 @@ private fun BoxScope.RenderPlaybackOverlays(
     showP2pRebufferStats: Boolean,
     p2pRebufferMessage: String?,
     p2pRebufferProgress: Float?,
+    displayArtwork: String?,
+    displayLogo: String?,
 ) {
     runtime.run {
         PlayerPlaybackOverlays(
@@ -314,8 +347,8 @@ private fun BoxScope.RenderPlaybackOverlays(
         horizontalSafePadding = horizontalSafePadding,
         onUnlock = { unlockPlayerControls() },
         showOpeningOverlay = playerSettingsUiState.showLoadingOverlay && !initialLoadCompleted && errorMessage == null,
-        backdropArtwork = background ?: poster,
-        logo = logo,
+         backdropArtwork = displayArtwork,
+         logo = displayLogo,
         title = title,
         onBackWithProgress = {
             flushWatchProgress()

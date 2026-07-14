@@ -24,6 +24,7 @@ actual fun PlatformPlayerSurface(
     onControllerReady: (PlayerEngineController) -> Unit,
     onSnapshot: (PlayerPlaybackSnapshot) -> Unit,
     onError: (String?) -> Unit,
+    onSurfaceInteraction: (Boolean) -> Unit,
 ) {
     val backend = remember { desktopPlaybackBackend() }
     backend.PlayerSurface(
@@ -41,6 +42,7 @@ actual fun PlatformPlayerSurface(
         onControllerReady = onControllerReady,
         onSnapshot = onSnapshot,
         onError = onError,
+        onSurfaceInteraction = onSurfaceInteraction,
     )
 }
 
@@ -61,6 +63,7 @@ internal interface DesktopPlaybackBackend {
         onControllerReady: (PlayerEngineController) -> Unit,
         onSnapshot: (PlayerPlaybackSnapshot) -> Unit,
         onError: (String?) -> Unit,
+        onSurfaceInteraction: (Boolean) -> Unit,
     )
 }
 
@@ -94,7 +97,9 @@ private class UnsupportedDesktopPlaybackBackend(
         onControllerReady: (PlayerEngineController) -> Unit,
         onSnapshot: (PlayerPlaybackSnapshot) -> Unit,
         onError: (String?) -> Unit,
+        onSurfaceInteraction: (Boolean) -> Unit,
     ) {
+        onSurfaceInteraction
         LaunchedEffect(osName) {
             onError("Desktop playback is not implemented for $osName")
         }

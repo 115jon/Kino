@@ -349,16 +349,21 @@ object AddonRepository {
                             if (addon.manifestUrl != manifestUrl) {
                                 addon
                             } else {
-                                result.fold(
-                                    onSuccess = { manifest ->
-                                        addon.copy(
+                                    result.fold(
+                                        onSuccess = { manifest ->
+                                            log.i {
+                                                "refreshAddon() — loaded id=${manifest.id} name=${manifest.name} " +
+                                                    "catalogs=${manifest.catalogs.size} resources=${manifest.resources.size}"
+                                            }
+                                            addon.copy(
                                             manifest = manifest,
                                             isRefreshing = false,
                                             errorMessage = null,
                                         )
                                     },
-                                    onFailure = { error ->
-                                        addon.copy(
+                                        onFailure = { error ->
+                                            log.w(error) { "refreshAddon() — FAILED manifest" }
+                                            addon.copy(
                                             isRefreshing = false,
                                             errorMessage = error.message ?: getString(Res.string.addon_load_manifest_failed),
                                         )

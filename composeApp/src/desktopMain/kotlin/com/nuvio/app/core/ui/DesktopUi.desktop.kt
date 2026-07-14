@@ -21,6 +21,7 @@ import org.jetbrains.compose.resources.painterResource
 internal actual val nuvioPlatformExtraTopPadding: Dp = 0.dp
 internal actual val nuvioPlatformExtraBottomPadding: Dp = 0.dp
 internal actual val nuvioBottomNavigationExtraVerticalPadding: Dp = 6.dp
+internal actual val isDesktopPlatform: Boolean = true
 
 @Composable
 internal actual fun nuvioBottomNavigationBarInsets(): WindowInsets = WindowInsets(0, 0, 0, 0)

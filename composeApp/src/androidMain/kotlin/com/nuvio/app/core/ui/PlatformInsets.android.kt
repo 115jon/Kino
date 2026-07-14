@@ -11,6 +11,7 @@ import androidx.compose.ui.unit.dp
 internal actual val nuvioPlatformExtraTopPadding: Dp = 0.dp
 internal actual val nuvioPlatformExtraBottomPadding: Dp = 0.dp
 internal actual val nuvioBottomNavigationExtraVerticalPadding: Dp = 6.dp
+internal actual val isDesktopPlatform: Boolean = false
 @Composable
 internal actual fun nuvioBottomNavigationBarInsets(): WindowInsets = WindowInsets.navigationBars
 

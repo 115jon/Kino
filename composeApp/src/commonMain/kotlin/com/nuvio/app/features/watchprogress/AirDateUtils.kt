@@ -6,9 +6,18 @@ import com.nuvio.app.features.watching.domain.daysUntilExplicitRelease
 import com.nuvio.app.features.watching.domain.isoCalendarDateOrNull
 import com.nuvio.app.features.trakt.parseTraktIsoDateTimeToEpochMs
 import nuvio.composeapp.generated.resources.*
-import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 import co.touchlab.kermit.Logger
+
+internal fun formatAirDateDaysLabel(
+    daysUntil: Int,
+    compact: Boolean,
+    fullFormat: String,
+    compactFormat: String,
+): String {
+    val format = if (compact) compactFormat else fullFormat
+    return format.replace("%1\$d", daysUntil.toString())
+}
 
 @Composable
 fun computeAirDateBadgeText(
@@ -41,8 +50,12 @@ fun computeAirDateBadgeText(
             else stringResource(Res.string.cw_airs_tomorrow)
         }
         daysUntil in 2..7 -> {
-            if (compact) pluralStringResource(Res.plurals.cw_airs_in_days_short, daysUntil, daysUntil)
-            else pluralStringResource(Res.plurals.cw_airs_in_days, daysUntil, daysUntil)
+            formatAirDateDaysLabel(
+                daysUntil = daysUntil,
+                compact = compact,
+                fullFormat = stringResource(Res.string.cw_airs_in_days_format),
+                compactFormat = stringResource(Res.string.cw_airs_in_days_short_format),
+            )
         }
         else -> {
             val formattedDate = formatReleaseDateWithoutYear(releasedIso)

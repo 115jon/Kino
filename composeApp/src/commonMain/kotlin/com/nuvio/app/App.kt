@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -94,6 +95,8 @@ import com.nuvio.app.core.sync.RealtimeSyncConfig
 import com.nuvio.app.core.sync.RealtimeSyncInvalidationService
 import com.nuvio.app.core.sync.SyncManager
 import com.nuvio.app.core.ui.NuvioNavigationBar
+import com.nuvio.app.core.ui.NuvioDesktopNavigationItem
+import com.nuvio.app.core.ui.NuvioDesktopNavigationRail
 import com.nuvio.app.core.format.formatReleaseDateForDisplay
 import com.nuvio.app.core.ui.NuvioContinueWatchingActionSheet
 import com.nuvio.app.core.ui.NuvioPosterZoomActionOverlay
@@ -120,6 +123,7 @@ import com.nuvio.app.core.ui.NativeTabBridge
 import com.nuvio.app.core.ui.isLiquidGlassNativeTabBarSupported
 import com.nuvio.app.core.ui.localizedContinueWatchingSubtitle
 import com.nuvio.app.core.ui.nuvio
+import com.nuvio.app.core.ui.isDesktopPlatform
 import com.nuvio.app.features.auth.AuthScreen
 import com.nuvio.app.features.addons.AddAddonResult
 import com.nuvio.app.features.addons.AddonRepository
@@ -1822,7 +1826,12 @@ private fun MainAppContent(
                     )
 
                     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-                        val isTabletLayout = useTabletFloatingTabBar || maxWidth >= 768.dp
+                        val navigationMode = appNavigationMode(
+                            widthDp = maxWidth.value,
+                            desktopPlatform = isDesktopPlatform,
+                        )
+                        val isDesktopLayout = navigationMode == AppNavigationMode.Desktop
+                        val isTabletLayout = useTabletFloatingTabBar || navigationMode != AppNavigationMode.Mobile
                         val useNativeBottomTabs = if (useNativeNavigation) {
                             useNativeTabBar
                         } else {
@@ -1879,14 +1888,102 @@ private fun MainAppContent(
                                 }
                             },
                         ) { innerPadding ->
-                            Box(modifier = Modifier.fillMaxSize()) {
-                                CompositionLocalProvider(
-                                    LocalNuvioBottomNavigationOverlayPadding provides if (useNativeBottomTabs) 49.dp else 0.dp,
+                            Row(modifier = Modifier.fillMaxSize()) {
+                                if (isDesktopLayout) {
+                                    NuvioDesktopNavigationRail(
+                                        header = {
+                                            Text(
+                                                text = stringResource(Res.string.app_brand_name),
+                                                style = MaterialTheme.typography.titleLarge,
+                                                color = MaterialTheme.colorScheme.onSurface,
+                                                modifier = Modifier.padding(horizontal = 14.dp),
+                                            )
+                                        },
+                                        content = {
+                                            NuvioDesktopNavigationItem(
+                                                selected = selectedTab == AppScreenTab.Home,
+                                                onClick = { handleRootTabClick(AppScreenTab.Home) },
+                                                label = stringResource(Res.string.compose_nav_home),
+                                                contentDescription = stringResource(Res.string.compose_nav_home),
+                                                icon = {
+                                                    Icon(
+                                                        imageVector = Icons.Filled.Home,
+                                                        contentDescription = null,
+                                                        tint = if (selectedTab == AppScreenTab.Home) {
+                                                            MaterialTheme.colorScheme.primary
+                                                        } else {
+                                                            MaterialTheme.colorScheme.onSurfaceVariant
+                                                        },
+                                                    )
+                                                },
+                                            )
+                                            NuvioDesktopNavigationItem(
+                                                selected = selectedTab == AppScreenTab.Search,
+                                                onClick = { handleRootTabClick(AppScreenTab.Search) },
+                                                label = stringResource(Res.string.compose_nav_search),
+                                                contentDescription = stringResource(Res.string.compose_nav_search),
+                                                icon = {
+                                                    Icon(
+                                                        painter = painterResource(Res.drawable.sidebar_search),
+                                                        contentDescription = null,
+                                                        tint = if (selectedTab == AppScreenTab.Search) {
+                                                            MaterialTheme.colorScheme.primary
+                                                        } else {
+                                                            MaterialTheme.colorScheme.onSurfaceVariant
+                                                        },
+                                                    )
+                                                },
+                                            )
+                                            NuvioDesktopNavigationItem(
+                                                selected = selectedTab == AppScreenTab.Library,
+                                                onClick = { handleRootTabClick(AppScreenTab.Library) },
+                                                label = stringResource(Res.string.compose_nav_library),
+                                                contentDescription = stringResource(Res.string.compose_nav_library),
+                                                icon = {
+                                                    Icon(
+                                                        painter = painterResource(Res.drawable.sidebar_library),
+                                                        contentDescription = null,
+                                                        tint = if (selectedTab == AppScreenTab.Library) {
+                                                            MaterialTheme.colorScheme.primary
+                                                        } else {
+                                                            MaterialTheme.colorScheme.onSurfaceVariant
+                                                        },
+                                                    )
+                                                },
+                                            )
+                                        },
+                                        footer = {
+                                            NuvioDesktopNavigationItem(
+                                                selected = selectedTab == AppScreenTab.Settings,
+                                                onClick = { handleRootTabClick(AppScreenTab.Settings) },
+                                                label = stringResource(Res.string.compose_nav_profile),
+                                                contentDescription = stringResource(Res.string.compose_nav_profile),
+                                                icon = {
+                                                    ProfileSwitcherTab(
+                                                        selected = selectedTab == AppScreenTab.Settings,
+                                                        onClick = { handleRootTabClick(AppScreenTab.Settings) },
+                                                        onProfileSelected = onProfileSelected,
+                                                        onAddProfileRequested = onSwitchProfile,
+                                                        modifier = Modifier.size(28.dp),
+                                                    )
+                                                },
+                                            )
+                                        },
+                                    )
+                                }
+
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .fillMaxHeight(),
                                 ) {
-                                    AppTabHost(
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .padding(innerPadding),
+                                    CompositionLocalProvider(
+                                        LocalNuvioBottomNavigationOverlayPadding provides if (useNativeBottomTabs) 49.dp else 0.dp,
+                                    ) {
+                                        AppTabHost(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .padding(innerPadding),
                                         selectedTab = selectedTab,
                                         searchFocusRequestCount = searchFocusRequestCount,
                                         rootActionsEnabled = tabsRouteActive,
@@ -2009,17 +2106,18 @@ private fun MainAppContent(
                                         onRequestedSettingsPageConsumed = {
                                             requestedSettingsPageName = null
                                         },
-                                        onInitialHomeContentRendered = { initialHomeReady = true },
-                                    )
-                                }
+                                            onInitialHomeContentRendered = { initialHomeReady = true },
+                                        )
 
-                                if (isTabletLayout && !useNativeBottomTabs) {
-                                    TabletFloatingTopBar(
-                                        selectedTab = selectedTab,
-                                        onTabSelected = ::handleRootTabClick,
-                                        onProfileSelected = onProfileSelected,
-                                        onAddProfileRequested = onSwitchProfile,
-                                    )
+                                        if (isTabletLayout && !isDesktopLayout && !useNativeBottomTabs) {
+                                            TabletFloatingTopBar(
+                                                selectedTab = selectedTab,
+                                                onTabSelected = ::handleRootTabClick,
+                                                onProfileSelected = onProfileSelected,
+                                                onAddProfileRequested = onSwitchProfile,
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }

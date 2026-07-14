@@ -79,6 +79,12 @@ internal fun PlayerControlsShell(
     onLockToggle: () -> Unit,
     onBack: () -> Unit,
     onTogglePlayback: () -> Unit,
+    volumeLevel: PlayerAudioLevel = PlayerAudioLevel(1f, false),
+    showVolumeControl: Boolean = false,
+    onVolumeChanged: (Float) -> Unit = {},
+    showFullscreenControl: Boolean = false,
+    onFullscreenClick: () -> Unit = {},
+    desktopLayout: Boolean = false,
     onSeekBack: () -> Unit,
     onSeekForward: () -> Unit,
     onResizeModeClick: () -> Unit,
@@ -186,15 +192,31 @@ internal fun PlayerControlsShell(
                     onScrubFinished = onScrubFinished,
                     onResizeModeClick = onResizeModeClick,
                     onSpeedClick = onSpeedClick,
-                    onSubtitleClick = onSubtitleClick,
-                    onAudioClick = onAudioClick,
-                    onSourcesClick = onSourcesClick,
+                     onSubtitleClick = onSubtitleClick,
+                     onAudioClick = onAudioClick,
+                     onSourcesClick = onSourcesClick,
                     onEpisodesClick = onEpisodesClick,
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
                         .padding(horizontal = metrics.horizontalPadding)
                         .padding(bottom = metrics.sliderBottomOffset),
+                )
+            }
+
+            if (desktopLayout) {
+                DesktopPlayerToolCluster(
+                    volumeLevel = volumeLevel,
+                    showVolumeControl = showVolumeControl,
+                    onVolumeChanged = onVolumeChanged,
+                    showFullscreenControl = showFullscreenControl,
+                    onFullscreenClick = onFullscreenClick,
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(
+                            end = metrics.horizontalPadding,
+                            bottom = metrics.sliderBottomOffset + 8.dp,
+                        ),
                 )
             }
         }

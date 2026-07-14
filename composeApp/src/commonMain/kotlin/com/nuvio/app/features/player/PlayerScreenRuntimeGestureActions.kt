@@ -163,6 +163,16 @@ internal fun PlayerScreenRuntime.togglePlayback() {
     controlsVisible = true
 }
 
+internal fun PlayerScreenRuntime.setVolumeLevel(level: Float) {
+    val controller = playerController ?: return
+    controller.setVolumeLevel(level.coerceIn(0f, 1f))?.let { nextLevel ->
+        volumeLevel = nextLevel
+        if (!nextLevel.isMuted && nextLevel.fraction > 0f) {
+            lastUnmutedVolumeFraction = nextLevel.fraction
+        }
+    }
+}
+
 internal fun PlayerScreenRuntime.seekBy(offsetMs: Long) {
     playerController?.seekBy(offsetMs)
     scheduleProgressSyncAfterSeek()
@@ -266,6 +276,11 @@ internal fun PlayerScreenRuntime.rememberSurfaceGestureCallbacks(): PlayerSurfac
             revealLockedOverlay()
             return@rememberUpdatedState
         }
+        if (isDesktopLayout) {
+            controlsVisible = !controlsVisible
+            pausedOverlayVisible = false
+            return@rememberUpdatedState
+        }
         val centerStart = layoutSize.width * PlayerLeftGestureBoundary
         val centerEnd = layoutSize.width * PlayerRightGestureBoundary
         if (controlsVisible && offset.x in centerStart..centerEnd) {
@@ -277,6 +292,10 @@ internal fun PlayerScreenRuntime.rememberSurfaceGestureCallbacks(): PlayerSurfac
     val onSurfaceDoubleTap = rememberUpdatedState { offset: Offset ->
         if (playerControlsLocked) {
             revealLockedOverlay()
+            return@rememberUpdatedState
+        }
+        if (isDesktopLayout) {
+            playerController?.toggleFullscreen()
             return@rememberUpdatedState
         }
         if (!playerSettingsUiState.touchGesturesEnabled) {

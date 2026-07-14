@@ -128,6 +128,8 @@ internal class PlayerScreenRuntime(
     var playbackSnapshot by mutableStateOf(PlayerPlaybackSnapshot())
     var playerController by mutableStateOf<PlayerEngineController?>(null)
     var playerControllerSourceUrl by mutableStateOf<String?>(null)
+    var volumeLevel by mutableStateOf(PlayerAudioLevel(fraction = 1f, isMuted = false))
+    var lastUnmutedVolumeFraction by mutableStateOf(1f)
     var errorMessage by mutableStateOf<String?>(null)
     var isScrubbingTimeline by mutableStateOf(false)
     var scrubbingPositionMs by mutableStateOf<Long?>(null)

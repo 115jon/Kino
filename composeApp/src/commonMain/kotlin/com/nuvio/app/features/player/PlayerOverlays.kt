@@ -66,6 +66,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
+import co.touchlab.kermit.Logger
 import com.nuvio.app.core.ui.NuvioBackButton
 import com.nuvio.app.core.ui.nuvioTypeScale
 import nuvio.composeapp.generated.resources.Res
@@ -77,6 +78,8 @@ import nuvio.composeapp.generated.resources.compose_player_youre_watching
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 import kotlin.math.max
+
+private val playerOverlayLog = Logger.withTag("PlayerOverlay")
 
 internal enum class GestureFeedbackIcon {
     Speed,
@@ -202,7 +205,10 @@ internal fun OpeningOverlay(
                                 }
                             },
                         contentScale = ContentScale.Fit,
-                        onError = { logoLoadError = true },
+                        onError = {
+                            playerOverlayLog.w { "Opening overlay logo failed; falling back to title" }
+                            logoLoadError = true
+                        },
                     )
                     if (progressActive) {
                         AsyncImage(
@@ -444,7 +450,10 @@ internal fun PauseMetadataOverlay(
                     contentScale = ContentScale.Fit,
                     alignment = Alignment.BottomStart,
                     modifier = Modifier.height(logoHeight),
-                    onError = { logoLoadError = true },
+                    onError = {
+                        playerOverlayLog.w { "Pause overlay logo failed; falling back to title" }
+                        logoLoadError = true
+                    },
                 )
             } else {
                 Text(

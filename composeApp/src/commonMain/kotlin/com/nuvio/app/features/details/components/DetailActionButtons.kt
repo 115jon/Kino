@@ -38,6 +38,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.nuvio.app.core.ui.nuvioSecondaryClick
 import com.nuvio.app.core.ui.AppIconResource
 import com.nuvio.app.core.ui.appIconPainter
 import nuvio.composeapp.generated.resources.Res
@@ -108,6 +109,7 @@ fun DetailActionButtons(
                             onLongClick = onPlayLongClick,
                             role = Role.Button,
                         )
+                        .nuvioSecondaryClick(onPlayLongClick)
                         .height(buttonHeight),
                     horizontalArrangement = Arrangement.Center,
                     verticalAlignment = Alignment.CenterVertically,
@@ -250,7 +252,8 @@ private fun DetailIconAction(
                     onClick = onClick,
                     onLongClick = onLongClick,
                     role = Role.Button,
-                ),
+                )
+                .nuvioSecondaryClick(onLongClick),
             contentAlignment = Alignment.Center,
         ) {
             Icon(

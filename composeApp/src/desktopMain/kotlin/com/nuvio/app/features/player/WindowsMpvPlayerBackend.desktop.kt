@@ -38,6 +38,7 @@ import kotlinx.coroutines.withContext
 import java.awt.*
 import java.awt.event.*
 import java.awt.image.BufferedImage
+import java.net.URI
 import java.util.Timer
 import java.util.TimerTask
 import javax.swing.*
@@ -50,6 +51,14 @@ private val desktopPlayerLog = Logger.withTag("DesktopPlayerTrace")
 private fun desktopPlayerTrace(message: String) {
     desktopPlayerLog.i { message }
 }
+
+private fun playbackUrlForLog(url: String?): String =
+    url.orEmpty().let { value ->
+        runCatching { URI(value).host }
+            .getOrNull()
+            ?.takeIf { it.isNotBlank() }
+            ?: "<unknown>"
+    }
 
 private val desktopPlayerPerfLog = Logger.withTag("DesktopPlayerPerf")
 
@@ -143,6 +152,7 @@ internal interface WindowsMpvLibrary : Library {
     fun mpv_command(ctx: Pointer, args: Array<String?>): Int
     fun mpv_set_wakeup_callback(ctx: Pointer, callback: MpvWakeupCallback?, callbackCtx: Pointer?)
     fun mpv_wait_event(ctx: Pointer, timeout: Double): Pointer?
+    fun mpv_request_log_messages(ctx: Pointer, minLevel: String): Int
     fun mpv_observe_property(ctx: Pointer, replyUserdata: Long, name: String, format: Int): Int
     fun mpv_render_context_create(res: PointerByReference, ctx: Pointer, params: Pointer): Int
     fun mpv_render_context_set_update_callback(ctx: Pointer, callback: MpvRenderUpdateCallback?, callbackCtx: Pointer?)
@@ -167,6 +177,10 @@ private const val WindowsPlayerCachePauseWaitSeconds = "5"
 private const val WindowsHdrCompatibilityFilter = "libplacebo=apply_dolbyvision=1:apply_filmgrain=1:peak_detect=1:tonemapping=auto"
 private const val MPV_EVENT_NONE = 0
 private const val MPV_EVENT_SHUTDOWN = 1
+private const val MPV_EVENT_LOG_MESSAGE = 2
+private const val MPV_EVENT_START_FILE = 6
+private const val MPV_EVENT_END_FILE = 7
+private const val MPV_EVENT_FILE_LOADED = 8
 private const val MPV_FORMAT_FLAG = 3
 private const val MPV_FORMAT_INT64 = 4
 private const val MPV_FORMAT_DOUBLE = 5
@@ -316,6 +330,28 @@ open class MpvEvent(pointer: Pointer? = null) : Structure(pointer) {
     var data: Pointer? = null
 }
 
+@Structure.FieldOrder("prefix", "level", "text", "log_level")
+private class MpvLogMessage(pointer: Pointer? = null) : Structure(pointer) {
+    @JvmField
+    var prefix: Pointer? = null
+
+    @JvmField
+    var level: Pointer? = null
+
+    @JvmField
+    var text: Pointer? = null
+
+    @JvmField
+    var log_level: Pointer? = null
+}
+
+private fun mpvLogText(pointer: Pointer?): String = pointer?.getString(0).orEmpty()
+
+private fun redactMpvLogText(value: String): String =
+    Regex("https?://[^\\s]+", RegexOption.IGNORE_CASE).replace(value) { match ->
+        playbackUrlForLog(match.value)
+    }
+
 private fun createRenderParams(vararg values: Pair<Int, Pointer?>): Array<MpvRenderParam> {
     @Suppress("UNCHECKED_CAST")
     val params = MpvRenderParam().toArray(values.size + 1) as Array<MpvRenderParam>
@@ -424,6 +460,7 @@ internal object WindowsMpvPlayerBackend : DesktopPlaybackBackend {
         onControllerReady: (PlayerEngineController) -> Unit,
         onSnapshot: (PlayerPlaybackSnapshot) -> Unit,
         onError: (String?) -> Unit,
+        onSurfaceInteraction: (Boolean) -> Unit,
     ) {
         val colorScheme = MaterialTheme.colorScheme
         var lastTrackPollEpochMs by remember { mutableStateOf(0L) }
@@ -479,6 +516,7 @@ internal object WindowsMpvPlayerBackend : DesktopPlaybackBackend {
                         onPlayerStateChanged = {
                             playerStateSignals.tryEmit(Unit)
                         },
+                        onSurfaceInteraction = onSurfaceInteraction,
                         perfCollector = backendPerfStats,
                         onAddonSubtitlesFetch = { onAddonSubtitlesFetchCallback?.invoke() },
                         onSourcesRequested = { onSourcesRequestedCallback?.invoke() },
@@ -503,6 +541,7 @@ internal object WindowsMpvPlayerBackend : DesktopPlaybackBackend {
                         onPlayerStateChanged = {
                             playerStateSignals.tryEmit(Unit)
                         },
+                        onSurfaceInteraction = onSurfaceInteraction,
                         perfCollector = backendPerfStats,
                     )
                 }
@@ -530,7 +569,10 @@ internal object WindowsMpvPlayerBackend : DesktopPlaybackBackend {
             val ptr = windowState.playerPtr
             if (ptr != null) {
                 desktopPlayerTrace(
-                    "windows backend load source url=${sourceUrl.take(240)} audio=${sourceAudioUrl?.take(240)} headerKeys=${playbackHeaders.keys.joinToString()} responseHeaderKeys=${sanitizePlaybackResponseHeaders(sourceResponseHeaders).keys.joinToString()}"
+                    "windows backend load source host=${playbackUrlForLog(sourceUrl)} " +
+                        "audioHost=${playbackUrlForLog(sourceAudioUrl)} " +
+                        "headerKeys=${playbackHeaders.keys.joinToString()} " +
+                        "responseHeaderKeys=${sanitizePlaybackResponseHeaders(sourceResponseHeaders).keys.joinToString()}"
                 )
                 windowState.currentSourceUrl = sourceUrl
                 windowState.currentSourceAudioUrl = sourceAudioUrl
@@ -1110,6 +1152,7 @@ internal class EmbeddedWindowsPlayerPanel(
     private val onClose: () -> Unit,
     private val onPlayerStateChanged: () -> Unit,
     private val perfCollector: DesktopBackendPerfCollector? = null,
+    private val onSurfaceInteraction: (Boolean) -> Unit = {},
 ) : JPanel(BorderLayout()), WindowsPlaybackPanel {
     private val glPanel = GLJPanel(createGlCapabilities())
     private var mpvInitialized = false
@@ -1128,8 +1171,10 @@ internal class EmbeddedWindowsPlayerPanel(
         state.panelRef = this
         background = java.awt.Color.BLACK
         isFocusable = true
+        focusTraversalKeysEnabled = false
         glPanel.background = java.awt.Color.BLACK
         glPanel.isFocusable = true
+        glPanel.focusTraversalKeysEnabled = false
         glPanel.addGLEventListener(object : GLEventListener {
             override fun init(drawable: GLAutoDrawable) {
                 if (!mpvInitialized) {
@@ -1175,13 +1220,20 @@ internal class EmbeddedWindowsPlayerPanel(
             }
 
             override fun mouseClicked(e: MouseEvent) {
+                onSurfaceInteraction(true)
                 if (e.clickCount == 2) {
                     toggleFullScreen()
                 }
             }
+
+            override fun mouseMoved(e: MouseEvent) {
+                onSurfaceInteraction(false)
+            }
         }
         addMouseListener(focusRequester)
+        addMouseMotionListener(focusRequester)
         glPanel.addMouseListener(focusRequester)
+        glPanel.addMouseMotionListener(focusRequester)
         glPanel.addComponentListener(object : ComponentAdapter() {
             override fun componentResized(e: ComponentEvent) {
                 scheduleRender(force = true)
@@ -1223,6 +1275,7 @@ internal class EmbeddedWindowsPlayerPanel(
         if (ret < 0) {
             throw RuntimeException("Failed to initialize libmpv: error code $ret")
         }
+        lib.mpv_request_log_messages(ptr, "warn")
         glProcAddressCallback = object : MpvOpenGlGetProcAddressCallback {
             override fun invoke(ctx: Pointer?, name: String?): Pointer? =
                 name?.let(::resolveOpenGlProcAddress)
@@ -1285,6 +1338,20 @@ internal class EmbeddedWindowsPlayerPanel(
             when (event.event_id) {
                 MPV_EVENT_NONE -> break
                 MPV_EVENT_SHUTDOWN -> return
+                MPV_EVENT_LOG_MESSAGE -> {
+                    val message = event.data?.let { data ->
+                        MpvLogMessage(data).apply { read() }
+                    }
+                    desktopPlayerTrace(
+                        "mpv log level=${mpvLogText(message?.level)} " +
+                            "prefix=${mpvLogText(message?.prefix)} " +
+                            "text=${redactMpvLogText(mpvLogText(message?.text)).take(400)}"
+                    )
+                }
+                MPV_EVENT_START_FILE,
+                MPV_EVENT_END_FILE,
+                MPV_EVENT_FILE_LOADED,
+                -> desktopPlayerTrace("mpv event id=${event.event_id} error=${event.error}")
                 else -> {
                     hasUpdates = true
                     eventCount += 1
@@ -1316,11 +1383,18 @@ internal class EmbeddedWindowsPlayerPanel(
         val headersStr = effectiveHeaders.entries
             .joinToString(",") { "${it.key}: ${it.value.replace("\\", "\\\\").replace(",", "\\,")}" }
         desktopPlayerTrace(
-            "embedded panel loadFile url=${url.take(240)} effectiveUrl=${effectiveUrl.take(240)} audio=${audioUrl?.take(240)} effectiveAudio=${effectiveAudioUrl?.take(240)} headerKeys=${effectiveHeaders.keys.joinToString()} headerBlobLength=${headersStr.length}"
+            "embedded panel loadFile host=${playbackUrlForLog(url)} " +
+                "effectiveHost=${playbackUrlForLog(effectiveUrl)} " +
+                "audioHost=${playbackUrlForLog(audioUrl)} " +
+                "effectiveAudioHost=${playbackUrlForLog(effectiveAudioUrl)} " +
+                "headerKeys=${effectiveHeaders.keys.joinToString()} headerBlobLength=${headersStr.length}"
         )
         configureVideoPipeline()
         lib.mpv_set_property_string(ptr, "http-header-fields", headersStr)
-        lib.mpv_command(ptr, arrayOf("loadfile", effectiveUrl, "replace", null))
+        val loadResult = lib.mpv_command(ptr, arrayOf("loadfile", effectiveUrl, "replace", null))
+        if (loadResult < 0) {
+            desktopPlayerTrace("embedded panel loadFile failed commandResult=$loadResult")
+        }
         if (!effectiveAudioUrl.isNullOrBlank()) {
             Timer().schedule(500) {
                 SwingUtilities.invokeLater {
@@ -1589,6 +1663,7 @@ internal class WindowsPlayerPanel(
     private val onClose: () -> Unit,
     private val onPlayerStateChanged: () -> Unit,
     private val perfCollector: DesktopBackendPerfCollector? = null,
+    private val onSurfaceInteraction: (Boolean) -> Unit = {},
     private val onAddonSubtitlesFetch: () -> Unit,
     private val onSourcesRequested: () -> Unit,
     private val onSourceSelected: (String) -> Unit,
@@ -1684,7 +1759,10 @@ internal class WindowsPlayerPanel(
     private fun setupPanel() {
         background = playerTheme.panelBgColor
         isFocusable = true
+        focusTraversalKeysEnabled = false
         canvas.background = java.awt.Color.BLACK
+        canvas.isFocusable = true
+        canvas.focusTraversalKeysEnabled = false
         add(canvas, BorderLayout.CENTER)
     }
 
@@ -1773,10 +1851,12 @@ internal class WindowsPlayerPanel(
         val interactionListener = object : MouseAdapter() {
             override fun mouseMoved(e: MouseEvent) {
                 lastMouseMovedTime = System.currentTimeMillis()
+                onSurfaceInteraction(false)
                 showControls()
             }
             override fun mouseClicked(e: MouseEvent) {
                 lastMouseMovedTime = System.currentTimeMillis()
+                onSurfaceInteraction(true)
                 showControls()
                 canvas.requestFocusInWindow()
                 if (e.clickCount == 2) {
@@ -2043,6 +2123,7 @@ internal class WindowsPlayerPanel(
         if (ret < 0) {
             throw RuntimeException("Failed to initialize libmpv: error code $ret")
         }
+        lib.mpv_request_log_messages(ptr, "warn")
         lib.mpv_observe_property(ptr, 0, "pause", MPV_FORMAT_FLAG)
         lib.mpv_observe_property(ptr, 0, "paused-for-cache", MPV_FORMAT_FLAG)
         lib.mpv_observe_property(ptr, 0, "core-idle", MPV_FORMAT_FLAG)
@@ -2071,7 +2152,14 @@ internal class WindowsPlayerPanel(
             .joinToString(",") { "${it.key}: ${it.value.replace("\\", "\\\\").replace(",", "\\,")}" }
 
         lib.mpv_set_property_string(ptr, "http-header-fields", headersStr)
-        lib.mpv_command(ptr, arrayOf("loadfile", url, "replace", null))
+        desktopPlayerTrace(
+            "native panel loadFile host=${playbackUrlForLog(url)} " +
+                "audioHost=${playbackUrlForLog(audioUrl)} headerKeys=${headers.keys.joinToString()}"
+        )
+        val loadResult = lib.mpv_command(ptr, arrayOf("loadfile", url, "replace", null))
+        if (loadResult < 0) {
+            desktopPlayerTrace("native panel loadFile failed commandResult=$loadResult")
+        }
 
         if (!audioUrl.isNullOrBlank()) {
             Timer().schedule(500) {
@@ -2336,6 +2424,20 @@ internal class WindowsPlayerPanel(
             when (event.event_id) {
                 MPV_EVENT_NONE -> break
                 MPV_EVENT_SHUTDOWN -> return
+                MPV_EVENT_LOG_MESSAGE -> {
+                    val message = event.data?.let { data ->
+                        MpvLogMessage(data).apply { read() }
+                    }
+                    desktopPlayerTrace(
+                        "mpv log level=${mpvLogText(message?.level)} " +
+                            "prefix=${mpvLogText(message?.prefix)} " +
+                            "text=${redactMpvLogText(mpvLogText(message?.text)).take(400)}"
+                    )
+                }
+                MPV_EVENT_START_FILE,
+                MPV_EVENT_END_FILE,
+                MPV_EVENT_FILE_LOADED,
+                -> desktopPlayerTrace("mpv event id=${event.event_id} error=${event.error}")
                 else -> {
                     hasUpdates = true
                     eventCount += 1

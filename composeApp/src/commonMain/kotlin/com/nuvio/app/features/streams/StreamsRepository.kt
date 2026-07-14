@@ -192,7 +192,10 @@ object StreamsRepository {
                 )
             }
 
-        log.d { "Found ${streamAddons.size} addons for stream type=$type id=$videoId" }
+        log.i {
+            "Found ${streamAddons.size} compatible addons for stream type=$type id=$videoId " +
+                "pluginGroups=${pluginProviderGroups.size}"
+        }
 
         if (streamAddons.isEmpty() && pluginProviderGroups.isEmpty()) {
             _uiState.value = StreamsUiState(
@@ -436,7 +439,7 @@ object StreamsRepository {
                         type = type,
                         id = videoId,
                     )
-                    log.d { "Fetching streams from: $url" }
+                     log.i { "Fetching streams from addon=${addon.addonId} type=$type id=$videoId" }
 
                     val displayName = addon.addonName
                     val group = runCatchingUnlessCancelled {
@@ -449,7 +452,7 @@ object StreamsRepository {
                         )
                     }.fold(
                         onSuccess = { streams ->
-                            log.d { "Got ${streams.size} streams from ${displayName}" }
+                            log.i { "Got ${streams.size} streams from ${displayName}" }
                             AddonStreamGroup(
                                 addonName = displayName,
                                 addonId = addon.addonId,

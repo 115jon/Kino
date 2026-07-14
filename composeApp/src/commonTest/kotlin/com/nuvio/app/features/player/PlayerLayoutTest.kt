@@ -16,4 +16,16 @@ class PlayerLayoutTest {
         assertEquals(PlayerWindowMode.Mobile, playerWindowMode(767f, desktopPlatform = false))
         assertEquals(PlayerWindowMode.Desktop, playerWindowMode(768f, desktopPlatform = true))
     }
+
+    @Test
+    fun `desktop platform remains desktop below the content breakpoint`() {
+        assertEquals(PlayerWindowMode.Desktop, playerWindowMode(640f, desktopPlatform = true))
+    }
+
+    @Test
+    fun `desktop volume label contains only the current level`() {
+        assertEquals("100%", desktopVolumeLabel(PlayerAudioLevel(1f, false)))
+        assertEquals("38%", desktopVolumeLabel(PlayerAudioLevel(0.375f, false)))
+        assertEquals("0%", desktopVolumeLabel(PlayerAudioLevel(0.8f, true)))
+    }
 }

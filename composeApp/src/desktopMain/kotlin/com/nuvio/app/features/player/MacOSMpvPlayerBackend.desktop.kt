@@ -35,7 +35,9 @@ internal object MacOSMpvPlayerBackend : DesktopPlaybackBackend {
         onControllerReady: (PlayerEngineController) -> Unit,
         onSnapshot: (PlayerPlaybackSnapshot) -> Unit,
         onError: (String?) -> Unit,
+        onSurfaceInteraction: (Boolean) -> Unit,
     ) {
+        onSurfaceInteraction
         val bridge = remember { MacOSMPVBridgeLib.INSTANCE }
         val playerPtr = remember { bridge.nuvio_player_create() }
         var onCloseCallback by remember { mutableStateOf<(() -> Unit)?>(null) }

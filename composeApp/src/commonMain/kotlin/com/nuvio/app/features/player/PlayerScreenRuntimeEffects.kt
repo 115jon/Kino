@@ -156,6 +156,15 @@ internal fun PlayerScreenRuntime.BindPlayerRuntimeEffects() {
         playerController?.setSubtitleDelayMs(subtitleDelayMs)
     }
 
+    LaunchedEffect(playerController, playbackSnapshot.positionMs) {
+        playerController?.currentVolumeLevel()?.let { level ->
+            volumeLevel = level
+            if (!level.isMuted && level.fraction > 0f) {
+                lastUnmutedVolumeFraction = level.fraction
+            }
+        }
+    }
+
     LaunchedEffect(selectedAddonSubtitleId, useCustomSubtitles, activeSourceUrl) {
         subtitleAutoSyncState = SubtitleAutoSyncUiState()
     }
