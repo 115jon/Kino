@@ -7,6 +7,7 @@ import org.jetbrains.compose.resources.getString
 
 actual object AppUpdaterPlatform {
     actual val isSupported: Boolean = false
+    actual val platform: String = "ios"
 
     actual fun getSupportedAbis(): List<String> = emptyList()
 
@@ -17,6 +18,7 @@ actual object AppUpdaterPlatform {
     actual suspend fun downloadApk(
         assetUrl: String,
         assetName: String,
+        expectedSha256: String,
         onProgress: (downloadedBytes: Long, totalBytes: Long?) -> Unit,
     ): Result<String> = Result.failure(IllegalStateException(getString(Res.string.updates_not_available)))
 

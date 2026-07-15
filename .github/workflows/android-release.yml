@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     tags:
-      - 'v*'
+      - 'android-v*'
 
 permissions:
   contents: write
@@ -15,12 +15,27 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Validate release tag
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF_TYPE" != "tag" || "$GITHUB_REF_NAME" != android-v* ]]; then
+            echo "Android releases must run from an android-v* tag."
+            exit 1
+          fi
 
       - name: Decode signing keystore
         env:
@@ -48,11 +63,33 @@ jobs:
           EOF
 
       - name: Build full release APK
-        run: ./gradlew --no-daemon :androidApp:assembleFullRelease
+        run: ./gradlew --no-daemon -Pkino.release.platform=android :androidApp:assembleFullRelease
+
+      - name: Prepare release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#android-v}"
+          apk_path="$(find androidApp/build/outputs/apk/full/release -type f -name '*.apk' -print -quit)"
+          if [[ -z "$apk_path" ]]; then
+            echo "No Android release APK was produced."
+            exit 1
+          fi
+          mkdir -p release-assets
+          asset_path="release-assets/Kino-Android-${version}.apk"
+          cp "$apk_path" "$asset_path"
+          version_code="$(awk -F= '$1 == "versionCode" {print $2}' release/versions/android.properties)"
+          node scripts/release-manifest.mjs \
+            --platform=android \
+            --version="$version" \
+            --version-code="$version_code" \
+            --asset="$asset_path" \
+            --output=release-assets/release-manifest.json
+          node scripts/verify-release-state.mjs --platform=android --tag="$GITHUB_REF_NAME"
 
       - name: Publish APK
         uses: softprops/action-gh-release@v2
         with:
-          files: androidApp/build/outputs/apk/full/release/*.apk
-          name: Kino ${{ github.ref_name }}
+          files: release-assets/*
+          name: Kino Android ${{ github.ref_name }}
           generate_release_notes: true

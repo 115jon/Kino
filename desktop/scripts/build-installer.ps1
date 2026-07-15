@@ -8,7 +8,7 @@ $gradlePath = Join-Path $repoRoot "gradlew.bat"
 $installerProject = Join-Path $repoRoot "desktop\installer\KinoSetup.csproj"
 $runtimeScript = Join-Path $repoRoot "desktop\scripts\prepare-windows-mpv-runtime.ps1"
 $payloadZip = Join-Path $repoRoot "desktop\installer\Assets\payload.zip"
-$versionFile = Join-Path $repoRoot "iosApp\Configuration\Version.xcconfig"
+$versionFile = Join-Path $repoRoot "release\versions\desktop.properties"
 $distributableRoot = Join-Path $repoRoot "composeApp\build\compose\binaries\main-release\app"
 $localEnvFile = Join-Path $repoRoot ".env.kino.local"
 
@@ -38,8 +38,8 @@ if (Test-Path -LiteralPath $localEnvFile) {
     }
 }
 
-$versionLine = Get-Content -LiteralPath $versionFile | Where-Object { $_ -match '^\s*MARKETING_VERSION\s*=' } | Select-Object -First 1
-if ($null -eq $versionLine -or $versionLine -notmatch '=\s*([^\s#]+)') { throw "MARKETING_VERSION is missing from $versionFile" }
+$versionLine = Get-Content -LiteralPath $versionFile | Where-Object { $_ -match '^\s*versionName\s*=' } | Select-Object -First 1
+if ($null -eq $versionLine -or $versionLine -notmatch '=\s*([^\s#]+)') { throw "versionName is missing from $versionFile" }
 $version = $matches[1]
 
 Write-Host "Building Kino desktop distributable $version..."
@@ -47,7 +47,7 @@ Write-Host "Building Kino desktop distributable $version..."
 if ($LASTEXITCODE -ne 0) { throw "Windows MPV runtime preparation failed with exit code $LASTEXITCODE." }
 Push-Location $repoRoot
 try {
-    & $gradlePath ":composeApp:createReleaseDistributable"
+    & $gradlePath "-Pkino.release.platform=desktop" ":composeApp:createReleaseDistributable"
     if ($LASTEXITCODE -ne 0) { throw "Desktop distributable build failed with exit code $LASTEXITCODE." }
 }
 finally {

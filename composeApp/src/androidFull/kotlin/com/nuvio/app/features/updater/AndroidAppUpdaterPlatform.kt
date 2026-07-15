@@ -18,6 +18,7 @@ import okhttp3.Request
 import org.jetbrains.compose.resources.getString
 import java.io.File
 import java.io.FileOutputStream
+import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 
 object AndroidAppUpdaterPlatform {
@@ -52,6 +53,7 @@ object AndroidAppUpdaterPlatform {
     suspend fun downloadApk(
         assetUrl: String,
         assetName: String,
+        expectedSha256: String,
         onProgress: (downloadedBytes: Long, totalBytes: Long?) -> Unit,
     ): Result<String> = withContext(Dispatchers.IO) {
         runCatching {
@@ -88,6 +90,20 @@ object AndroidAppUpdaterPlatform {
                         output.flush()
                     }
                 }
+            }
+
+            val digest = MessageDigest.getInstance("SHA-256")
+            destination.inputStream().use { input ->
+                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                while (true) {
+                    val read = input.read(buffer)
+                    if (read < 0) break
+                    digest.update(buffer, 0, read)
+                }
+            }
+            val actualSha256 = digest.digest().joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }
+            check(actualSha256.equals(expectedSha256, ignoreCase = true)) {
+                "Downloaded update checksum does not match the release manifest."
             }
 
             destination.absolutePath

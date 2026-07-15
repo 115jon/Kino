@@ -1,19 +1,5 @@
 import java.util.Properties
 
-fun readXcconfigValue(file: File, key: String): String? {
-    if (!file.exists()) return null
-    return file.readLines()
-        .asSequence()
-        .map(String::trim)
-        .filter { it.isNotEmpty() && !it.startsWith("#") && it.contains('=') }
-        .map { line ->
-            val separatorIndex = line.indexOf('=')
-            line.substring(0, separatorIndex).trim() to line.substring(separatorIndex + 1).trim()
-        }
-        .firstOrNull { (entryKey, _) -> entryKey == key }
-        ?.second
-}
-
 plugins {
     alias(libs.plugins.androidApplication)
     alias(libs.plugins.sentry.android.gradle)
@@ -36,12 +22,17 @@ val sentryAuthToken = envOrLocalProperty("SENTRY_AUTH_TOKEN")
 val sentryOrg = envOrLocalProperty("SENTRY_ORG")
 val sentryProject = envOrLocalProperty("SENTRY_PROJECT")
 val sentryMappingUploadEnabled = sentryAuthToken != null && sentryOrg != null && sentryProject != null
-val appVersionConfigFile = rootProject.file("iosApp/Configuration/Version.xcconfig")
-val releaseAppVersionName = readXcconfigValue(appVersionConfigFile, "MARKETING_VERSION")
-    ?: error("MARKETING_VERSION is missing from ${appVersionConfigFile.path}")
-val releaseAppVersionCode = readXcconfigValue(appVersionConfigFile, "CURRENT_PROJECT_VERSION")
+fun readVersionProperty(file: File, key: String): String? {
+    if (!file.exists()) return null
+    return Properties().apply { file.inputStream().use(::load) }.getProperty(key)?.trim()
+}
+
+val appVersionConfigFile = rootProject.file("release/versions/android.properties")
+val releaseAppVersionName = readVersionProperty(appVersionConfigFile, "versionName")
+    ?: error("versionName is missing from ${appVersionConfigFile.path}")
+val releaseAppVersionCode = readVersionProperty(appVersionConfigFile, "versionCode")
     ?.toIntOrNull()
-    ?: error("CURRENT_PROJECT_VERSION is missing or invalid in ${appVersionConfigFile.path}")
+    ?: error("versionCode is missing or invalid in ${appVersionConfigFile.path}")
 
 android {
     namespace = "com.nuvio.android"

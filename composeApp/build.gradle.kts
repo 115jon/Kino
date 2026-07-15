@@ -194,6 +194,11 @@ fun readXcconfigValue(file: File, key: String): String? {
         ?.second
 }
 
+fun readVersionProperty(file: File, key: String): String? {
+    if (!file.exists()) return null
+    return Properties().apply { file.inputStream().use(::load) }.getProperty(key)?.trim()
+}
+
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
     alias(libs.plugins.androidKotlinMultiplatformLibrary)
@@ -230,12 +235,36 @@ val stripWindowsJoglJar = tasks.register<Zip>("stripWindowsJoglJar") {
         "jogamp/newt/swt/**",
     )
 }
-val appVersionConfigFile = rootProject.file("iosApp/Configuration/Version.xcconfig")
-val releaseAppVersionName = readXcconfigValue(appVersionConfigFile, "MARKETING_VERSION")
-    ?: error("MARKETING_VERSION is missing from ${appVersionConfigFile.path}")
-val releaseAppVersionCode = readXcconfigValue(appVersionConfigFile, "CURRENT_PROJECT_VERSION")
+val requestedReleasePlatform = providers.gradleProperty("kino.release.platform").orNull?.trim()?.lowercase()
+val inferredReleasePlatform = when {
+    gradle.startParameter.taskNames.any { taskName -> taskName.contains("ios", ignoreCase = true) } -> "ios"
+    gradle.startParameter.taskNames.any { taskName ->
+        taskName.contains("desktop", ignoreCase = true) ||
+            taskName.contains("distributable", ignoreCase = true)
+    } -> "desktop"
+    else -> "android"
+}
+val releasePlatform = (requestedReleasePlatform ?: inferredReleasePlatform).also { platform ->
+    require(platform == "android" || platform == "desktop" || platform == "ios") {
+        "kino.release.platform must be 'android', 'desktop', or 'ios'."
+    }
+}
+val appVersionConfigFile = rootProject.file(
+    if (releasePlatform == "ios") "release/versions/ios.xcconfig" else "release/versions/$releasePlatform.properties",
+)
+val releaseAppVersionName = if (releasePlatform == "ios") {
+    readXcconfigValue(appVersionConfigFile, "MARKETING_VERSION")
+} else {
+    readVersionProperty(appVersionConfigFile, "versionName")
+}
+    ?: error("version name is missing from ${appVersionConfigFile.path}")
+val releaseAppVersionCode = (if (releasePlatform == "ios") {
+    readXcconfigValue(appVersionConfigFile, "CURRENT_PROJECT_VERSION")
+} else {
+    readVersionProperty(appVersionConfigFile, "versionCode")
+})
     ?.toIntOrNull()
-    ?: error("CURRENT_PROJECT_VERSION is missing or invalid in ${appVersionConfigFile.path}")
+    ?: error("version code is missing or invalid in ${appVersionConfigFile.path}")
 val iosDistribution = (
     providers.gradleProperty("nuvio.ios.distribution").orNull
         ?: System.getenv("NUVIO_IOS_DISTRIBUTION")

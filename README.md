@@ -28,11 +28,11 @@ The application is built from a shared Kotlin Multiplatform codebase in [compose
 
 ### Android
 
-Download the latest Android build from the [Kino releases page](https://github.com/115jon/Kino/releases/latest).
+Download the latest Android build from the [Kino releases page](https://github.com/115jon/Kino/releases?q=android-v).
 
 ### Windows Desktop
 
-Download the latest Windows installer from the [Kino releases page](https://github.com/115jon/Kino/releases/latest).
+Download the latest Windows installer from the [Kino releases page](https://github.com/115jon/Kino/releases?q=desktop-v).
 
 ### iOS
 
@@ -48,6 +48,19 @@ cd Kino
 ./scripts/run-mobile.sh ios
 ```
 
+## Release Versioning
+
+Kino maintains independent release tracks for each platform. Android releases use `android-vX.Y.Z` tags and desktop releases use `desktop-vX.Y.Z` tags. Version metadata is stored in `release/versions/` and is not inherited from the upstream version file.
+
+```bash
+node scripts/bump-version.mjs --platform=android --dry-run
+node scripts/bump-version.mjs --platform=android
+git tag android-v<version>
+git push origin android-v<version>
+```
+
+Use `--platform=desktop` for Windows releases. Each release publishes only the platform's distributable and a `release-manifest.json` containing compatibility and checksum metadata.
+
 ### Project Structure
 
 - `composeApp/` contains the shared Kotlin Multiplatform and Compose Multiplatform app code.
@@ -55,7 +68,8 @@ cd Kino
 - `composeApp/src/androidMain/` contains Android-specific integrations and resources.
 - `composeApp/src/desktopMain/` contains desktop-specific integrations and the native window shell.
 - `desktop/` contains the Windows installer and packaging scripts.
-- `iosApp/` contains the native Xcode project, iOS entry point, and shared version configuration.
+- `iosApp/` contains the native Xcode project and iOS entry point.
+- `release/versions/` contains fork-owned platform release metadata.
 
 Useful commands:
 
@@ -72,8 +86,6 @@ powershell -ExecutionPolicy Bypass -File ./desktop/scripts/build-installer.ps1
 ```
 
 The installer is produced under `desktop/installer/bin/Release/`.
-
-Versioning is driven from `iosApp/Configuration/Version.xcconfig`, which is the shared source of truth for Android and desktop releases.
 
 ## Legal & Disclosure
 

@@ -57,15 +57,20 @@ import org.jetbrains.compose.resources.stringResource
 private const val gitHubOwner = "115jon"
 private const val gitHubRepo = "Kino"
 private const val gitHubApiBase = "https://api.github.com"
-private const val releaseChannelBranch = "kino"
+private const val releaseChannel = "stable"
+private const val releaseManifestName = "release-manifest.json"
 
 data class AppUpdate(
     val tag: String,
+    val version: String,
+    val versionCode: Int?,
+    val mandatory: Boolean,
     val title: String,
     val notes: String,
     val releaseUrl: String?,
     val assetName: String,
     val assetUrl: String,
+    val assetSha256: String,
     val assetSizeBytes: Long?,
 )
 
@@ -89,7 +94,6 @@ private data class GitHubReleaseDto(
     val draft: Boolean = false,
     val prerelease: Boolean = false,
     @SerialName("html_url") val htmlUrl: String? = null,
-    @SerialName("target_commitish") val targetCommitish: String? = null,
     val assets: List<GitHubAssetDto> = emptyList(),
 )
 
@@ -98,7 +102,6 @@ private data class GitHubAssetDto(
     val name: String,
     @SerialName("browser_download_url") val browserDownloadUrl: String,
     val size: Long? = null,
-    @SerialName("content_type") val contentType: String? = null,
 )
 
 private val appUpdaterJson = Json {
@@ -110,48 +113,11 @@ private class NoChannelReleaseException : IllegalStateException(
     runBlocking { getString(Res.string.updates_no_channel_release) },
 )
 
-private object VersionUtils {
-    fun normalize(raw: String?): String {
-        if (raw.isNullOrBlank()) return ""
-        return raw.trim().removePrefix("v").removePrefix("V")
-    }
-
-    fun parseVersionParts(raw: String?): List<Int>? {
-        val normalized = normalize(raw)
-        if (normalized.isBlank()) return null
-
-        val parts = normalized.split('.', '-', '_')
-            .filter { it.isNotBlank() }
-            .mapNotNull { token -> token.takeWhile { it.isDigit() }.toIntOrNull() }
-
-        return parts.takeIf { it.isNotEmpty() }
-    }
-
-    fun isRemoteNewer(remote: String?, local: String?): Boolean {
-        val remoteParts = parseVersionParts(remote)
-        val localParts = parseVersionParts(local)
-
-        if (remoteParts == null || localParts == null) {
-            val remoteValue = normalize(remote)
-            val localValue = normalize(local)
-            return remoteValue.isNotBlank() && localValue.isNotBlank() && remoteValue != localValue
-        }
-
-        val maxSize = maxOf(remoteParts.size, localParts.size)
-        for (index in 0 until maxSize) {
-            val remoteValue = remoteParts.getOrElse(index) { 0 }
-            val localValue = localParts.getOrElse(index) { 0 }
-            if (remoteValue != localValue) return remoteValue > localValue
-        }
-        return false
-    }
-}
-
 private object AppUpdaterRepository {
     suspend fun getLatestChannelUpdate(): Result<AppUpdate> = runCatching {
         val response = httpRequestRaw(
             method = "GET",
-            url = "$gitHubApiBase/repos/$gitHubOwner/$gitHubRepo/releases?per_page=20",
+            url = "$gitHubApiBase/repos/$gitHubOwner/$gitHubRepo/releases?per_page=100",
             headers = mapOf(
                 "Accept" to "application/vnd.github+json",
                 "User-Agent" to "Kino",
@@ -163,62 +129,67 @@ private object AppUpdaterRepository {
         }
 
         val releases = appUpdaterJson.decodeFromString<List<GitHubReleaseDto>>(response.body)
-        val release = releases.firstOrNull { it.matchesRequestedChannel() && !it.draft && !it.prerelease }
+        val release = releases.firstOrNull { it.matchesRequestedPlatform() && !it.draft && !it.prerelease }
             ?: throw NoChannelReleaseException()
+
+        val manifestAsset = release.assets.firstOrNull { it.name == releaseManifestName }
+            ?: error(getString(Res.string.updates_release_missing_manifest))
+        val manifestResponse = httpRequestRaw(
+            method = "GET",
+            url = manifestAsset.browserDownloadUrl,
+            headers = mapOf(
+                "Accept" to "application/json",
+                "User-Agent" to "Kino",
+            ),
+            body = "",
+        )
+        if (manifestResponse.status !in 200..299) {
+            error(getString(Res.string.updates_github_api_error, manifestResponse.status))
+        }
+
+        val manifest = appUpdaterJson.decodeFromString<ReleaseManifest>(manifestResponse.body)
+        if (!manifest.appliesTo(AppUpdaterPlatform.platform, releaseChannel)) {
+            throw NoChannelReleaseException()
+        }
 
         val tag = release.tagName?.takeIf { it.isNotBlank() }
             ?: release.name?.takeIf { it.isNotBlank() }
             ?: error(getString(Res.string.updates_release_missing_title))
+        val expectedVersion = tag.removePrefix("${AppUpdaterPlatform.platform}-v")
+        check(manifest.version == expectedVersion) { "Release manifest version does not match its tag." }
 
-        val asset = chooseBestReleaseAsset(release.assets)
+        val asset = manifest.selectAsset(
+            candidates = release.assets
+                .filterNot { it.name == releaseManifestName }
+                .map { candidate ->
+                    ReleaseAssetCandidate(
+                        name = candidate.name,
+                        url = candidate.browserDownloadUrl,
+                        sizeBytes = candidate.size,
+                    )
+                },
+            supportedAbis = AppUpdaterPlatform.getSupportedAbis(),
+        )
             ?: error(getString(Res.string.updates_apk_asset_missing))
 
         AppUpdate(
             tag = tag,
+            version = manifest.version,
+            versionCode = manifest.versionCode,
+            mandatory = manifest.mandatory || manifest.isMandatoryFor(AppVersionConfig.VERSION_CODE),
             title = release.name?.takeIf { it.isNotBlank() } ?: tag,
             notes = release.body.orEmpty(),
             releaseUrl = release.htmlUrl,
             assetName = asset.name,
-            assetUrl = asset.browserDownloadUrl,
-            assetSizeBytes = asset.size,
+            assetUrl = asset.url,
+            assetSha256 = manifest.assets.first { it.name == asset.name }.sha256,
+            assetSizeBytes = asset.sizeBytes,
         )
     }
 
-    private fun GitHubReleaseDto.matchesRequestedChannel(): Boolean {
-        val channel = releaseChannelBranch
-        if (targetCommitish?.trim()?.equals(channel, ignoreCase = true) == true) {
-            return true
-        }
-
-        return listOf(tagName, name)
-            .filterNotNull()
-            .any { value -> value.contains(channel, ignoreCase = true) }
-    }
-
-    private fun chooseBestReleaseAsset(assets: List<GitHubAssetDto>): GitHubAssetDto? {
-        val compatibleAssets = if (AppUpdaterPlatform.isDesktop) {
-            assets.filter { it.name.endsWith(".exe", ignoreCase = true) }
-        } else {
-            assets.filter { asset ->
-                asset.name.endsWith(".apk", ignoreCase = true) ||
-                    asset.contentType == "application/vnd.android.package-archive"
-            }
-        }
-        if (compatibleAssets.isEmpty()) return null
-        if (compatibleAssets.size == 1) return compatibleAssets.first()
-
-        val supportedAbis = AppUpdaterPlatform.getSupportedAbis()
-        for (abi in supportedAbis) {
-            val candidate = compatibleAssets.firstOrNull { asset ->
-                asset.name.contains(abi, ignoreCase = true)
-            }
-            if (candidate != null) return candidate
-        }
-
-        return compatibleAssets.firstOrNull { asset ->
-            val name = asset.name.lowercase()
-            name.contains("universal") || name.contains("all")
-        } ?: compatibleAssets.first()
+    private fun GitHubReleaseDto.matchesRequestedPlatform(): Boolean {
+        val prefix = "${AppUpdaterPlatform.platform}-v"
+        return tagName?.startsWith(prefix, ignoreCase = true) == true
     }
 }
 
@@ -261,9 +232,9 @@ class AppUpdaterController internal constructor(
             val result = AppUpdaterRepository.getLatestChannelUpdate()
 
             result.onSuccess { update ->
-                val remoteNewer = VersionUtils.isRemoteNewer(update.tag, AppVersionConfig.VERSION_NAME)
+                val remoteNewer = update.isNewerThanCurrent()
                 val ignored = ignoredTag != null && ignoredTag == update.tag
-                val shouldShowDialog = force || (remoteNewer && !ignored)
+                val shouldShowDialog = force || update.mandatory || (remoteNewer && !ignored)
 
                 _uiState.update { state ->
                     state.copy(
@@ -308,6 +279,17 @@ class AppUpdaterController internal constructor(
         }
     }
 
+    private fun AppUpdate.isNewerThanCurrent(): Boolean =
+        ReleaseManifest(
+            platform = AppUpdaterPlatform.platform,
+            channel = releaseChannel,
+            version = version,
+            versionCode = versionCode,
+        ).isNewerThan(
+            currentVersion = AppVersionConfig.VERSION_NAME,
+            currentVersionCode = AppVersionConfig.VERSION_CODE,
+        )
+
     fun dismissDialog() {
         _uiState.update { state ->
             state.copy(
@@ -339,6 +321,7 @@ class AppUpdaterController internal constructor(
             AppUpdaterPlatform.downloadApk(
                 assetUrl = update.assetUrl,
                 assetName = update.assetName,
+                expectedSha256 = update.assetSha256,
             ) { downloadedBytes, totalBytes ->
                 val progress = if (totalBytes != null && totalBytes > 0L) {
                     (downloadedBytes.toFloat() / totalBytes.toFloat()).coerceIn(0f, 1f)
