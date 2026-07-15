@@ -25,6 +25,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
@@ -49,7 +50,14 @@ fun NuvioDesktopNavigationRail(
     Surface(
         modifier = modifier
             .widthIn(min = 220.dp, max = 240.dp)
-            .fillMaxHeight(),
+            .fillMaxHeight()
+            .drawBehind {
+                drawRect(
+                    color = tokens.colors.borderSubtle,
+                    topLeft = Offset(x = size.width - 1.dp.toPx(), y = 0f),
+                    size = Size(width = 1.dp.toPx(), height = size.height),
+                )
+            },
         color = tokens.colors.background,
         tonalElevation = 0.dp,
     ) {
@@ -107,7 +115,7 @@ fun NuvioDesktopNavigationItem(
                 role = Role.Tab,
                 onClick = onClick,
             )
-            .padding(horizontal = 14.dp, vertical = 12.dp),
+            .padding(horizontal = 14.dp, vertical = 10.dp),
         horizontalArrangement = Arrangement.spacedBy(14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

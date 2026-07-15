@@ -56,6 +56,7 @@ import org.jetbrains.compose.resources.stringResource
 fun DetailHero(
     meta: MetaDetails,
     isTablet: Boolean = false,
+    isDesktop: Boolean = false,
     scrollOffset: Int = 0,
     contentMaxWidth: Dp = 560.dp,
     onHeightChanged: (Int) -> Unit = {},
@@ -75,7 +76,7 @@ fun DetailHero(
     BoxWithConstraints(
         modifier = modifier.fillMaxWidth(),
     ) {
-        val heroHeight = detailHeroHeight(maxWidth, isTablet)
+        val heroHeight = detailHeroHeight(maxWidth, isTablet, isDesktop)
         val trailerAlpha by animateFloatAsState(
             targetValue = if (heroTrailerReady) 1f else 0f,
             animationSpec = tween(durationMillis = 300),
@@ -117,7 +118,7 @@ fun DetailHero(
                                 scaleX = 1.08f
                                 scaleY = 1.08f
                         },
-                        alignment = if (isTablet) Alignment.TopCenter else Alignment.Center,
+                        alignment = if (isTablet || isDesktop) Alignment.TopCenter else Alignment.Center,
                         contentScale = ContentScale.Crop,
                         onSuccess = { state ->
                             onBackdropLoaded(
@@ -195,7 +196,7 @@ fun DetailHero(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(if (isTablet) 360.dp else 320.dp)
+                        .height(if (isDesktop) 320.dp else if (isTablet) 360.dp else 320.dp)
                         .align(Alignment.BottomCenter)
                         .background(
                             Brush.verticalGradient(
@@ -215,16 +216,26 @@ fun DetailHero(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = if (isTablet) 32.dp else 18.dp)
+                        .padding(horizontal = when {
+                            isDesktop -> 48.dp
+                            isTablet -> 32.dp
+                            else -> 18.dp
+                        })
                         .padding(bottom = 8.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
+                    horizontalAlignment = if (isDesktop) Alignment.Start else Alignment.CenterHorizontally,
                 ) {
                     if (logoUrl != null && !logoLoadError) {
                         AsyncImage(
                             model = logoUrl,
                             contentDescription = stringResource(Res.string.detail_logo_content_description, meta.name),
                             modifier = Modifier
-                                .fillMaxWidth(if (isTablet) 0.56f else 0.6f)
+                                .fillMaxWidth(
+                                    when {
+                                        isDesktop -> 0.48f
+                                        isTablet -> 0.56f
+                                        else -> 0.6f
+                                    },
+                                )
                                 .widthIn(max = contentMaxWidth)
                                 .height(if (isTablet) 72.dp else 80.dp),
                             alignment = Alignment.Center,
@@ -236,7 +247,7 @@ fun DetailHero(
                             text = meta.name,
                             style = if (isTablet) MaterialTheme.typography.displaySmall else MaterialTheme.typography.displayLarge,
                             color = MaterialTheme.colorScheme.onBackground,
-                            textAlign = TextAlign.Center,
+                            textAlign = if (isDesktop) TextAlign.Start else TextAlign.Center,
                         )
                     }
 
@@ -246,7 +257,7 @@ fun DetailHero(
                             text = meta.genres.take(3).joinToString(" \u2022 "),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            textAlign = TextAlign.Center,
+                            textAlign = if (isDesktop) TextAlign.Start else TextAlign.Center,
                         )
                     }
                 }
@@ -255,8 +266,10 @@ fun DetailHero(
     }
 }
 
-private fun detailHeroHeight(maxWidth: Dp, isTablet: Boolean): Dp =
-    if (!isTablet) {
+private fun detailHeroHeight(maxWidth: Dp, isTablet: Boolean, isDesktop: Boolean): Dp =
+    if (isDesktop) {
+        (maxWidth * 0.34f).coerceIn(360.dp, 500.dp)
+    } else if (!isTablet) {
         (maxWidth * 1.33f).coerceIn(420.dp, 760.dp)
     } else {
         (maxWidth * 0.42f).coerceIn(300.dp, 420.dp)

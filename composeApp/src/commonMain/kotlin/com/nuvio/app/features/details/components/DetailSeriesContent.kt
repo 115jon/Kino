@@ -30,6 +30,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -95,6 +96,7 @@ private val log = Logger.withTag("SeriesContent")
 fun DetailSeriesContent(
     meta: MetaDetails,
     modifier: Modifier = Modifier,
+    desktopLayout: Boolean = false,
     showHeader: Boolean = true,
     preferredSeasonNumber: Int? = null,
     preferredEpisodeNumber: Int? = null,
@@ -183,9 +185,26 @@ fun DetailSeriesContent(
         val sizing = seriesContentSizing(maxWidth.value)
         val containerWidthDp = maxWidth.value
 
-        Column(
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
+        if (desktopLayout) {
+            DesktopSeasonEpisodeLayout(
+                seasons = seasons,
+                groupedEpisodes = groupedEpisodes,
+                meta = meta,
+                currentSeason = currentSeason,
+                sizing = sizing,
+                progressByVideoId = progressByVideoId,
+                watchedKeys = watchedKeys,
+                episodeRatings = episodeRatings,
+                blurUnwatchedEpisodes = blurUnwatchedEpisodes,
+                onSeasonSelect = { selectedSeasonOverride = it },
+                onSeasonLongPress = onSeasonLongPress,
+                onEpisodeClick = onEpisodeClick,
+                onEpisodeLongPress = onEpisodeLongPress,
+            )
+        } else {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
             if (seasons.size > 1) {
                 val hasSeasonPosters = seasons.any { season ->
                     groupedEpisodes[season]
@@ -332,6 +351,165 @@ fun DetailSeriesContent(
                     }
                 }
             }
+            }
+        }
+    }
+}
+
+@Composable
+@OptIn(ExperimentalFoundationApi::class)
+private fun DesktopSeasonEpisodeLayout(
+    seasons: List<Int>,
+    groupedEpisodes: Map<Int, List<MetaVideo>>,
+    meta: MetaDetails,
+    currentSeason: Int,
+    sizing: SeriesContentSizing,
+    progressByVideoId: Map<String, WatchProgressEntry>,
+    watchedKeys: Set<String>,
+    episodeRatings: Map<Pair<Int, Int>, Double>,
+    blurUnwatchedEpisodes: Boolean,
+    onSeasonSelect: (Int) -> Unit,
+    onSeasonLongPress: ((Int) -> Unit)?,
+    onEpisodeClick: ((MetaVideo) -> Unit)?,
+    onEpisodeLongPress: ((MetaVideo) -> Unit)?,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(24.dp),
+        verticalAlignment = Alignment.Top,
+    ) {
+        if (seasons.size > 1) {
+            Column(
+                modifier = Modifier.width(190.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(
+                    text = stringResource(Res.string.details_seasons),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onBackground,
+                )
+                LazyColumn(
+                    modifier = Modifier.height(560.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    contentPadding = PaddingValues(bottom = 12.dp),
+                ) {
+                    items(seasons, key = { it }) { season ->
+                        val selected = season == currentSeason
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(
+                                    if (selected) {
+                                        MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+                                    } else {
+                                        Color.Transparent
+                                    },
+                                )
+                                .border(
+                                    width = if (selected) 1.dp else 0.dp,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    shape = RoundedCornerShape(10.dp),
+                                )
+                                .combinedClickable(
+                                    onClick = { onSeasonSelect(season) },
+                                    onLongClick = onSeasonLongPress?.let { handler -> { handler(season) } },
+                                )
+                                .nuvioSecondaryClick(onSeasonLongPress?.let { handler -> { handler(season) } })
+                                .padding(horizontal = 14.dp, vertical = 12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = season.label(),
+                                style = MaterialTheme.typography.bodyLarge.copy(
+                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                                ),
+                                color = if (selected) {
+                                    MaterialTheme.colorScheme.onBackground
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                },
+                            )
+                            Text(
+                                text = groupedEpisodes[season].orEmpty().size.toString(),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = if (selected) {
+                                    MaterialTheme.colorScheme.onBackground.copy(alpha = 0.72f)
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                },
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            DetailSectionTitle(title = currentSeason.label())
+            DesktopEpisodeGrid(
+                episodes = groupedEpisodes.getValue(currentSeason),
+                sizing = sizing,
+                parentMetaId = meta.id,
+                metaType = meta.type,
+                fallbackImage = meta.background ?: meta.poster,
+                progressByVideoId = progressByVideoId,
+                watchedKeys = watchedKeys,
+                episodeRatings = episodeRatings,
+                blurUnwatchedEpisodes = blurUnwatchedEpisodes,
+                onEpisodeClick = onEpisodeClick,
+                onEpisodeLongPress = onEpisodeLongPress,
+            )
+        }
+    }
+}
+
+@Composable
+private fun DesktopEpisodeGrid(
+    episodes: List<MetaVideo>,
+    sizing: SeriesContentSizing,
+    parentMetaId: String,
+    metaType: String,
+    fallbackImage: String?,
+    progressByVideoId: Map<String, WatchProgressEntry>,
+    watchedKeys: Set<String>,
+    episodeRatings: Map<Pair<Int, Int>, Double>,
+    blurUnwatchedEpisodes: Boolean,
+    onEpisodeClick: ((MetaVideo) -> Unit)?,
+    onEpisodeLongPress: ((MetaVideo) -> Unit)?,
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(sizing.cardGap),
+    ) {
+        episodes.forEach { episode ->
+            val episodeVideoId = buildPlaybackVideoId(
+                parentMetaId = parentMetaId,
+                seasonNumber = episode.season,
+                episodeNumber = episode.episode,
+                fallbackVideoId = episode.id,
+            )
+            EpisodeListCard(
+                video = episode,
+                fallbackImage = fallbackImage,
+                progressEntry = progressByVideoId[episodeVideoId],
+                imdbRating = episode.seasonEpisodeKey()?.let { episodeRatings[it] },
+                isWatched = progressByVideoId[episodeVideoId]?.isEffectivelyCompleted == true ||
+                    WatchingState.isEpisodeWatched(
+                        watchedKeys = watchedKeys,
+                        metaType = metaType,
+                        metaId = parentMetaId,
+                        episode = episode,
+                    ),
+                blurUnwatchedEpisodes = blurUnwatchedEpisodes,
+                sizing = sizing,
+                onClick = { onEpisodeClick?.invoke(episode) },
+                onLongPress = { onEpisodeLongPress?.invoke(episode) },
+            )
         }
     }
 }

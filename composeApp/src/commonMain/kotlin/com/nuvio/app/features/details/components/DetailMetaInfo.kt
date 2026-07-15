@@ -14,6 +14,8 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -68,15 +70,17 @@ import kotlin.math.absoluteValue
 import kotlin.math.roundToInt
 
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 fun DetailMetaInfo(
     meta: MetaDetails,
     modifier: Modifier = Modifier,
+    isDesktop: Boolean = false,
 ) {
     Column(
         modifier = modifier
             .fillMaxWidth()
             .animateContentSize(),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(if (isDesktop) 16.dp else 12.dp),
     ) {
         val releaseLine = formatMetaReleaseLineForDetails(meta)
         val runtimeText = formatRuntimeForDisplay(meta.runtime)
@@ -142,6 +146,7 @@ fun DetailMetaInfo(
         ) {
             DetailRatingsRow(
                 ratings = meta.externalRatings,
+                isDesktop = isDesktop,
             )
         }
 
@@ -197,8 +202,10 @@ fun DetailMetaInfo(
 }
 
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 private fun DetailRatingsRow(
     ratings: List<MetaExternalRating>,
+    isDesktop: Boolean,
 ) {
     val orderedRatings = remember(ratings) {
         val bySource = ratings.associateBy { it.source }
@@ -209,41 +216,61 @@ private fun DetailRatingsRow(
 
     if (orderedRatings.isEmpty()) return
 
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .horizontalScroll(rememberScrollState()),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(14.dp),
-    ) {
-        orderedRatings.forEach { (visuals, rating) ->
-            val ratingTextStyle = MaterialTheme.typography.titleSmall.copy(
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 0.sp,
-            )
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                if (visuals.source == PROVIDER_IMDB && !AppFeaturePolicy.imdbRatingLogoEnabled) {
-                    ImdbRatingSourceLabel(
-                        storeTextStyle = ratingTextStyle,
-                        storeTextColor = visuals.valueColor,
-                    )
-                } else {
-                    Image(
-                        painter = painterResource(visuals.logo),
-                        contentDescription = visuals.displayName,
-                        modifier = Modifier.size(width = visuals.logoWidth, height = 16.dp),
-                    )
-                }
-                Spacer(modifier = Modifier.width(4.dp))
-                Text(
-                    text = visuals.format(rating.value),
-                    style = ratingTextStyle,
-                    color = visuals.valueColor,
-                )
+    if (isDesktop) {
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(18.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            orderedRatings.forEach { (visuals, rating) ->
+                DetailRatingItem(visuals = visuals, rating = rating)
             }
         }
+    } else {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            orderedRatings.forEach { (visuals, rating) ->
+                DetailRatingItem(visuals = visuals, rating = rating)
+            }
+        }
+    }
+}
+
+@Composable
+private fun DetailRatingItem(
+    visuals: RatingVisuals,
+    rating: MetaExternalRating,
+) {
+    val ratingTextStyle = MaterialTheme.typography.titleSmall.copy(
+        fontWeight = FontWeight.Bold,
+        letterSpacing = 0.sp,
+    )
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (visuals.source == PROVIDER_IMDB && !AppFeaturePolicy.imdbRatingLogoEnabled) {
+            ImdbRatingSourceLabel(
+                storeTextStyle = ratingTextStyle,
+                storeTextColor = visuals.valueColor,
+            )
+        } else {
+            Image(
+                painter = painterResource(visuals.logo),
+                contentDescription = visuals.displayName,
+                modifier = Modifier.size(width = visuals.logoWidth, height = 16.dp),
+            )
+        }
+        Spacer(modifier = Modifier.width(4.dp))
+        Text(
+            text = visuals.format(rating.value),
+            style = ratingTextStyle,
+            color = visuals.valueColor,
+        )
     }
 }
 

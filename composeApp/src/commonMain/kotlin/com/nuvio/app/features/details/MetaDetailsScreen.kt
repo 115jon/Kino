@@ -79,6 +79,7 @@ import com.nuvio.app.core.ui.PosterZoomAnchorHolder
 import com.nuvio.app.core.ui.PosterZoomOverlayAction
 import com.nuvio.app.core.ui.TraktListPickerDialog
 import com.nuvio.app.core.ui.nuvioSafeBottomPadding
+import com.nuvio.app.core.ui.isDesktopPlatform
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 import com.nuvio.app.features.details.components.DetailActionButtons
@@ -798,8 +799,13 @@ fun MetaDetailsScreen(
                 BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
                     val colorScheme = MaterialTheme.colorScheme
                     val isTablet = maxWidth >= 720.dp
-                    val contentHorizontalPadding = if (isTablet) 32.dp else 18.dp
-                    val contentMaxWidth = detailTabletContentMaxWidth(maxWidth, isTablet)
+                    val isDesktop = detailUsesDesktopSeasonRail(maxWidth.value, isDesktopPlatform)
+                    val contentHorizontalPadding = when {
+                        isDesktop -> 40.dp
+                        isTablet -> 32.dp
+                        else -> 18.dp
+                    }
+                    val contentMaxWidth = detailContentMaxWidth(maxWidth, isTablet, isDesktop)
                     val backdropUrl = meta.background ?: meta.poster
                     val backgroundMode = metaScreenSettingsUiState.backgroundMode
                     val dominantColorEnabled = backgroundMode == MetaScreenBackgroundMode.DominantColor &&
@@ -851,7 +857,6 @@ fun MetaDetailsScreen(
                         ),
                         label = "detail_dominant_backdrop_color",
                     )
-
                     Box(modifier = Modifier.fillMaxSize()) {
                         when (backgroundMode) {
                             MetaScreenBackgroundMode.Normal -> Unit
@@ -888,6 +893,7 @@ fun MetaDetailsScreen(
                                 DetailHero(
                                     meta = meta,
                                     isTablet = isTablet,
+                                    isDesktop = isDesktop,
                                     contentMaxWidth = contentMaxWidth,
                                     scrollOffset = heroScrollOffset,
                                     onHeightChanged = { heroHeightPx = it },
@@ -924,8 +930,9 @@ fun MetaDetailsScreen(
                                 settings = metaScreenSettingsUiState,
                                 meta = meta,
                                 isTablet = isTablet,
+                                desktopLayout = isDesktop,
                                 contentHorizontalPadding = contentHorizontalPadding,
-                                contentMaxWidth = if (isTablet) contentMaxWidth else Dp.Unspecified,
+                                contentMaxWidth = if (isTablet || isDesktop) contentMaxWidth else Dp.Unspecified,
                                 playButtonLabel = playButtonLabel,
                                 isSaved = isSaved,
                                 isWatched = isWatched,
@@ -1531,6 +1538,7 @@ private fun LazyListScope.configuredMetaSectionItems(
     settings: MetaScreenSettingsUiState,
     meta: MetaDetails,
     isTablet: Boolean,
+    desktopLayout: Boolean,
     contentHorizontalPadding: Dp,
     contentMaxWidth: Dp,
     playButtonLabel: String,
@@ -1608,6 +1616,7 @@ private fun LazyListScope.configuredMetaSectionItems(
                     ),
                     meta = meta,
                     isTablet = isTablet,
+                    desktopLayout = desktopLayout,
                     playButtonLabel = playButtonLabel,
                     isSaved = isSaved,
                     isWatched = isWatched,
@@ -1756,6 +1765,7 @@ private fun ConfiguredMetaSections(
     settings: MetaScreenSettingsUiState,
     meta: MetaDetails,
     isTablet: Boolean,
+    desktopLayout: Boolean,
     playButtonLabel: String,
     isSaved: Boolean,
     isWatched: Boolean,
@@ -1853,12 +1863,13 @@ private fun ConfiguredMetaSections(
                         ),
                     ),
                     isTablet = isTablet,
+                    isDesktop = desktopLayout,
                     onPlayClick = onPrimaryPlayClick,
                     onPlayLongClick = if (showManualPlayOption) onPrimaryPlayLongClick else null,
                 )
             }
             MetaScreenSectionKey.OVERVIEW -> {
-                DetailMetaInfo(meta = meta)
+                DetailMetaInfo(meta = meta, isDesktop = desktopLayout)
             }
             MetaScreenSectionKey.PRODUCTION -> {
                 if (hasProductionSection) {
@@ -1898,6 +1909,7 @@ private fun ConfiguredMetaSections(
                 if (hasEpisodes) {
                     DetailSeriesContent(
                         meta = meta,
+                        desktopLayout = desktopLayout,
                         showHeader = showHeader,
                         preferredSeasonNumber = preferredEpisodeSeasonNumber,
                         preferredEpisodeNumber = preferredEpisodeNumber,
@@ -2048,12 +2060,11 @@ private fun TabbedSectionGroup(
     }
 }
 
-private fun detailTabletContentMaxWidth(maxWidth: Dp, isTablet: Boolean): Dp =
-    if (!isTablet) {
-        maxWidth
-    } else {
-        (maxWidth * 0.6f).coerceIn(520.dp, 680.dp)
-    }
+private fun detailContentMaxWidth(maxWidth: Dp, isTablet: Boolean, isDesktop: Boolean): Dp = when {
+    isDesktop -> maxWidth.coerceAtMost(1440.dp)
+    isTablet -> (maxWidth * 0.6f).coerceIn(520.dp, 680.dp)
+    else -> maxWidth
+}
 
 private fun dominantBackdropBlendColor(dominantColor: Color, backgroundColor: Color): Color =
     backgroundColor.blendTowards(dominantColor, fraction = 0.42f)
