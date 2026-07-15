@@ -322,7 +322,9 @@ object AddonRepository {
     }
 
     fun refreshAll() {
-        _uiState.value.addons.filter { it.enabled }.distinctBy { it.manifestUrl }.forEach { addon ->
+        val enabledAddons = _uiState.value.addons.filter { it.enabled }.distinctBy { it.manifestUrl }
+        log.i { "refreshAll() — refreshing enabled addons count=${enabledAddons.size}" }
+        enabledAddons.forEach { addon ->
             refreshAddon(addon.manifestUrl)
         }
     }

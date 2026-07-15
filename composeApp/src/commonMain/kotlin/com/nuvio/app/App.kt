@@ -89,6 +89,7 @@ import com.nuvio.app.core.deeplink.AppDeepLink
 import com.nuvio.app.core.deeplink.AppDeepLinkRepository
 import com.nuvio.app.core.network.NetworkCondition
 import com.nuvio.app.core.network.NetworkStatusRepository
+import com.nuvio.app.core.network.shouldRefreshAfterNetworkRecovery
 import com.nuvio.app.core.sync.AppForegroundMonitor
 import com.nuvio.app.core.sync.ProfileSettingsSync
 import com.nuvio.app.core.sync.RealtimeSyncConfig
@@ -880,6 +881,7 @@ private fun MainAppContent(
     var offlineLaunchRouteHandled by rememberSaveable { mutableStateOf(false) }
     var networkToastBaselineReady by rememberSaveable { mutableStateOf(false) }
     var lastNetworkToastCondition by rememberSaveable { mutableStateOf(NetworkCondition.Unknown.name) }
+    var lastObservedNetworkCondition by remember { mutableStateOf(NetworkCondition.Unknown) }
     var watchSourceReconnectPending by remember { mutableStateOf(false) }
 
     fun activateTab(tab: AppScreenTab) {
@@ -1048,6 +1050,8 @@ private fun MainAppContent(
         }
 
         val previousConditionName = lastNetworkToastCondition
+        val previousObservedCondition = lastObservedNetworkCondition
+        lastObservedNetworkCondition = condition
         if (previousConditionName == condition.name) return@LaunchedEffect
 
         when (condition) {
@@ -1060,6 +1064,9 @@ private fun MainAppContent(
             }
 
             NetworkCondition.Online -> {
+                if (shouldRefreshAfterNetworkRecovery(previousObservedCondition, condition)) {
+                    AddonRepository.refreshAll()
+                }
                 if (
                     previousConditionName == NetworkCondition.NoInternet.name ||
                     previousConditionName == NetworkCondition.ServersUnreachable.name

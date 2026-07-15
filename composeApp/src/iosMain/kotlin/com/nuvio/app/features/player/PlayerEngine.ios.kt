@@ -57,8 +57,10 @@ actual fun PlatformPlayerSurface(
     onSnapshot: (PlayerPlaybackSnapshot) -> Unit,
     onError: (String?) -> Unit,
     onSurfaceInteraction: (Boolean) -> Unit,
+    onSurfaceExit: () -> Unit,
 ) {
     onSurfaceInteraction
+    onSurfaceExit
     sanitizePlaybackResponseHeaders(sourceResponseHeaders)
     val latestOnControllerReady = rememberUpdatedState(onControllerReady)
     val latestOnSnapshot = rememberUpdatedState(onSnapshot)

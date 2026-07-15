@@ -159,8 +159,9 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi() {
                      } else {
                          controlsVisible = true
                      }
-                     pausedOverlayVisible = false
-                  },
+                      pausedOverlayVisible = false
+                   },
+                  onSurfaceExit = { onPlayerSurfaceExit() },
                  onError = { message ->
                     if (message != null && tryRefreshCredentialedSourceAfterError(message)) {
                         return@PlatformPlayerSurface
@@ -209,6 +210,13 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi() {
         )
         RenderPlayerModals(displayedPositionMs = displayedPositionMs)
     }
+}
+
+internal fun PlayerScreenRuntime.onPlayerSurfaceExit() {
+    if (!playerControlsLocked) {
+        controlsVisible = false
+    }
+    pausedOverlayVisible = false
 }
 
 @Composable

@@ -138,4 +138,5 @@ expect fun PlatformPlayerSurface(
     onSnapshot: (PlayerPlaybackSnapshot) -> Unit,
     onError: (String?) -> Unit,
     onSurfaceInteraction: (Boolean) -> Unit = {},
+    onSurfaceExit: () -> Unit = {},
 )

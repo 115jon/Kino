@@ -16,6 +16,7 @@ import com.nuvio.app.features.streams.StreamLinkCacheRepository
 import com.nuvio.app.features.streams.StreamItem
 import com.nuvio.app.features.streams.hasLikelyExpiringPlaybackCredentials
 import com.nuvio.app.features.watchprogress.WatchProgressRepository
+import com.nuvio.app.core.ui.isDesktopPlatform
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -156,7 +157,10 @@ internal fun PlayerScreenRuntime.BindPlayerRuntimeEffects() {
         playerController?.setSubtitleDelayMs(subtitleDelayMs)
     }
 
-    LaunchedEffect(playerController, playbackSnapshot.positionMs) {
+    LaunchedEffect(
+        playerController,
+        if (isDesktopPlatform) null else playbackSnapshot.positionMs,
+    ) {
         playerController?.currentVolumeLevel()?.let { level ->
             volumeLevel = level
             if (!level.isMuted && level.fraction > 0f) {
