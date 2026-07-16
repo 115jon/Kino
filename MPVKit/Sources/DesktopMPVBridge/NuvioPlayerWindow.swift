@@ -10,6 +10,16 @@ final class NuvioPlayerWindow {
     private var hostingView: NSHostingView<NuvioControlsView>!
     private var keyMonitor: Any?
     private var mouseMonitor: Any?
+    private lazy var nowPlayingController = NuvioDesktopNowPlayingController(
+        onPlay: { [weak self] in self?.mpvView?.playPlayback() },
+        onPause: { [weak self] in self?.mpvView?.pausePlayback() },
+        onTogglePlayPause: { [weak self] in
+            self?.mpvView?.togglePlayPause()
+        },
+        onStop: { [weak self] in self?.mpvView?.pausePlayback() },
+        onPrevious: { [weak self] in self?.mpvView?.seekByMs(-60_000) },
+        onNext: { [weak self] in self?.mpvView?.seekByMs(60_000) }
+    )
     private var gestureDismissWork: DispatchWorkItem?
     private let mouseWakeThreshold: CGFloat = 8
     private var lastControlMousePoint: NSPoint?
@@ -43,6 +53,7 @@ final class NuvioPlayerWindow {
                 mpvView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
             ])
             mpvView.setup()
+            nowPlayingController.activate()
             mpvView.onStateChanged = { [weak self] in
                 self?.syncStateFromMPV()
             }
@@ -147,6 +158,7 @@ final class NuvioPlayerWindow {
             hideTimer?.invalidate()
             hideTimer = nil
             mpvView?.destroyPlayer()
+            nowPlayingController.deactivate()
             containerView?.removeFromSuperview()
             containerView = nil
             lastControlMousePoint = nil
@@ -251,6 +263,15 @@ final class NuvioPlayerWindow {
         state.audioTracks = mpvView.audioTracks
         state.subtitleTracks = mpvView.subtitleTracks
         state.errorMessage = mpvView.currentErrorMessage
+        nowPlayingController.update(
+            title: state.title,
+            streamTitle: state.streamTitle,
+            providerName: state.providerName,
+            durationMs: state.durationMs,
+            positionMs: state.positionMs,
+            isPlaying: state.isPlaying,
+            playbackSpeed: state.currentSpeed
+        )
         if !mpvView.isPlayerLoading && !state.initialLoadCompleted {
             state.initialLoadCompleted = true
         }

@@ -1,4 +1,5 @@
 import org.gradle.api.DefaultTask
+import org.gradle.api.Action
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.provider.Property
@@ -6,8 +7,11 @@ import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputFile
 import org.gradle.api.tasks.Optional
 import org.gradle.api.tasks.OutputDirectory
+import org.gradle.api.tasks.OutputFile
 import org.gradle.api.tasks.TaskAction
 import org.gradle.api.tasks.bundling.Zip
+import org.gradle.process.ExecOperations
+import org.gradle.process.ExecSpec
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompilationTask
 import java.util.Properties
@@ -199,6 +203,57 @@ fun readVersionProperty(file: File, key: String): String? {
     return Properties().apply { file.inputStream().use(::load) }.getProperty(key)?.trim()
 }
 
+abstract class CompileWindowsMediaSessionTask : DefaultTask() {
+    @get:javax.inject.Inject
+    abstract val execOperations: ExecOperations
+
+    @get:InputFile
+    abstract val sourceFile: RegularFileProperty
+
+    @get:OutputFile
+    abstract val outputFile: RegularFileProperty
+
+    @TaskAction
+    fun compile() {
+        val windowsSdkRoot = File(
+            System.getenv("WindowsSdkDir")
+                ?: "${System.getenv("ProgramFiles(x86)") ?: "C:/Program Files (x86)"}/Windows Kits/10",
+        )
+        val sdkVersion = windowsSdkRoot.resolve("Include")
+            .listFiles()
+            ?.filter { it.isDirectory && it.name.startsWith("10.") }
+            ?.maxByOrNull { it.name }
+            ?: error("Windows SDK include directory was not found")
+        val output = outputFile.get().asFile
+        output.parentFile.mkdirs()
+        execOperations.exec(Action<ExecSpec> {
+            commandLine(
+                "cl.exe",
+                "/nologo",
+                "/LD",
+                "/MT",
+                "/EHsc",
+                "/std:c++17",
+                "/DWIN32_LEAN_AND_MEAN",
+                "/Fo${output.parentFile.resolve("kino-media-session.obj").absolutePath}",
+                "/I${sdkVersion.resolve("cppwinrt")}",
+                "/I${sdkVersion.resolve("shared")}",
+                "/I${sdkVersion.resolve("um")}",
+                "/I${sdkVersion.resolve("winrt")}",
+                sourceFile.get().asFile.absolutePath,
+                "/link",
+                "/LIBPATH:${windowsSdkRoot.resolve("Lib/${sdkVersion.name}/um/x64")}",
+                "runtimeobject.lib",
+                "ole32.lib",
+                "oleaut32.lib",
+                "shlwapi.lib",
+                "/IMPLIB:${output.parentFile.resolve("kino-media-session.lib").absolutePath}",
+                "/OUT:${output.absolutePath}",
+            )
+        })
+    }
+}
+
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
     alias(libs.plugins.androidKotlinMultiplatformLibrary)
@@ -214,6 +269,22 @@ val supabaseProps = Properties().apply {
 val isWindowsHost = System.getProperty("os.name").contains("Windows", ignoreCase = true)
 if (isWindowsHost) {
     System.setProperty("compose.preserve.working.dir", "true")
+}
+val compileWindowsMediaSession = if (isWindowsHost) {
+    tasks.register<CompileWindowsMediaSessionTask>("compileWindowsMediaSession") {
+        sourceFile.set(project.layout.projectDirectory.file("src/desktopMain/native/windows/KinoMediaSession.cpp"))
+        outputFile.set(layout.buildDirectory.file("generated/windows-media-session/win32-x86-64/kino-media-session.dll"))
+    }
+} else {
+    null
+}
+val copyWindowsMediaArtwork = if (isWindowsHost) {
+    tasks.register<org.gradle.api.tasks.Copy>("copyWindowsMediaArtwork") {
+        from(project.file("src/commonMain/composeResources/drawable/app_logo.png"))
+        into(layout.buildDirectory.dir("generated/windows-media-artwork"))
+    }
+} else {
+    null
 }
 val joglVersion = libs.versions.jogl.get()
 val windowsJoglCore = configurations.detachedConfiguration(
@@ -422,6 +493,10 @@ kotlin {
             kotlin.srcDir(generatedRuntimeConfigDir)
         }
         val desktopMain by getting {
+            if (isWindowsHost) {
+                resources.srcDir(layout.buildDirectory.dir("generated/windows-media-session"))
+                resources.srcDir(layout.buildDirectory.dir("generated/windows-media-artwork"))
+            }
             dependencies {
                 implementation(compose.desktop.currentOs)
                 implementation(libs.ktor.client.java)
@@ -511,6 +586,17 @@ kotlin {
         commonTest.dependencies {
             implementation(libs.kotlin.test)
         }
+    }
+}
+
+compileWindowsMediaSession?.let { task ->
+    tasks.matching { it.name == "desktopProcessResources" }.configureEach {
+        dependsOn(task)
+    }
+}
+copyWindowsMediaArtwork?.let { task ->
+    tasks.matching { it.name == "desktopProcessResources" }.configureEach {
+        dependsOn(task)
     }
 }
 

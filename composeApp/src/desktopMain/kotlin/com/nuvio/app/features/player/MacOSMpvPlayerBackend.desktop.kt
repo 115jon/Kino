@@ -37,9 +37,11 @@ internal object MacOSMpvPlayerBackend : DesktopPlaybackBackend {
         onError: (String?) -> Unit,
         onSurfaceInteraction: (Boolean) -> Unit,
         onSurfaceExit: () -> Unit,
+        onWindowFocusChanged: (Boolean, Long?) -> Unit,
     ) {
         onSurfaceInteraction
         onSurfaceExit
+        onWindowFocusChanged
         val bridge = remember { MacOSMPVBridgeLib.INSTANCE }
         val playerPtr = remember { bridge.nuvio_player_create() }
         var onCloseCallback by remember { mutableStateOf<(() -> Unit)?>(null) }
@@ -102,6 +104,8 @@ internal object MacOSMpvPlayerBackend : DesktopPlaybackBackend {
                 override fun play() = bridge.nuvio_player_play(playerPtr)
 
                 override fun pause() = bridge.nuvio_player_pause(playerPtr)
+
+                override fun togglePlayPause() = bridge.nuvio_player_toggle_play_pause(playerPtr)
 
                 override fun seekTo(positionMs: Long) = bridge.nuvio_player_seek_to(playerPtr, positionMs)
 

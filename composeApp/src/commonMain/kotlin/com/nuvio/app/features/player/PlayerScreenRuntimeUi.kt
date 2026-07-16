@@ -129,25 +129,26 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi() {
                 externalSubtitles = externalSubtitles,
                 streamType = activeStreamType,
                 modifier = Modifier.fillMaxSize(),
-                playWhenReady = shouldPlay,
-                resizeMode = resizeMode,
-                 onControllerReady = { controller ->
-                     playerController = controller
-                     playerControllerSourceUrl = activeSourceUrl
+                 playWhenReady = shouldPlay,
+                 resizeMode = resizeMode,
+                  onControllerReady = { controller ->
+                      playerController = controller
+                      playerControllerSourceUrl = playerSurfaceSourceUrl
                      controller.currentVolumeLevel()?.let { level ->
                          volumeLevel = level
                          if (!level.isMuted && level.fraction > 0f) {
                              lastUnmutedVolumeFraction = level.fraction
                          }
                      }
-                 },
-                 onSnapshot = { snapshot ->
-                    playbackSnapshot = snapshot
-                    if (!snapshot.isLoading) initialLoadCompleted = true
-                    if (snapshot.isEnded) {
-                        shouldPlay = false
-                        controlsVisible = !playerControlsLocked
-                     }
+                  },
+                  onSnapshot = { snapshot ->
+                     if (playerControllerSourceUrl != playerSurfaceSourceUrl) return@PlatformPlayerSurface
+                     playbackSnapshot = snapshot
+                     if (snapshot.hasLoadedMedia()) initialLoadCompleted = true
+                     if (snapshot.isEnded && snapshot.hasLoadedMedia()) {
+                         shouldPlay = false
+                         controlsVisible = !playerControlsLocked
+                      }
                  },
                   onSurfaceInteraction = { isTap ->
                      if (isTap) {
@@ -162,8 +163,9 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi() {
                       pausedOverlayVisible = false
                    },
                   onSurfaceExit = { onPlayerSurfaceExit() },
-                 onError = { message ->
-                    if (message != null && tryRefreshCredentialedSourceAfterError(message)) {
+                  onError = { message ->
+                     if (playerControllerSourceUrl != playerSurfaceSourceUrl) return@PlatformPlayerSurface
+                     if (message != null && tryRefreshCredentialedSourceAfterError(message)) {
                         return@PlatformPlayerSurface
                     }
                     errorMessage = message

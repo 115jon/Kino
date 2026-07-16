@@ -77,4 +77,16 @@ class PlayerLayoutTest {
         assertEquals(false, runtime.controlsVisible)
         assertEquals(false, runtime.pausedOverlayVisible)
     }
+
+    @Test
+    fun `zero duration snapshot is not treated as loaded media`() {
+        assertEquals(
+            false,
+            PlayerPlaybackSnapshot(isLoading = false, durationMs = 0L).hasLoadedMedia(),
+        )
+        assertEquals(
+            true,
+            PlayerPlaybackSnapshot(isLoading = false, durationMs = 120_000L).hasLoadedMedia(),
+        )
+    }
 }

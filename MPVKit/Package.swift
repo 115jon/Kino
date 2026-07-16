@@ -32,6 +32,7 @@ let package = Package(
                 .linkedFramework("Foundation"),
                 .linkedFramework("AppKit"),
                 .linkedFramework("SwiftUI"),
+                .linkedFramework("MediaPlayer"),
                 .linkedFramework("OpenGL"),
             ]
         ),

@@ -66,6 +66,7 @@ internal interface MacOSMPVBridgeLib : Library {
 
     fun nuvio_player_play(player: Pointer)
     fun nuvio_player_pause(player: Pointer)
+    fun nuvio_player_toggle_play_pause(player: Pointer)
     fun nuvio_player_seek_to(player: Pointer, positionMs: Long)
     fun nuvio_player_seek_by(player: Pointer, offsetMs: Long)
     fun nuvio_player_set_speed(player: Pointer, speed: Float)

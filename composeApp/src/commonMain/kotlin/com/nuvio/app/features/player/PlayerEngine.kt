@@ -6,6 +6,7 @@ import androidx.compose.ui.Modifier
 interface PlayerEngineController {
     fun play()
     fun pause()
+    fun togglePlayPause() {}
     fun seekTo(positionMs: Long)
     fun seekBy(offsetMs: Long)
     fun supportsVolumeControl(): Boolean = false

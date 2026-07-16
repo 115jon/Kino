@@ -98,6 +98,37 @@ class DesktopVideoCompatibilityTest {
     }
 
     @Test
+    fun windowsPlaybackStartupStallRequiresAnIdleLoadedPath() {
+        assertEquals(
+            true,
+            isWindowsPlaybackStartupStallCandidate(
+                path = "episode.mkv",
+                durationMs = 0L,
+                idle = true,
+                paused = false,
+            ),
+        )
+        assertEquals(
+            false,
+            isWindowsPlaybackStartupStallCandidate(
+                path = null,
+                durationMs = 0L,
+                idle = true,
+                paused = false,
+            ),
+        )
+        assertEquals(
+            false,
+            isWindowsPlaybackStartupStallCandidate(
+                path = "episode.mkv",
+                durationMs = 120_000L,
+                idle = true,
+                paused = false,
+            ),
+        )
+    }
+
+    @Test
     fun dolbyVisionMetadataSelectsDolbyVisionCompatibility() {
         val decision = selectDesktopVideoPipeline(
             DesktopVideoMetadata(

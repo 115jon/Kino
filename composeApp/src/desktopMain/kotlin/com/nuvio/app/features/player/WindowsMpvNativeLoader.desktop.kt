@@ -16,6 +16,8 @@ internal object WindowsMpvNativeLoader {
     private val nativeResources = listOf(
         "win32-x86-64/libmpv-2.dll",
         "win32-x86-64/mpv.dll",
+        "win32-x86-64/kino-media-session.dll",
+        "app_logo.png",
     )
 
     @Volatile
@@ -43,6 +45,12 @@ internal object WindowsMpvNativeLoader {
                 throw failure
             }
         }
+    }
+
+    fun loadMediaSession(): WindowsMediaSessionLibrary {
+        val nativeDirectory = prepareNativeDirectory()
+        configureSearchPaths(nativeDirectory)
+        return Native.load(nativeDirectory.resolve("kino-media-session.dll").absolutePath, WindowsMediaSessionLibrary::class.java)
     }
 
     private fun prepareNativeDirectory(): File {

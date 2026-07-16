@@ -219,6 +219,9 @@ data class PlayerPlaybackSnapshot(
     val playbackSpeed: Float = 1f,
 )
 
+internal fun PlayerPlaybackSnapshot.hasLoadedMedia(): Boolean =
+    !isLoading && (durationMs > 0L || positionMs > 0L || isPlaying)
+
 data class PlayerNowPlayingInfo(
     val title: String,
     val subtitle: String? = null,

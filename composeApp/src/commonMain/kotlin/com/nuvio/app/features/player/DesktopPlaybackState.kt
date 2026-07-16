@@ -40,3 +40,11 @@ internal fun isWindowsPlaybackStartupStalled(
         !paused &&
         startedAtMs > 0L &&
         nowMs - startedAtMs >= timeoutMs
+
+internal fun isWindowsPlaybackStartupStallCandidate(
+    path: String?,
+    durationMs: Long,
+    idle: Boolean,
+    paused: Boolean,
+): Boolean =
+    !path.isNullOrBlank() && durationMs <= 0L && idle && !paused

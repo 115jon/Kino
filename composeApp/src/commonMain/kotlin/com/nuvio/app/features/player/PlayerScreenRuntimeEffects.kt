@@ -86,6 +86,23 @@ internal fun PlayerScreenRuntime.BindPlayerRuntimeEffects() {
         WatchProgressRepository.ensureLoaded()
     }
 
+    LaunchedEffect(activeSourceUrl, activeSourceAudioUrl) {
+        val sourceUrl = activeSourceUrl
+        if (!isDesktopPlatform || activeTorrentInfoHash != null) return@LaunchedEffect
+        delay(15_000)
+        if (
+            activeSourceUrl == sourceUrl &&
+            playerController != null &&
+            playerControllerSourceUrl == sourceUrl &&
+            !initialLoadCompleted &&
+            errorMessage == null &&
+            !playbackSnapshot.hasLoadedMedia()
+        ) {
+            errorMessage = "Playback did not start. The media source may be unavailable."
+            controlsVisible = true
+        }
+    }
+
     LaunchedEffect(
         activeTorrentInfoHash,
         activeTorrentFileIdx,

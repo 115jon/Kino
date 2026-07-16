@@ -23,6 +23,7 @@ private fun configureMacOsNativeAppearance() {
 }
 
 fun main() {
+    configureWindowsAppUserModelId()
     configureMacOsNativeAppearance()
     System.setProperty("java.net.preferIPv4Stack", "true")
     System.setProperty("compose.interop.blending", "true")
