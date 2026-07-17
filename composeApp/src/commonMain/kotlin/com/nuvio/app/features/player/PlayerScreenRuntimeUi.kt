@@ -223,8 +223,9 @@ internal fun PlayerScreenRuntime.onPlayerSurfaceExit() {
 
 @Composable
 private fun PlayerScreenRuntime.RenderPlayerControls(displayedPositionMs: Long, isEpisode: Boolean) {
+    val isInPip = rememberIsInPictureInPicture()
     AnimatedVisibility(
-        visible = (controlsVisible || showParentalGuide) && !playerControlsLocked,
+        visible = (controlsVisible || showParentalGuide) && !playerControlsLocked && !isInPip,
         enter = fadeIn(),
         exit = fadeOut(),
     ) {

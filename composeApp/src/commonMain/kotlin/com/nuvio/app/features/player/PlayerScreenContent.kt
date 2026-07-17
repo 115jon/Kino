@@ -10,6 +10,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -163,7 +164,10 @@ internal fun PlayerScreenContent(args: PlayerScreenArgs) {
         EnterImmersivePlayerMode(keepScreenAwake = keepScreenAwake)
         ManagePlayerPictureInPicture(
             isPlaying = runtime.playbackSnapshot.isPlaying,
-            playerSize = runtime.layoutSize,
+            videoSize = IntSize(
+                runtime.playbackSnapshot.videoWidth,
+                runtime.playbackSnapshot.videoHeight,
+            ),
         )
         runtime.BindPlayerRuntimeEffects()
         runtime.RenderPlayerRuntimeUi()
