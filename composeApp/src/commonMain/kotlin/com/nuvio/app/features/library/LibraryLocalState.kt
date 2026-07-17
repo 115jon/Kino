@@ -16,8 +16,7 @@ internal data class LibraryLocalSnapshot(
     val hasLoaded: Boolean,
     val isLoading: Boolean,
     val items: List<LibraryItem>,
-    val isPullingNuvioSyncFromServer: Boolean,
-    val hasCompletedInitialNuvioSyncPull: Boolean,
+    val hasPendingPush: Boolean,
 )
 
 internal data class LibraryStateTransition(
@@ -61,8 +60,7 @@ internal class LibraryLocalState {
     private var contentRevision = 0L
     private var isLoading = false
     private var itemsById: MutableMap<String, LibraryItem> = mutableMapOf()
-    private var isPullingNuvioSyncFromServer = false
-    private var hasCompletedInitialNuvioSyncPull = false
+    private var hasPendingPush = false
     private var pushJob: Job? = null
 
     fun snapshot(): LibraryLocalSnapshot = synchronized(lock) {
@@ -79,6 +77,10 @@ internal class LibraryLocalState {
 
     fun isCurrent(token: LibraryProfileToken): Boolean = synchronized(lock) {
         isCurrentLocked(token)
+    }
+
+    fun isContentCurrent(snapshot: LibraryLocalSnapshot): Boolean = synchronized(lock) {
+        isContentCurrentLocked(snapshot)
     }
 
     fun isCurrent(snapshot: LibraryLocalSnapshot): Boolean = synchronized(lock) {
@@ -122,8 +124,7 @@ internal class LibraryLocalState {
         hasLoaded = false
         isLoading = true
         itemsById = mutableMapOf()
-        isPullingNuvioSyncFromServer = false
-        hasCompletedInitialNuvioSyncPull = false
+        hasPendingPush = false
         LibraryStateTransition(
             snapshot = snapshotLocked(),
             detachedPushJob = detachedPushJob,
@@ -156,8 +157,7 @@ internal class LibraryLocalState {
         hasLoaded = false
         isLoading = false
         itemsById = mutableMapOf()
-        isPullingNuvioSyncFromServer = false
-        hasCompletedInitialNuvioSyncPull = false
+        hasPendingPush = false
         LibraryStateTransition(
             snapshot = snapshotLocked(),
             detachedPushJob = detachedPushJob,
@@ -166,34 +166,22 @@ internal class LibraryLocalState {
 
     fun markPullStarted(token: LibraryProfileToken): LibraryLocalSnapshot? = synchronized(lock) {
         if (!isCurrentLocked(token)) return@synchronized null
-        isPullingNuvioSyncFromServer = true
-        revision += 1L
-        snapshotLocked()
-    }
-
-    fun finishPull(
-        token: LibraryProfileToken,
-        completedSuccessfully: Boolean,
-    ): LibraryLocalSnapshot? = synchronized(lock) {
-        if (!isCurrentLocked(token)) return@synchronized null
-        isPullingNuvioSyncFromServer = false
-        if (completedSuccessfully) {
-            hasCompletedInitialNuvioSyncPull = true
-        }
-        revision += 1L
         snapshotLocked()
     }
 
     fun applyServerItems(
-        token: LibraryProfileToken,
+        pullSnapshot: LibraryLocalSnapshot,
         serverItems: Collection<LibraryItem>,
     ): LibraryServerItemsApplyResult? = synchronized(lock) {
-        if (!isCurrentLocked(token)) return@synchronized null
+        if (!isCurrentLocked(pullSnapshot.token)) return@synchronized null
 
-        val preserveLocalItems = serverItems.isEmpty() && itemsById.isNotEmpty()
+        val localContentChanged = contentRevision != pullSnapshot.contentRevision
+        val hasLocalChanges = pullSnapshot.hasPendingPush || hasPendingPush || localContentChanged
+        val preserveLocalItems = itemsById.isNotEmpty() && (serverItems.isEmpty() || hasLocalChanges)
         if (!preserveLocalItems) {
             itemsById = serverItems.associateByTo(mutableMapOf()) { libraryItemKey(it.id, it.type) }
             contentRevision += 1L
+            hasPendingPush = false
         }
         hasLoaded = true
         isLoading = false
@@ -206,6 +194,7 @@ internal class LibraryLocalState {
 
     fun upsert(item: LibraryItem): LibraryLocalSnapshot = synchronized(lock) {
         itemsById[libraryItemKey(item.id, item.type)] = item
+        hasPendingPush = true
         revision += 1L
         contentRevision += 1L
         snapshotLocked()
@@ -219,6 +208,7 @@ internal class LibraryLocalState {
             itemsById[key] = item
             true
         }
+        hasPendingPush = true
         revision += 1L
         contentRevision += 1L
         LibraryLocalToggleResult(
@@ -232,6 +222,7 @@ internal class LibraryLocalState {
         itemsById.entries.removeAll { (_, item) -> item.id == id }
         val affectedCount = before - itemsById.size
         if (affectedCount > 0) {
+            hasPendingPush = true
             revision += 1L
             contentRevision += 1L
         }
@@ -244,6 +235,7 @@ internal class LibraryLocalState {
     fun remove(id: String, type: String): LibraryLocalMutation = synchronized(lock) {
         val affectedCount = if (itemsById.remove(libraryItemKey(id, type)) != null) 1 else 0
         if (affectedCount > 0) {
+            hasPendingPush = true
             revision += 1L
             contentRevision += 1L
         }
@@ -269,7 +261,7 @@ internal class LibraryLocalState {
         snapshot: LibraryLocalSnapshot,
         job: Job,
     ): LibraryPushJobInstallResult = synchronized(lock) {
-        if (!isCurrentLocked(snapshot)) {
+        if (!isContentCurrentLocked(snapshot)) {
             LibraryPushJobInstallResult(installed = false, detachedPushJob = null)
         } else {
             val detachedPushJob = pushJob
@@ -281,6 +273,14 @@ internal class LibraryLocalState {
     fun clearPushJob(job: Job) {
         synchronized(lock) {
             if (pushJob === job) pushJob = null
+        }
+    }
+
+    fun markPushCompleted(snapshot: LibraryLocalSnapshot) {
+        synchronized(lock) {
+            if (isContentCurrentLocked(snapshot)) {
+                hasPendingPush = false
+            }
         }
     }
 
@@ -298,8 +298,7 @@ internal class LibraryLocalState {
             hasLoaded = hasLoaded,
             isLoading = isLoading,
             items = itemsById.values.toList(),
-            isPullingNuvioSyncFromServer = isPullingNuvioSyncFromServer,
-            hasCompletedInitialNuvioSyncPull = hasCompletedInitialNuvioSyncPull,
+            hasPendingPush = hasPendingPush,
         )
 
     private fun isCurrentLocked(token: LibraryProfileToken): Boolean =
