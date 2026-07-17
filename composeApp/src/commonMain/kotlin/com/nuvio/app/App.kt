@@ -1810,6 +1810,10 @@ private fun MainAppContent(
             selectedContinueWatchingForActions = item
         }
 
+        AppUpdaterHost(
+            controller = appUpdaterController,
+            modifier = Modifier.fillMaxSize(),
+        ) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -3529,12 +3533,7 @@ private fun MainAppContent(
                     .zIndex(20f),
             )
 
-            AppUpdaterHost(
-                controller = appUpdaterController,
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .zIndex(25f),
-            )
+        }
         }
 }
 
