@@ -390,14 +390,6 @@ private fun PlayerLaunch.toExternalPlayerPlaybackRequest(): ExternalPlayerPlayba
         episodeTitle = episodeTitle,
     )
 
-private enum class AppGateScreen {
-    Loading,
-    Auth,
-    ProfileSelection,
-    ProfileEdit,
-    Main,
-}
-
 private object NativeAppGateRequests {
     val profileSelection = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
 
@@ -571,40 +563,66 @@ fun App(
             }
         }
 
+        fun applyAppGateTransition(
+            transition: AppGateTransition,
+            profiles: List<NuvioProfile>,
+            syncOnEnter: Boolean,
+        ) {
+            when (transition) {
+                AppGateTransition.KeepCurrent -> Unit
+                AppGateTransition.ShowLoading -> gateScreen = AppGateScreen.Loading.name
+                AppGateTransition.ShowAuth -> {
+                    ProfileRepository.clearInMemory()
+                    gateScreen = AppGateScreen.Auth.name
+                }
+                AppGateTransition.EnterProfileGate -> enterProfileGate(profiles, syncOnEnter)
+            }
+        }
+
         LaunchedEffect(authState, networkStatusUiState.condition, profileState.profiles) {
             val cachedProfiles = profileState.profiles
-            val hasCachedProfileAccess =
-                cachedProfiles.isNotEmpty() &&
-                    authState !is AuthState.Authenticated
-            val allowCachedProfileAccess =
-                hasCachedProfileAccess &&
-                    (
-                        networkStatusUiState.condition != NetworkCondition.Online ||
-                            gateScreen != AppGateScreen.Auth.name
-                    )
-
+            val currentGateScreen = AppGateScreen.entries
+                .firstOrNull { it.name == gateScreen }
+                ?: AppGateScreen.Loading
             when (authState) {
                 is AuthState.Loading -> {
-                    if (hasCachedProfileAccess) {
-                        enterProfileGate(cachedProfiles, syncOnEnter = false)
-                    } else {
-                        gateScreen = AppGateScreen.Loading.name
-                    }
+                    applyAppGateTransition(
+                        transition = appGateTransition(
+                            currentScreen = currentGateScreen,
+                            authState = authState,
+                            hasCachedProfiles = cachedProfiles.isNotEmpty(),
+                            networkCondition = networkStatusUiState.condition,
+                        ),
+                        profiles = cachedProfiles,
+                        syncOnEnter = false,
+                    )
                 }
                 is AuthState.Unauthenticated -> {
-                    if (allowCachedProfileAccess) {
-                        enterProfileGate(cachedProfiles, syncOnEnter = false)
-                    } else {
-                        ProfileRepository.clearInMemory()
-                        gateScreen = AppGateScreen.Auth.name
-                    }
+                    applyAppGateTransition(
+                        transition = appGateTransition(
+                            currentScreen = currentGateScreen,
+                            authState = authState,
+                            hasCachedProfiles = cachedProfiles.isNotEmpty(),
+                            networkCondition = networkStatusUiState.condition,
+                        ),
+                        profiles = cachedProfiles,
+                        syncOnEnter = false,
+                    )
                 }
                 is AuthState.Authenticated -> {
                     val authenticatedState = authState as AuthState.Authenticated
                     ProfileRepository.ensureLoaded(authenticatedState.userId)
-                    if (gateScreen == AppGateScreen.Loading.name || gateScreen == AppGateScreen.Auth.name) {
-                        enterProfileGate(ProfileRepository.state.value.profiles, syncOnEnter = true)
-                    }
+                    val loadedProfiles = ProfileRepository.state.value.profiles
+                    applyAppGateTransition(
+                        transition = appGateTransition(
+                            currentScreen = currentGateScreen,
+                            authState = authState,
+                            hasCachedProfiles = loadedProfiles.isNotEmpty(),
+                            networkCondition = networkStatusUiState.condition,
+                        ),
+                        profiles = loadedProfiles,
+                        syncOnEnter = true,
+                    )
                 }
             }
         }
