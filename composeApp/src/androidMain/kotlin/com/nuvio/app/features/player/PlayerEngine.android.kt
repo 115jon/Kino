@@ -72,6 +72,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.net.HttpURLConnection
 import java.net.URL
@@ -93,12 +95,14 @@ actual fun PlatformPlayerSurface(
     playWhenReady: Boolean,
     resizeMode: PlayerResizeMode,
     useNativeController: Boolean,
+    overlayContent: @Composable () -> Unit,
     onControllerReady: (PlayerEngineController) -> Unit,
     onSnapshot: (PlayerPlaybackSnapshot) -> Unit,
     onError: (String?) -> Unit,
     onSurfaceInteraction: (Boolean) -> Unit,
     onSurfaceExit: () -> Unit,
 ) {
+    overlayContent
     onSurfaceInteraction
     onSurfaceExit
     val playerSettings = remember {
@@ -159,6 +163,8 @@ actual fun PlatformPlayerSurface(
         )
     }
 }
+
+internal actual fun platformPlayerSurfaceOwnsOverlay(): Boolean = false
 
 private enum class ResolvedAndroidPlaybackEngine {
     ExoPlayer,
@@ -823,6 +829,7 @@ private fun LibmpvPlayerSurface(
         sanitizePlaybackHeaders(sourceHeaders)
     }
     var playerViewRef by remember { mutableStateOf<NuvioLibmpvView?>(null) }
+    val snapshotMutex = remember(playerViewRef) { Mutex() }
     val nowPlayingController = remember(context, playerViewRef) {
         playerViewRef?.let { view ->
             AndroidPlayerNowPlayingController(
@@ -866,13 +873,20 @@ private fun LibmpvPlayerSurface(
 
     DisposableEffect(playerViewRef) {
         val view = playerViewRef ?: return@DisposableEffect onDispose {}
+        suspend fun readSnapshot(): PlayerPlaybackSnapshot = snapshotMutex.withLock {
+            view.snapshot()
+        }
+
         fun dispatchSnapshot(updateKeepScreenOn: Boolean = false) {
-            coroutineScope.launch(Dispatchers.Main.immediate) {
-                val snapshot = view.snapshot()
-                latestOnSnapshot.value(snapshot)
-                nowPlayingController?.syncPlayback(snapshot)
-                if (updateKeepScreenOn) {
-                    view.keepScreenOn = view.shouldKeepScreenOn()
+            coroutineScope.launch(Dispatchers.IO) {
+                val snapshot = readSnapshot()
+                withContext(Dispatchers.Main.immediate) {
+                    if (playerViewRef !== view) return@withContext
+                    latestOnSnapshot.value(snapshot)
+                    nowPlayingController?.syncPlayback(snapshot)
+                    if (updateKeepScreenOn) {
+                        view.keepScreenOn = snapshot.isPlaying || snapshot.isLoading
+                    }
                 }
             }
         }
@@ -890,7 +904,7 @@ private fun LibmpvPlayerSurface(
             }
             override fun eventProperty(property: String, value: String) = Unit
             override fun eventProperty(property: String, value: Double) {
-                if (property == "duration" || property == "time-pos" || property == "speed") {
+                if (property == "duration" || property == "speed") {
                     dispatchSnapshot()
                 }
             }
@@ -911,10 +925,8 @@ private fun LibmpvPlayerSurface(
                     MPV.mpvEvent.MPV_EVENT_PLAYBACK_RESTART -> {
                         coroutineScope.launch(Dispatchers.Main.immediate) {
                             latestOnError.value(null)
-                            val snapshot = view.snapshot()
-                            latestOnSnapshot.value(snapshot)
-                            nowPlayingController?.syncPlayback(snapshot)
                         }
+                        dispatchSnapshot()
                     }
                     MPV.mpvEvent.MPV_EVENT_END_FILE -> dispatchSnapshot()
                 }
@@ -932,7 +944,9 @@ private fun LibmpvPlayerSurface(
             view.setPaused(true)
         }
         PlayerPictureInPictureManager.registerTogglePlaybackCallback {
-            val snapshot = view.snapshot()
+            val snapshot = runBlocking(Dispatchers.IO) {
+                snapshotMutex.withLock { view.snapshot() }
+            }
             if (snapshot.isPlaying) {
                 view.setPaused(true)
             } else {
@@ -966,8 +980,10 @@ private fun LibmpvPlayerSurface(
     LaunchedEffect(playerViewRef, playWhenReady) {
         val view = playerViewRef ?: return@LaunchedEffect
         view.setPaused(!latestPlayWhenReady.value)
-        view.keepScreenOn = view.shouldKeepScreenOn()
-        val snapshot = view.snapshot()
+        val snapshot = withContext(Dispatchers.IO) {
+            snapshotMutex.withLock { view.snapshot() }
+        }
+        view.keepScreenOn = snapshot.isPlaying || snapshot.isLoading
         latestOnSnapshot.value(snapshot)
         nowPlayingController?.syncPlayback(snapshot)
     }
@@ -984,10 +1000,12 @@ private fun LibmpvPlayerSurface(
     LaunchedEffect(playerViewRef) {
         val view = playerViewRef ?: return@LaunchedEffect
         while (isActive) {
-            val snapshot = view.snapshot()
+            val snapshot = withContext(Dispatchers.IO) {
+                snapshotMutex.withLock { view.snapshot() }
+            }
             latestOnSnapshot.value(snapshot)
             nowPlayingController?.syncPlayback(snapshot)
-            view.keepScreenOn = view.shouldKeepScreenOn()
+            view.keepScreenOn = snapshot.isPlaying || snapshot.isLoading
             delay(250L)
         }
     }
@@ -1019,7 +1037,11 @@ private fun LibmpvPlayerSurface(
         },
         onRelease = { view ->
             if (playerViewRef === view) playerViewRef = null
-            runCatching { view.destroy() }
+            runCatching {
+                runBlocking {
+                    snapshotMutex.withLock { view.destroy() }
+                }
+            }
         },
     )
 }
@@ -1072,7 +1094,6 @@ private class NuvioLibmpvView(
             "seeking" to MPV.mpvFormat.MPV_FORMAT_FLAG,
             "cache-buffering-state" to MPV.mpvFormat.MPV_FORMAT_INT64,
             "duration" to MPV.mpvFormat.MPV_FORMAT_DOUBLE,
-            "time-pos" to MPV.mpvFormat.MPV_FORMAT_DOUBLE,
             "demuxer-cache-time" to MPV.mpvFormat.MPV_FORMAT_DOUBLE,
             "speed" to MPV.mpvFormat.MPV_FORMAT_DOUBLE,
             "track-list" to MPV.mpvFormat.MPV_FORMAT_NODE,

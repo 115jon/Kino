@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onSizeChanged
 import com.nuvio.app.features.p2p.P2pStreamingState
@@ -20,7 +21,6 @@ import nuvio.composeapp.generated.resources.*
 @Composable
 internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi() {
     val runtime = this
-    val displayedPositionMs = scrubbingPositionMs ?: playbackSnapshot.positionMs
     val isEpisode = activeSeasonNumber != null && activeEpisodeNumber != null
     val resolvedMeta = metaUiState.meta?.takeIf { it.id == parentMetaId }
     val displayLogo = logo ?: resolvedMeta?.logo
@@ -73,7 +73,7 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi() {
     val p2pRebufferMessage = when {
         !showP2pRebufferStats -> null
         else -> {
-            val bufferedSeconds = ((playbackSnapshot.bufferedPositionMs - playbackSnapshot.positionMs) / 1000L)
+             val bufferedSeconds = ((latestPlaybackSnapshot.bufferedPositionMs - latestPlaybackSnapshot.positionMs) / 1000L)
                 .coerceAtLeast(0L)
             "${bufferedSeconds}s buffered · ${p2pPeerInfo.orEmpty()} · ${p2pDownloadSpeed.orEmpty()}"
         }
@@ -81,43 +81,87 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi() {
     val p2pRebufferProgress = when {
         !showP2pRebufferStats -> null
         else -> {
-            val bufferedSeconds = ((playbackSnapshot.bufferedPositionMs - playbackSnapshot.positionMs) / 1000f)
+             val bufferedSeconds = ((latestPlaybackSnapshot.bufferedPositionMs - latestPlaybackSnapshot.positionMs) / 1000f)
                 .coerceAtLeast(0f)
             (bufferedSeconds / 10f).coerceIn(0f, 1f)
         }
     }
     val gestureCallbacks = rememberSurfaceGestureCallbacks()
+    val overlayContent: @Composable () -> Unit = {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .onSizeChanged { layoutSize = it }
+                    .playerSurfaceTapGestures(
+                        layoutSize = layoutSize,
+                        playerControlsLockedState = gestureCallbacks.playerControlsLocked,
+                        onSurfaceTap = gestureCallbacks.onSurfaceTap,
+                        onSurfaceDoubleTap = gestureCallbacks.onSurfaceDoubleTap,
+                        activateHoldToSpeedState = gestureCallbacks.activateHoldToSpeed,
+                        deactivateHoldToSpeedState = gestureCallbacks.deactivateHoldToSpeed,
+                        revealLockedOverlayState = gestureCallbacks.revealLockedOverlay,
+                    )
+                    .playerSurfaceDragGestures(
+                        gestureController = gestureController,
+                        layoutSize = layoutSize,
+                        sideGestureSystemEdgeExclusionPx = sideGestureSystemEdgeExclusionPx,
+                        playerControlsLockedState = gestureCallbacks.playerControlsLocked,
+                        touchGesturesEnabledState = gestureCallbacks.touchGesturesEnabled,
+                        isHoldToSpeedGestureActiveState = gestureCallbacks.isHoldToSpeedGestureActive,
+                        currentPositionMsState = gestureCallbacks.currentPositionMs,
+                        currentDurationMsState = gestureCallbacks.currentDurationMs,
+                        deactivateHoldToSpeedState = gestureCallbacks.deactivateHoldToSpeed,
+                        showHorizontalSeekPreviewState = gestureCallbacks.showHorizontalSeekPreview,
+                        showBrightnessFeedbackState = gestureCallbacks.showBrightnessFeedback,
+                        showVolumeFeedbackState = gestureCallbacks.showVolumeFeedback,
+                        clearLiveGestureFeedbackState = gestureCallbacks.clearLiveGestureFeedback,
+                        revealLockedOverlayState = gestureCallbacks.revealLockedOverlay,
+                        commitHorizontalSeekState = gestureCallbacks.commitHorizontalSeek,
+                    ),
+            )
+            AnimatedVisibility(
+                visible = pausedOverlayVisible && !controlsVisible && !playerControlsLocked,
+                enter = fadeIn(animationSpec = tween(durationMillis = 220)),
+                exit = fadeOut(animationSpec = tween(durationMillis = 180)),
+            ) {
+                PauseMetadataOverlay(
+                    title = title,
+                    logo = displayLogo,
+                    isEpisode = isEpisode,
+                    seasonNumber = activeSeasonNumber,
+                    episodeNumber = activeEpisodeNumber,
+                    episodeTitle = activeEpisodeTitle,
+                    pauseDescription = pauseDescription ?: activeStreamSubtitle,
+                    providerName = activeProviderName,
+                    metrics = metrics,
+                    horizontalSafePadding = horizontalSafePadding,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+
+            RenderPlayerControls(isEpisode = isEpisode)
+            RenderPlaybackOverlays(
+                runtime = runtime,
+                currentGestureFeedback = currentGestureFeedback,
+                p2pInitialLoadingMessage = p2pInitialLoadingMessage,
+                p2pInitialLoadingProgress = p2pInitialLoadingProgress,
+                showP2pRebufferStats = showP2pRebufferStats,
+                p2pRebufferMessage = p2pRebufferMessage,
+                p2pRebufferProgress = p2pRebufferProgress,
+                displayArtwork = displayArtwork,
+                displayLogo = displayLogo,
+            )
+            RenderPlayerModals(displayedPositionMs = latestPlaybackSnapshot.positionMs)
+        }
+    }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
             .onSizeChanged { layoutSize = it }
-            .playerSurfaceTapGestures(
-                layoutSize = layoutSize,
-                playerControlsLockedState = gestureCallbacks.playerControlsLocked,
-                onSurfaceTap = gestureCallbacks.onSurfaceTap,
-                onSurfaceDoubleTap = gestureCallbacks.onSurfaceDoubleTap,
-                activateHoldToSpeedState = gestureCallbacks.activateHoldToSpeed,
-                deactivateHoldToSpeedState = gestureCallbacks.deactivateHoldToSpeed,
-                revealLockedOverlayState = gestureCallbacks.revealLockedOverlay,
-            )
-            .playerSurfaceDragGestures(
-                gestureController = gestureController,
-                layoutSize = layoutSize,
-                sideGestureSystemEdgeExclusionPx = sideGestureSystemEdgeExclusionPx,
-                playerControlsLockedState = gestureCallbacks.playerControlsLocked,
-                touchGesturesEnabledState = gestureCallbacks.touchGesturesEnabled,
-                isHoldToSpeedGestureActiveState = gestureCallbacks.isHoldToSpeedGestureActive,
-                currentPositionMsState = gestureCallbacks.currentPositionMs,
-                currentDurationMsState = gestureCallbacks.currentDurationMs,
-                deactivateHoldToSpeedState = gestureCallbacks.deactivateHoldToSpeed,
-                showHorizontalSeekPreviewState = gestureCallbacks.showHorizontalSeekPreview,
-                showBrightnessFeedbackState = gestureCallbacks.showBrightnessFeedback,
-                showVolumeFeedbackState = gestureCallbacks.showVolumeFeedback,
-                clearLiveGestureFeedbackState = gestureCallbacks.clearLiveGestureFeedback,
-                revealLockedOverlayState = gestureCallbacks.revealLockedOverlay,
-                commitHorizontalSeekState = gestureCallbacks.commitHorizontalSeek,
-            ),
     ) {
         val playerSurfaceSourceUrl = if (isP2pPlaybackActive) p2pResolvedSourceUrl else activeSourceUrl
         if (playerSurfaceSourceUrl != null) {
@@ -131,7 +175,8 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi() {
                 modifier = Modifier.fillMaxSize(),
                  playWhenReady = shouldPlay,
                  resizeMode = resizeMode,
-                  onControllerReady = { controller ->
+                 overlayContent = overlayContent,
+                   onControllerReady = { controller ->
                       playerController = controller
                       playerControllerSourceUrl = playerSurfaceSourceUrl
                      controller.currentVolumeLevel()?.let { level ->
@@ -141,10 +186,11 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi() {
                          }
                      }
                   },
-                  onSnapshot = { snapshot ->
-                     if (playerControllerSourceUrl != playerSurfaceSourceUrl) return@PlatformPlayerSurface
-                     playbackSnapshot = snapshot
-                     if (snapshot.hasLoadedMedia()) initialLoadCompleted = true
+                   onSnapshot = { snapshot ->
+                      if (playerControllerSourceUrl != playerSurfaceSourceUrl) return@PlatformPlayerSurface
+                      publishPlaybackSnapshot(snapshot)
+                      if (snapshot.hasLoadedMedia()) initialLoadCompleted = true
+                      if (snapshot.hasLoadedMedia()) errorMessage = null
                      if (snapshot.isEnded && snapshot.hasLoadedMedia()) {
                          shouldPlay = false
                          controlsVisible = !playerControlsLocked
@@ -177,40 +223,9 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi() {
             )
         }
 
-        AnimatedVisibility(
-            visible = pausedOverlayVisible && !controlsVisible && !playerControlsLocked,
-            enter = fadeIn(animationSpec = tween(durationMillis = 220)),
-            exit = fadeOut(animationSpec = tween(durationMillis = 180)),
-        ) {
-            PauseMetadataOverlay(
-                title = title,
-                logo = displayLogo,
-                isEpisode = isEpisode,
-                seasonNumber = activeSeasonNumber,
-                episodeNumber = activeEpisodeNumber,
-                episodeTitle = activeEpisodeTitle,
-                pauseDescription = pauseDescription ?: activeStreamSubtitle,
-                providerName = activeProviderName,
-                metrics = metrics,
-                horizontalSafePadding = horizontalSafePadding,
-                modifier = Modifier.fillMaxSize(),
-            )
+        if (playerSurfaceSourceUrl == null || !platformPlayerSurfaceOwnsOverlay()) {
+            overlayContent()
         }
-
-        RenderPlayerControls(displayedPositionMs = displayedPositionMs, isEpisode = isEpisode)
-        RenderPlaybackOverlays(
-            runtime = runtime,
-            displayedPositionMs = displayedPositionMs,
-            currentGestureFeedback = currentGestureFeedback,
-            p2pInitialLoadingMessage = p2pInitialLoadingMessage,
-            p2pInitialLoadingProgress = p2pInitialLoadingProgress,
-            showP2pRebufferStats = showP2pRebufferStats,
-            p2pRebufferMessage = p2pRebufferMessage,
-            p2pRebufferProgress = p2pRebufferProgress,
-            displayArtwork = displayArtwork,
-            displayLogo = displayLogo,
-        )
-        RenderPlayerModals(displayedPositionMs = displayedPositionMs)
     }
 }
 
@@ -222,7 +237,7 @@ internal fun PlayerScreenRuntime.onPlayerSurfaceExit() {
 }
 
 @Composable
-private fun PlayerScreenRuntime.RenderPlayerControls(displayedPositionMs: Long, isEpisode: Boolean) {
+private fun PlayerScreenRuntime.RenderPlayerControls(isEpisode: Boolean) {
     val isInPip = rememberIsInPictureInPicture()
     AnimatedVisibility(
         visible = (controlsVisible || showParentalGuide) && !playerControlsLocked && !isInPip,
@@ -232,12 +247,14 @@ private fun PlayerScreenRuntime.RenderPlayerControls(displayedPositionMs: Long, 
         PlayerControlsShell(
             title = title,
             streamTitle = activeStreamTitle,
+            timelineIdentity = activeSourceUrl,
             providerName = activeProviderName,
             seasonNumber = activeSeasonNumber,
             episodeNumber = activeEpisodeNumber,
             episodeTitle = activeEpisodeTitle,
             playbackSnapshot = playbackSnapshot,
-            displayedPositionMs = displayedPositionMs,
+            isScrubbingTimeline = isScrubbingTimeline,
+            playbackTimeline = playbackTimeline,
             metrics = metrics,
             resizeMode = resizeMode,
             isLocked = playerControlsLocked,
@@ -249,13 +266,13 @@ private fun PlayerScreenRuntime.RenderPlayerControls(displayedPositionMs: Long, 
                 flushWatchProgress()
                 args.onBack()
             },
-             onTogglePlayback = { togglePlayback() },
-              volumeLevel = volumeLevel,
-              showVolumeControl = playerController?.supportsVolumeControl() == true,
-              onVolumeChanged = { level -> setVolumeLevel(level) },
-              showFullscreenControl = playerController?.supportsFullscreenToggle() == true,
-              onFullscreenClick = { playerController?.toggleFullscreen() },
-              desktopLayout = isDesktopLayout,
+            onTogglePlayback = { togglePlayback() },
+            volumeLevel = volumeLevel,
+            showVolumeControl = playerController?.supportsVolumeControl() == true,
+            onVolumeChanged = { level -> setVolumeLevel(level) },
+            showFullscreenControl = playerController?.supportsFullscreenToggle() == true,
+            onFullscreenClick = { playerController?.toggleFullscreen() },
+            desktopLayout = isDesktopLayout,
             onSeekBack = { seekBy(-10_000L) },
             onSeekForward = { seekBy(10_000L) },
             onResizeModeClick = { cycleResizeMode() },
@@ -298,7 +315,7 @@ private fun PlayerScreenRuntime.RenderPlayerControls(displayedPositionMs: Long, 
                             title = title,
                             streamTitle = activeStreamTitle,
                             sourceHeaders = activeSourceHeaders,
-                            resumePositionMs = playbackSnapshot.positionMs,
+                            resumePositionMs = latestPlaybackSnapshot.positionMs,
                             subtitles = loadedSubtitles,
                             season = activeSeasonNumber,
                             episode = activeEpisodeNumber,
@@ -319,16 +336,14 @@ private fun PlayerScreenRuntime.RenderPlayerControls(displayedPositionMs: Long, 
             parentalWarnings = parentalWarnings,
             showParentalGuide = showParentalGuide,
             onParentalGuideAnimationComplete = { showParentalGuide = false },
-            onScrubChange = { positionMs ->
+            onScrubChange = {
                 isScrubbingTimeline = true
-                scrubbingPositionMs = positionMs
             },
-            onScrubFinished = { positionMs ->
-                isScrubbingTimeline = false
-                scrubbingPositionMs = null
-                playerController?.seekTo(positionMs)
-                scheduleProgressSyncAfterSeek()
-            },
+             onScrubFinished = { positionMs ->
+                 isScrubbingTimeline = false
+                 playerController?.seekTo(positionMs)
+                 scheduleProgressSyncAfterSeek()
+             },
             horizontalSafePadding = horizontalSafePadding,
             modifier = Modifier.fillMaxSize(),
         )
@@ -338,7 +353,6 @@ private fun PlayerScreenRuntime.RenderPlayerControls(displayedPositionMs: Long, 
 @Composable
 private fun BoxScope.RenderPlaybackOverlays(
     runtime: PlayerScreenRuntime,
-    displayedPositionMs: Long,
     currentGestureFeedback: GestureFeedbackState?,
     p2pInitialLoadingMessage: String?,
     p2pInitialLoadingProgress: Float?,
@@ -349,11 +363,11 @@ private fun BoxScope.RenderPlaybackOverlays(
     displayLogo: String?,
 ) {
     runtime.run {
-        PlayerPlaybackOverlays(
-            playerControlsLocked = playerControlsLocked,
-            lockedOverlayVisible = lockedOverlayVisible,
-            playbackSnapshot = playbackSnapshot,
-        displayedPositionMs = displayedPositionMs,
+         PlayerPlaybackOverlays(
+             playerControlsLocked = playerControlsLocked,
+             lockedOverlayVisible = lockedOverlayVisible,
+             playbackSnapshot = playbackSnapshot,
+         playbackTimeline = playbackTimeline,
         metrics = metrics,
         horizontalSafePadding = horizontalSafePadding,
         onUnlock = { unlockPlayerControls() },

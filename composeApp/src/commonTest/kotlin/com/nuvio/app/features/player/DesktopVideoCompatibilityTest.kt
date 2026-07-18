@@ -129,6 +129,34 @@ class DesktopVideoCompatibilityTest {
     }
 
     @Test
+    fun windowsPlaybackStartupStallDoesNotBecomeTerminalError() {
+        assertEquals(
+            null,
+            selectWindowsPlaybackError(
+                mpvErrorMessage = null,
+                hasLoadedMedia = false,
+                startupStalled = true,
+            ),
+        )
+        assertEquals(
+            "Failed to open stream",
+            selectWindowsPlaybackError(
+                mpvErrorMessage = "Failed to open stream",
+                hasLoadedMedia = false,
+                startupStalled = true,
+            ),
+        )
+        assertEquals(
+            null,
+            selectWindowsPlaybackError(
+                mpvErrorMessage = "stale mpv error",
+                hasLoadedMedia = true,
+                startupStalled = false,
+            ),
+        )
+    }
+
+    @Test
     fun dolbyVisionMetadataSelectsDolbyVisionCompatibility() {
         val decision = selectDesktopVideoPipeline(
             DesktopVideoMetadata(

@@ -5,6 +5,7 @@ import java.util.concurrent.atomic.AtomicReference
 
 internal class DesktopMediaKeySession : AutoCloseable {
     private val controller = AtomicReference<PlayerEngineController?>()
+    private val lastPlaybackState = AtomicReference<MediaSessionPlaybackState?>(null)
     private val isClosed = AtomicBoolean(false)
     private val windowsSession = if (isWindows()) {
         WindowsMediaSession(::dispatch)
@@ -30,7 +31,9 @@ internal class DesktopMediaKeySession : AutoCloseable {
 
     fun updatePlayback(snapshot: PlayerPlaybackSnapshot) {
         if (isClosed.get()) return
-        windowsSession?.updatePlayback(snapshot.toMediaSessionPlaybackState())
+        val nextState = snapshot.toMediaSessionPlaybackState()
+        if (lastPlaybackState.getAndSet(nextState) == nextState) return
+        windowsSession?.updatePlayback(nextState)
     }
 
     fun updateFocus(isFocused: Boolean, windowHandle: Long?) {
@@ -40,11 +43,13 @@ internal class DesktopMediaKeySession : AutoCloseable {
 
     fun sourceChanged() {
         if (isClosed.get()) return
+        lastPlaybackState.set(MediaSessionPlaybackState.Changing)
         windowsSession?.sourceChanged()
     }
 
     override fun close() {
         if (!isClosed.compareAndSet(false, true)) return
+        lastPlaybackState.set(null)
         controller.set(null)
         windowsSession?.close()
     }

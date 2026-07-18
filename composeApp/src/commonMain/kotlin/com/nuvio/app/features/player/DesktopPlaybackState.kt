@@ -48,3 +48,12 @@ internal fun isWindowsPlaybackStartupStallCandidate(
     paused: Boolean,
 ): Boolean =
     !path.isNullOrBlank() && durationMs <= 0L && idle && !paused
+
+internal fun selectWindowsPlaybackError(
+    mpvErrorMessage: String?,
+    hasLoadedMedia: Boolean,
+    startupStalled: Boolean,
+): String? {
+    if (startupStalled && mpvErrorMessage.isNullOrBlank()) return null
+    return mpvErrorMessage?.takeUnless { hasLoadedMedia }
+}

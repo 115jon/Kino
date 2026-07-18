@@ -8,6 +8,10 @@ interface PlayerEngineController {
     fun pause()
     fun togglePlayPause() {}
     fun seekTo(positionMs: Long)
+
+    fun seekToKeyframe(positionMs: Long) {
+        seekTo(positionMs)
+    }
     fun seekBy(offsetMs: Long)
     fun supportsVolumeControl(): Boolean = false
     fun currentVolumeLevel(): PlayerAudioLevel? = null
@@ -135,9 +139,12 @@ expect fun PlatformPlayerSurface(
     playWhenReady: Boolean = true,
     resizeMode: PlayerResizeMode = PlayerResizeMode.Fit,
     useNativeController: Boolean = false,
+    overlayContent: @Composable () -> Unit = {},
     onControllerReady: (PlayerEngineController) -> Unit,
     onSnapshot: (PlayerPlaybackSnapshot) -> Unit,
     onError: (String?) -> Unit,
     onSurfaceInteraction: (Boolean) -> Unit = {},
     onSurfaceExit: () -> Unit = {},
 )
+
+internal expect fun platformPlayerSurfaceOwnsOverlay(): Boolean

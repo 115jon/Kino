@@ -22,6 +22,7 @@ actual fun PlatformPlayerSurface(
     playWhenReady: Boolean,
     resizeMode: PlayerResizeMode,
     useNativeController: Boolean,
+    overlayContent: @Composable () -> Unit,
     onControllerReady: (PlayerEngineController) -> Unit,
     onSnapshot: (PlayerPlaybackSnapshot) -> Unit,
     onError: (String?) -> Unit,
@@ -49,6 +50,7 @@ actual fun PlatformPlayerSurface(
         playWhenReady = playWhenReady,
         resizeMode = resizeMode,
         useNativeController = useNativeController,
+        overlayContent = overlayContent,
         onControllerReady = { controller ->
             onControllerReady(mediaKeySession.bind(controller))
         },
@@ -61,6 +63,12 @@ actual fun PlatformPlayerSurface(
         onSurfaceExit = onSurfaceExit,
         onWindowFocusChanged = mediaKeySession::updateFocus,
     )
+}
+
+internal actual fun platformPlayerSurfaceOwnsOverlay(): Boolean {
+    val osName = System.getProperty("os.name").orEmpty().lowercase()
+    val surface = System.getProperty("kino.windows.video-surface")?.trim()?.lowercase()
+    return osName.contains("win") && surface !in setOf("embedded", "gl", "opengl")
 }
 
 internal interface DesktopPlaybackBackend {
@@ -77,6 +85,7 @@ internal interface DesktopPlaybackBackend {
         playWhenReady: Boolean,
         resizeMode: PlayerResizeMode,
         useNativeController: Boolean,
+        overlayContent: @Composable () -> Unit,
         onControllerReady: (PlayerEngineController) -> Unit,
         onSnapshot: (PlayerPlaybackSnapshot) -> Unit,
         onError: (String?) -> Unit,
@@ -113,6 +122,7 @@ private class UnsupportedDesktopPlaybackBackend(
         playWhenReady: Boolean,
         resizeMode: PlayerResizeMode,
         useNativeController: Boolean,
+        overlayContent: @Composable () -> Unit,
         onControllerReady: (PlayerEngineController) -> Unit,
         onSnapshot: (PlayerPlaybackSnapshot) -> Unit,
         onError: (String?) -> Unit,
@@ -120,6 +130,7 @@ private class UnsupportedDesktopPlaybackBackend(
         onSurfaceExit: () -> Unit,
         onWindowFocusChanged: (Boolean, Long?) -> Unit,
     ) {
+        overlayContent
         onSurfaceInteraction
         onSurfaceExit
         onWindowFocusChanged

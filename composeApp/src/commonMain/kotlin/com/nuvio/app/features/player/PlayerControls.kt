@@ -42,7 +42,12 @@ import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -61,17 +66,25 @@ import com.nuvio.app.core.ui.appIconPainter
 import com.nuvio.app.core.ui.nuvioTypeScale
 import nuvio.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.stringResource
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.isActive
+import kotlin.math.abs
+import kotlin.time.TimeMark
+import kotlin.time.TimeSource
 
 @Composable
 internal fun PlayerControlsShell(
     title: String,
     streamTitle: String,
+    timelineIdentity: String?,
     providerName: String,
     seasonNumber: Int?,
     episodeNumber: Int?,
     episodeTitle: String?,
     playbackSnapshot: PlayerPlaybackSnapshot,
-    displayedPositionMs: Long,
+    isScrubbingTimeline: Boolean,
+    playbackTimeline: StateFlow<PlayerPlaybackTimeline>,
     metrics: PlayerLayoutMetrics,
     resizeMode: PlayerResizeMode,
     isLocked: Boolean,
@@ -185,16 +198,18 @@ internal fun PlayerControlsShell(
             if (showPlaybackControls) {
                 ProgressControls(
                     playbackSnapshot = playbackSnapshot,
-                    displayedPositionMs = displayedPositionMs,
+                    timelineIdentity = timelineIdentity,
+                    isScrubbingTimeline = isScrubbingTimeline,
+                    playbackTimeline = playbackTimeline,
                     metrics = metrics,
                     resizeMode = resizeMode,
                     onScrubChange = onScrubChange,
                     onScrubFinished = onScrubFinished,
                     onResizeModeClick = onResizeModeClick,
                     onSpeedClick = onSpeedClick,
-                     onSubtitleClick = onSubtitleClick,
-                     onAudioClick = onAudioClick,
-                     onSourcesClick = onSourcesClick,
+                    onSubtitleClick = onSubtitleClick,
+                    onAudioClick = onAudioClick,
+                    onSourcesClick = onSourcesClick,
                     onEpisodesClick = onEpisodesClick,
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
@@ -507,7 +522,9 @@ private fun PlayPauseControlButton(
 @Composable
 private fun ProgressControls(
     playbackSnapshot: PlayerPlaybackSnapshot,
-    displayedPositionMs: Long,
+    timelineIdentity: String?,
+    isScrubbingTimeline: Boolean,
+    playbackTimeline: StateFlow<PlayerPlaybackTimeline>,
     metrics: PlayerLayoutMetrics,
     resizeMode: PlayerResizeMode,
     onScrubChange: (Long) -> Unit,
@@ -520,33 +537,20 @@ private fun ProgressControls(
     onEpisodesClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
-    val durationMs = playbackSnapshot.durationMs.coerceAtLeast(1L)
     val aspectRatioPainter = appIconPainter(AppIconResource.PlayerAspectRatio)
     val subtitlesPainter = appIconPainter(AppIconResource.PlayerSubtitles)
     val audioPainter = appIconPainter(AppIconResource.PlayerAudioFilled)
 
     Column(modifier = modifier) {
-        Slider(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(metrics.sliderTouchHeight)
-                .graphicsLayer(scaleY = metrics.sliderScaleY),
-            value = displayedPositionMs.coerceIn(0L, durationMs).toFloat(),
-            onValueChange = { value -> onScrubChange(value.toLong()) },
-            onValueChangeFinished = { onScrubFinished(displayedPositionMs.coerceIn(0L, durationMs)) },
-            valueRange = 0f..durationMs.toFloat(),
+        TimelineProgressControls(
+            playbackSnapshot = playbackSnapshot,
+            timelineIdentity = timelineIdentity,
+            isScrubbingTimeline = isScrubbingTimeline,
+            playbackTimeline = playbackTimeline,
+            metrics = metrics,
+            onScrubChange = onScrubChange,
+            onScrubFinished = onScrubFinished,
         )
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 14.dp)
-                .padding(top = 4.dp, bottom = 8.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            TimePill(text = formatPlaybackTime(displayedPositionMs), fontSize = metrics.timeSize)
-            TimePill(text = formatPlaybackTime(durationMs), fontSize = metrics.timeSize)
-        }
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.Center,
@@ -602,6 +606,106 @@ private fun ProgressControls(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun TimelineProgressControls(
+    playbackSnapshot: PlayerPlaybackSnapshot,
+    timelineIdentity: String?,
+    isScrubbingTimeline: Boolean,
+    playbackTimeline: StateFlow<PlayerPlaybackTimeline>,
+    metrics: PlayerLayoutMetrics,
+    onScrubChange: (Long) -> Unit,
+    onScrubFinished: (Long) -> Unit,
+) {
+    var dragPositionMs by remember(timelineIdentity) { mutableStateOf<Long?>(null) }
+    var pendingSeekPositionMs by remember(timelineIdentity) { mutableStateOf<Long?>(null) }
+    var pendingSeekStartedAt by remember(timelineIdentity) { mutableStateOf<TimeMark?>(null) }
+    var animatedPositionMs by remember(timelineIdentity) { mutableStateOf(playbackTimeline.value.positionMs) }
+    LaunchedEffect(isScrubbingTimeline) {
+        if (isScrubbingTimeline) {
+            pendingSeekPositionMs = null
+            pendingSeekStartedAt = null
+        }
+    }
+    val durationMs = playbackSnapshot.durationMs.coerceAtLeast(1L)
+    LaunchedEffect(timelineIdentity, playbackTimeline, isScrubbingTimeline, durationMs) {
+        var anchor = playbackTimeline.value
+        var anchorFrameNs = 0L
+        while (isActive) {
+            val latest = playbackTimeline.value
+            var anchorChanged = false
+            if (latest != anchor) {
+                anchor = latest
+                anchorChanged = true
+                if (pendingSeekPositionMs != null && abs(anchor.positionMs - pendingSeekPositionMs!!) <= 750L) {
+                    pendingSeekPositionMs = null
+                    pendingSeekStartedAt = null
+                    dragPositionMs = null
+                }
+            }
+            if (pendingSeekPositionMs != null &&
+                (pendingSeekStartedAt?.elapsedNow()?.inWholeMilliseconds ?: 0L) > 3_000L
+            ) {
+                pendingSeekPositionMs = null
+                dragPositionMs = null
+                pendingSeekStartedAt = null
+            }
+            if (anchor.isPlaying && !anchor.isLoading && dragPositionMs == null && pendingSeekPositionMs == null) {
+                withFrameNanos { frameNs ->
+                    if (anchorFrameNs == 0L || anchorChanged) {
+                        anchorFrameNs = frameNs
+                    }
+                    animatedPositionMs = (
+                        anchor.positionMs +
+                            (((frameNs - anchorFrameNs).coerceAtLeast(0L) / 1_000_000.0) * anchor.playbackSpeed)
+                                .toLong()
+                        ).coerceIn(0L, durationMs)
+                }
+            } else {
+                anchorFrameNs = 0L
+                if (dragPositionMs == null && pendingSeekPositionMs == null) {
+                    animatedPositionMs = anchor.positionMs.coerceIn(0L, durationMs)
+                }
+                delay(50L)
+            }
+        }
+    }
+    val displayedPositionMs = (dragPositionMs ?: pendingSeekPositionMs ?: animatedPositionMs)
+        .coerceIn(0L, durationMs)
+
+    Slider(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(metrics.sliderTouchHeight)
+            .graphicsLayer(scaleY = metrics.sliderScaleY),
+        value = displayedPositionMs.toFloat(),
+        onValueChange = { value ->
+            val positionMs = value.toLong().coerceIn(0L, durationMs)
+            pendingSeekPositionMs = null
+            pendingSeekStartedAt = null
+            dragPositionMs = positionMs
+            onScrubChange(positionMs)
+        },
+        onValueChangeFinished = {
+            val positionMs = (dragPositionMs ?: displayedPositionMs).coerceIn(0L, durationMs)
+            pendingSeekPositionMs = positionMs
+            pendingSeekStartedAt = TimeSource.Monotonic.markNow()
+            onScrubFinished(positionMs)
+        },
+        valueRange = 0f..durationMs.toFloat(),
+    )
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 14.dp)
+            .padding(top = 4.dp, bottom = 8.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        TimePill(text = formatPlaybackTime(displayedPositionMs), fontSize = metrics.timeSize)
+        TimePill(text = formatPlaybackTime(durationMs), fontSize = metrics.timeSize)
     }
 }
 

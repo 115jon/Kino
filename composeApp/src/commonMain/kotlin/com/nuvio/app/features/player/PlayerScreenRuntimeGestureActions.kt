@@ -2,6 +2,7 @@ package com.nuvio.app.features.player
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -58,7 +59,6 @@ internal fun PlayerScreenRuntime.lockPlayerControls() {
     lockedOverlayVisible = false
     pausedOverlayVisible = false
     isScrubbingTimeline = false
-    scrubbingPositionMs = null
     gestureMessageJob?.cancel()
     gestureFeedback = null
     liveGestureFeedback = null
@@ -184,7 +184,7 @@ internal fun PlayerScreenRuntime.seekBy(offsetMs: Long) {
 }
 
 internal fun PlayerScreenRuntime.handleDoubleTapSeek(direction: PlayerSeekDirection) {
-    val currentPositionMs = playbackSnapshot.positionMs.coerceAtLeast(0L)
+    val currentPositionMs = latestPlaybackSnapshot.positionMs.coerceAtLeast(0L)
     val currentSeekState = accumulatedSeekState
     val nextState = if (currentSeekState?.direction == direction) {
         currentSeekState.copy(amountMs = currentSeekState.amountMs + PlayerDoubleTapSeekStepMs)
@@ -295,7 +295,8 @@ internal fun PlayerScreenRuntime.rememberSurfaceGestureCallbacks(): PlayerSurfac
             return@rememberUpdatedState
         }
         if (isDesktopLayout) {
-            playerController?.toggleFullscreen()
+            controlsVisible = !controlsVisible
+            pausedOverlayVisible = false
             return@rememberUpdatedState
         }
         if (!playerSettingsUiState.touchGesturesEnabled) {
@@ -325,7 +326,12 @@ internal fun PlayerScreenRuntime.rememberSurfaceGestureCallbacks(): PlayerSurfac
         isHoldToSpeedGestureActive = rememberUpdatedState(isHoldToSpeedGestureActive),
         touchGesturesEnabled = rememberUpdatedState(playerSettingsUiState.touchGesturesEnabled),
         playerControlsLocked = rememberUpdatedState(playerControlsLocked),
-        currentPositionMs = rememberUpdatedState(playbackSnapshot.positionMs.coerceAtLeast(0L)),
+        currentPositionMs = remember {
+            object : androidx.compose.runtime.State<Long> {
+                override val value: Long
+                    get() = latestPlaybackSnapshot.positionMs.coerceAtLeast(0L)
+            }
+        },
         currentDurationMs = rememberUpdatedState(playbackSnapshot.durationMs),
         commitHorizontalSeek = rememberUpdatedState { targetPositionMs: Long ->
             playerController?.seekTo(targetPositionMs)

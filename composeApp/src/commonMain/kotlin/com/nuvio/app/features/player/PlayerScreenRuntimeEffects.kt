@@ -16,7 +16,6 @@ import com.nuvio.app.features.streams.StreamLinkCacheRepository
 import com.nuvio.app.features.streams.StreamItem
 import com.nuvio.app.features.streams.hasLikelyExpiringPlaybackCredentials
 import com.nuvio.app.features.watchprogress.WatchProgressRepository
-import com.nuvio.app.core.ui.isDesktopPlatform
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -57,9 +56,8 @@ internal fun PlayerScreenRuntime.BindPlayerRuntimeEffects() {
         errorMessage = null
         playerController = null
         playerControllerSourceUrl = null
-        playbackSnapshot = PlayerPlaybackSnapshot()
+        resetPlaybackSnapshotState()
         isScrubbingTimeline = false
-        scrubbingPositionMs = null
         liveGestureFeedback = null
         renderedGestureFeedback = null
         lockedOverlayVisible = false
@@ -86,23 +84,6 @@ internal fun PlayerScreenRuntime.BindPlayerRuntimeEffects() {
         WatchProgressRepository.ensureLoaded()
     }
 
-    LaunchedEffect(activeSourceUrl, activeSourceAudioUrl) {
-        val sourceUrl = activeSourceUrl
-        if (!isDesktopPlatform || activeTorrentInfoHash != null) return@LaunchedEffect
-        delay(15_000)
-        if (
-            activeSourceUrl == sourceUrl &&
-            playerController != null &&
-            playerControllerSourceUrl == sourceUrl &&
-            !initialLoadCompleted &&
-            errorMessage == null &&
-            !playbackSnapshot.hasLoadedMedia()
-        ) {
-            errorMessage = "Playback did not start. The media source may be unavailable."
-            controlsVisible = true
-        }
-    }
-
     LaunchedEffect(
         activeTorrentInfoHash,
         activeTorrentFileIdx,
@@ -127,7 +108,7 @@ internal fun PlayerScreenRuntime.BindPlayerRuntimeEffects() {
         errorMessage = null
         playerController = null
         playerControllerSourceUrl = null
-        playbackSnapshot = PlayerPlaybackSnapshot()
+        resetPlaybackSnapshotState()
         initialLoadCompleted = false
 
         try {
@@ -174,10 +155,7 @@ internal fun PlayerScreenRuntime.BindPlayerRuntimeEffects() {
         playerController?.setSubtitleDelayMs(subtitleDelayMs)
     }
 
-    LaunchedEffect(
-        playerController,
-        if (isDesktopPlatform) null else playbackSnapshot.positionMs,
-    ) {
+    LaunchedEffect(playerController) {
         playerController?.currentVolumeLevel()?.let { level ->
             volumeLevel = level
             if (!level.isMuted && level.fraction > 0f) {
@@ -278,7 +256,7 @@ internal fun PlayerScreenRuntime.BindPlayerRuntimeEffects() {
             return@LaunchedEffect
         }
 
-        controller.seekTo(targetPositionMs)
+        controller.seekToKeyframe(targetPositionMs)
         initialSeekApplied = true
     }
 
@@ -348,37 +326,34 @@ private fun PlayerScreenRuntime.BindPlayerUiVisibilityEffects() {
         pausedOverlayVisible = true
     }
 
-    LaunchedEffect(
-        playbackSnapshot.positionMs,
-        playbackSnapshot.isPlaying,
-        playbackSnapshot.isLoading,
-        playbackSnapshot.isEnded,
-        playbackSnapshot.durationMs,
-    ) {
-        if (playbackSnapshot.isEnded) {
-            flushWatchProgress()
-            previousIsPlaying = false
-            pendingScrobbleStartAfterSeek = false
-            return@LaunchedEffect
-        }
+    LaunchedEffect(playbackTimeline, playbackSession.videoId, activeSourceUrl) {
+        playbackTimeline.collect {
+            val snapshot = latestPlaybackSnapshot
+            if (snapshot.isEnded) {
+                flushWatchProgress()
+                previousIsPlaying = false
+                pendingScrobbleStartAfterSeek = false
+                return@collect
+            }
 
-        if (previousIsPlaying && !playbackSnapshot.isPlaying && !playbackSnapshot.isLoading) {
-            pendingScrobbleStartAfterSeek = false
-            flushWatchProgress()
-        }
+            if (previousIsPlaying && !snapshot.isPlaying && !snapshot.isLoading) {
+                pendingScrobbleStartAfterSeek = false
+                flushWatchProgress()
+            }
 
-        if (playbackSnapshot.isPlaying && pendingScrobbleStartAfterSeek) {
-            pendingScrobbleStartAfterSeek = false
-            emitTraktScrobbleStart()
-        } else if (!previousIsPlaying && playbackSnapshot.isPlaying) {
-            emitTraktScrobbleStart()
-        }
+            if (snapshot.isPlaying && pendingScrobbleStartAfterSeek) {
+                pendingScrobbleStartAfterSeek = false
+                emitTraktScrobbleStart()
+            } else if (!previousIsPlaying && snapshot.isPlaying) {
+                emitTraktScrobbleStart()
+            }
 
-        if (!playbackSnapshot.isLoading) {
-            previousIsPlaying = playbackSnapshot.isPlaying
-        }
-        if (playbackSnapshot.isPlaying) {
-            persistPlaybackProgressTick()
+            if (!snapshot.isLoading) {
+                previousIsPlaying = snapshot.isPlaying
+            }
+            if (snapshot.isPlaying) {
+                persistPlaybackProgressTick()
+            }
         }
     }
 }
@@ -430,18 +405,20 @@ private fun PlayerScreenRuntime.BindPlayerMetadataAndSkipEffects() {
         }
     }
 
-    LaunchedEffect(playbackSnapshot.positionMs, skipIntervals) {
-        if (skipIntervals.isEmpty()) {
-            activeSkipInterval = null
-            return@LaunchedEffect
-        }
-        val positionSec = playbackSnapshot.positionMs / 1000.0
-        val current = skipIntervals.firstOrNull { interval ->
-            positionSec >= interval.startTime && positionSec < interval.endTime
-        }
-        if (current != activeSkipInterval) {
-            activeSkipInterval = current
-            if (current != null) skipIntervalDismissed = false
+    LaunchedEffect(playbackTimeline, skipIntervals) {
+        playbackTimeline.collect {
+            if (skipIntervals.isEmpty()) {
+                activeSkipInterval = null
+                return@collect
+            }
+            val positionSec = latestPlaybackSnapshot.positionMs / 1000.0
+            val current = skipIntervals.firstOrNull { interval ->
+                positionSec >= interval.startTime && positionSec < interval.endTime
+            }
+            if (current != activeSkipInterval) {
+                activeSkipInterval = current
+                if (current != null) skipIntervalDismissed = false
+            }
         }
     }
 
@@ -477,7 +454,7 @@ private fun PlayerScreenRuntime.BindPlayerMetadataAndSkipEffects() {
     }
 
     LaunchedEffect(
-        playbackSnapshot.positionMs,
+        playbackTimeline,
         playbackSnapshot.durationMs,
         nextEpisodeInfo,
         skipIntervals,
@@ -485,25 +462,28 @@ private fun PlayerScreenRuntime.BindPlayerMetadataAndSkipEffects() {
         playerSettingsUiState.nextEpisodeThresholdPercent,
         playerSettingsUiState.nextEpisodeThresholdMinutesBeforeEnd,
     ) {
-        if (nextEpisodeInfo == null || playbackSnapshot.durationMs <= 0L) {
-            showNextEpisodeCard = false
-            return@LaunchedEffect
-        }
-        val shouldShow = PlayerNextEpisodeRules.shouldShowNextEpisodeCard(
-            positionMs = playbackSnapshot.positionMs,
-            durationMs = playbackSnapshot.durationMs,
-            skipIntervals = skipIntervals,
-            thresholdMode = playerSettingsUiState.nextEpisodeThresholdMode,
-            thresholdPercent = playerSettingsUiState.nextEpisodeThresholdPercent,
-            thresholdMinutesBeforeEnd = playerSettingsUiState.nextEpisodeThresholdMinutesBeforeEnd,
-        )
-        if (shouldShow && !showNextEpisodeCard) {
-            showNextEpisodeCard = true
-            if (playerSettingsUiState.streamAutoPlayNextEpisodeEnabled && nextEpisodeInfo?.hasAired == true) {
-                playNextEpisode()
+        playbackTimeline.collect {
+            val snapshot = latestPlaybackSnapshot
+            if (nextEpisodeInfo == null || snapshot.durationMs <= 0L) {
+                showNextEpisodeCard = false
+                return@collect
             }
-        } else if (!shouldShow) {
-            showNextEpisodeCard = false
+            val shouldShow = PlayerNextEpisodeRules.shouldShowNextEpisodeCard(
+                positionMs = snapshot.positionMs,
+                durationMs = snapshot.durationMs,
+                skipIntervals = skipIntervals,
+                thresholdMode = playerSettingsUiState.nextEpisodeThresholdMode,
+                thresholdPercent = playerSettingsUiState.nextEpisodeThresholdPercent,
+                thresholdMinutesBeforeEnd = playerSettingsUiState.nextEpisodeThresholdMinutesBeforeEnd,
+            )
+            if (shouldShow && !showNextEpisodeCard) {
+                showNextEpisodeCard = true
+                if (playerSettingsUiState.streamAutoPlayNextEpisodeEnabled && nextEpisodeInfo?.hasAired == true) {
+                    playNextEpisode()
+                }
+            } else if (!shouldShow) {
+                showNextEpisodeCard = false
+            }
         }
     }
 
@@ -578,7 +558,7 @@ internal fun PlayerScreenRuntime.tryRefreshCredentialedSourceAfterError(message:
     credentialRefreshAttemptedSourceUrl = failedUrl
     removeFailedStreamFromCache()
 
-    val savedPositionMs = playbackSnapshot.positionMs.coerceAtLeast(0L)
+    val savedPositionMs = latestPlaybackSnapshot.positionMs.coerceAtLeast(0L)
     val expectedProviderAddonId = activeProviderAddonId
     val expectedProviderName = activeProviderName
     val expectedStreamTitle = activeStreamTitle

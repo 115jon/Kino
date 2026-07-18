@@ -22,11 +22,22 @@ private fun configureMacOsNativeAppearance() {
     System.setProperty("apple.awt.application.appearance", "NSAppearanceNameDarkAqua")
 }
 
+private fun configureComposeInterop() {
+    val osName = System.getProperty("os.name")?.lowercase().orEmpty()
+    val windowsVideoSurface = System.getProperty("kino.windows.video-surface")?.trim()?.lowercase()
+    val usesNativeWindowsVideo = osName.contains("win") && windowsVideoSurface !in setOf("embedded", "gl", "opengl")
+    val blendingOverride = System.getProperty("kino.compose-interop-blending")
+    System.setProperty(
+        "compose.interop.blending",
+        blendingOverride ?: (!usesNativeWindowsVideo).toString(),
+    )
+}
+
 fun main() {
     configureWindowsAppUserModelId()
     configureMacOsNativeAppearance()
     System.setProperty("java.net.preferIPv4Stack", "true")
-    System.setProperty("compose.interop.blending", "true")
+    configureComposeInterop()
     initializeDesktopAppLogging()
     application {
         val windowState = rememberWindowState(width = 1280.dp, height = 800.dp)

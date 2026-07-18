@@ -32,6 +32,7 @@ internal object MacOSMpvPlayerBackend : DesktopPlaybackBackend {
         playWhenReady: Boolean,
         resizeMode: PlayerResizeMode,
         useNativeController: Boolean,
+        overlayContent: @Composable () -> Unit,
         onControllerReady: (PlayerEngineController) -> Unit,
         onSnapshot: (PlayerPlaybackSnapshot) -> Unit,
         onError: (String?) -> Unit,
@@ -39,6 +40,7 @@ internal object MacOSMpvPlayerBackend : DesktopPlaybackBackend {
         onSurfaceExit: () -> Unit,
         onWindowFocusChanged: (Boolean, Long?) -> Unit,
     ) {
+        overlayContent
         onSurfaceInteraction
         onSurfaceExit
         onWindowFocusChanged
