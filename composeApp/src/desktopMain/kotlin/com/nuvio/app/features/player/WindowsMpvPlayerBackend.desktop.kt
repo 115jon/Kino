@@ -14,8 +14,6 @@ import androidx.compose.ui.awt.ComposePanel
 import androidx.compose.ui.awt.RenderSettings
 import androidx.compose.ui.awt.SwingPanel
 import androidx.compose.ui.graphics.Color as ComposeColor
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.unit.Density
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.LocalRippleConfiguration
 import androidx.compose.material3.MaterialTheme
@@ -49,18 +47,23 @@ import com.sun.jna.Pointer
 import com.sun.jna.Structure
 import com.sun.jna.ptr.PointerByReference
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withContext
 import androidx.compose.runtime.CompositionLocalProvider
 import java.awt.*
 import java.awt.event.*
 import java.awt.image.BufferedImage
 import java.net.URI
-import java.util.Timer
-import java.util.TimerTask
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import java.util.concurrent.Executors
@@ -70,7 +73,6 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.locks.ReentrantLock
 import javax.swing.*
 import javax.swing.plaf.basic.BasicSliderUI
-import kotlin.concurrent.schedule
 import kotlin.concurrent.withLock
 import kotlin.math.roundToInt
 
@@ -213,6 +215,7 @@ internal interface WindowsMpvLibrary : Library {
     fun mpv_set_property_string(ctx: Pointer, name: String, value: String): Int
     fun mpv_get_property_string(ctx: Pointer, name: String): Pointer?
     fun mpv_free(data: Pointer)
+    fun mpv_error_string(error: Int): Pointer?
     fun mpv_command(ctx: Pointer, args: Array<String?>): Int
     fun mpv_set_wakeup_callback(ctx: Pointer, callback: MpvWakeupCallback?, callbackCtx: Pointer?)
     fun mpv_wait_event(ctx: Pointer, timeout: Double): Pointer?
@@ -233,7 +236,7 @@ private const val MPV_RENDER_PARAM_FLIP_Y = 4
 private const val MPV_RENDER_UPDATE_FRAME = 1L
 private const val MPV_RENDER_API_TYPE_OPENGL = "opengl"
 private const val WindowsPlayerTrackPollIntervalMs = 1_000L
-private const val WindowsPlayerStartupTimeoutMs = 10_000L
+private const val WindowsPlayerStartupTimeoutMs = 30_000L
 private const val WindowsPlayerInitialSeekTimeoutMs = 8_000L
 private const val WindowsPlayerFallbackPollIntervalMs = 500L
 private const val WindowsPlayerMaxCacheBytes = "536870912"
@@ -376,6 +379,15 @@ private fun scheduleLatestWindowsVolumeUpdate(
         }
     }
 }
+
+private fun scheduleWindowsSwingAction(delayMs: Int, action: () -> Unit) {
+    SwingUtilities.invokeLater {
+        javax.swing.Timer(delayMs) { action() }.apply {
+            isRepeats = false
+            start()
+        }
+    }
+}
 private const val WindowsHdrCompatibilityFilter = "libplacebo=apply_filmgrain=1:peak_detect=1:tonemapping=auto"
 private const val WindowsDolbyVisionCompatibilityFilter = "libplacebo=apply_dolbyvision=1:apply_filmgrain=1:peak_detect=1:tonemapping=auto"
 private const val MPV_EVENT_NONE = 0
@@ -408,12 +420,14 @@ internal class DesktopBackendPerfCollector {
 
 private data class WindowsPlaybackPollResult(
     val generation: Long,
+    val loadRequestGeneration: Long?,
     val snapshot: PlayerPlaybackSnapshot,
     val audioTracks: List<AudioTrack>,
     val subtitleTracks: List<SubtitleTrack>,
     val volumeLevel: PlayerAudioLevel,
     val polledTracks: Boolean,
     val errorMessage: String?,
+    val terminalPlaybackError: String?,
     val startupStalled: Boolean,
     val logMessage: String?,
 )
@@ -650,6 +664,24 @@ open class MpvEvent(pointer: Pointer? = null) : Structure(pointer) {
     var data: Pointer? = null
 }
 
+@Structure.FieldOrder("playlist_entry_id")
+internal class MpvEventStartFile(pointer: Pointer? = null) : Structure(pointer) {
+    @JvmField
+    var playlist_entry_id: Long = 0L
+}
+
+@Structure.FieldOrder("reason", "error", "playlist_entry_id")
+internal class MpvEventEndFile(pointer: Pointer? = null) : Structure(pointer) {
+    @JvmField
+    var reason: Int = 0
+
+    @JvmField
+    var error: Int = 0
+
+    @JvmField
+    var playlist_entry_id: Long = 0L
+}
+
 @Structure.FieldOrder("prefix", "level", "text", "log_level")
 internal class MpvLogMessage(pointer: Pointer? = null) : Structure(pointer) {
     @JvmField
@@ -679,6 +711,87 @@ private fun traceMpvLogMessage(data: Pointer?) {
 }
 
 private fun mpvLogText(pointer: Pointer?): String = pointer?.getString(0).orEmpty()
+
+private fun readMpvErrorString(lib: WindowsMpvLibrary, error: Int): String? =
+    lib.mpv_error_string(error)?.getString(0)?.takeIf { it.isNotBlank() && it != "success" }
+
+private fun readMpvStartFile(data: Pointer?): MpvEventStartFile? =
+    data?.let { pointer -> runCatching { MpvEventStartFile(pointer).apply { read() } }.getOrNull() }
+
+private fun readMpvEndFile(data: Pointer?): MpvEventEndFile? =
+    data?.let { pointer -> runCatching { MpvEventEndFile(pointer).apply { read() } }.getOrNull() }
+
+private fun handleWindowsMpvStartFileEvent(
+    state: WindowsPlayerWindowState,
+    data: Pointer?,
+): String {
+    val startFile = readMpvStartFile(data)
+    if (startFile == null) {
+        return "mpv event id=$MPV_EVENT_START_FILE data=unavailable"
+    }
+    val previousEntryId = state.lastObservedPlaylistEntryId
+    if (state.pendingLoadRequestGeneration != null) {
+        return "mpv event id=$MPV_EVENT_START_FILE playlistEntryId=${startFile.playlist_entry_id} stale=true pendingLoad=true"
+    }
+    if (!isWindowsPlaybackStartFileCurrent(
+            playlistEntryId = startFile.playlist_entry_id,
+            expectedPlaylistEntryId = state.pendingPlaylistEntryId,
+            previousPlaylistEntryId = previousEntryId,
+        )
+    ) {
+        return "mpv event id=$MPV_EVENT_START_FILE playlistEntryId=${startFile.playlist_entry_id} stale=true"
+    }
+    state.lastObservedPlaylistEntryId = startFile.playlist_entry_id
+    state.pendingPlaylistEntryId = null
+    state.activePlaylistEntryId = startFile.playlist_entry_id
+    state.activePlaylistEntryGeneration = state.sourceGeneration
+    return "mpv event id=$MPV_EVENT_START_FILE playlistEntryId=${startFile.playlist_entry_id} generation=${state.sourceGeneration}"
+}
+
+private fun discardPendingWindowsMpvEvents(lib: WindowsMpvLibrary, ptr: Pointer): Int {
+    var discarded = 0
+    while (true) {
+        val eventPtr = lib.mpv_wait_event(ptr, 0.0) ?: break
+        val event = MpvEvent(eventPtr).apply { read() }
+        if (event.event_id == MPV_EVENT_NONE) break
+        discarded += 1
+    }
+    return discarded
+}
+
+private fun handleWindowsMpvEndFileEvent(
+    state: WindowsPlayerWindowState,
+    lib: WindowsMpvLibrary,
+    data: Pointer?,
+): String {
+    val endFile = readMpvEndFile(data)
+    if (endFile == null) {
+        return "mpv event id=$MPV_EVENT_END_FILE data=unavailable"
+    }
+    val errorMessage = if (endFile.reason == WindowsMpvEndFileReasonError) {
+        readMpvErrorString(lib, endFile.error)
+    } else {
+        null
+    }
+    val playbackError = selectWindowsPlaybackEndFileError(
+        event = WindowsPlaybackEndFile(
+            reason = endFile.reason,
+            errorMessage = errorMessage,
+            playlistEntryId = endFile.playlist_entry_id,
+        ),
+        activePlaylistEntryId = state.activePlaylistEntryId,
+        activePlaylistEntryGeneration = state.activePlaylistEntryGeneration,
+        currentSourceGeneration = state.sourceGeneration,
+        hasLoadedMedia = state.hasLoadedMedia,
+    )
+    if (playbackError != null) {
+        state.terminalPlaybackError = playbackError
+        state.terminalPlaybackErrorGeneration = state.sourceGeneration
+    }
+    return "mpv event id=$MPV_EVENT_END_FILE reason=${endFile.reason} error=${endFile.error} " +
+        "playlistEntryId=${endFile.playlist_entry_id} activePlaylistEntryId=${state.activePlaylistEntryId} " +
+        "generation=${state.sourceGeneration} terminal=${playbackError != null}"
+}
 
 private val mpvUrlPattern = Regex("https?://[^\\s]+", RegexOption.IGNORE_CASE)
 
@@ -784,6 +897,25 @@ private fun Component.containsCurrentPointer(): Boolean {
     return contains(localPointer)
 }
 
+internal fun createWindowsOverlayPointerListener(onPointerExit: () -> Unit): MouseAdapter =
+    object : MouseAdapter() {
+        override fun mouseExited(e: MouseEvent) {
+            onPointerExit()
+        }
+    }
+
+internal enum class WindowsStartupStallKeyAction {
+    Retry,
+    Back,
+    Consume,
+}
+
+internal fun windowsStartupStallKeyAction(keyCode: Int): WindowsStartupStallKeyAction = when (keyCode) {
+    KeyEvent.VK_R -> WindowsStartupStallKeyAction.Retry
+    KeyEvent.VK_ESCAPE -> WindowsStartupStallKeyAction.Back
+    else -> WindowsStartupStallKeyAction.Consume
+}
+
 internal object WindowsMpvPlayerBackend : DesktopPlaybackBackend {
 
 
@@ -813,7 +945,6 @@ internal object WindowsMpvPlayerBackend : DesktopPlaybackBackend {
         val overlayNuvioTokens = MaterialTheme.nuvio
         val overlayTypeScale = MaterialTheme.nuvioTypeScale
         val overlayAppTheme = MaterialTheme.appTheme
-        val overlayDensity = LocalDensity.current
         val overlayRippleConfiguration = LocalRippleConfiguration.current
         val useNativeVideoSurface = windowsVideoSurface() == WindowsVideoSurface.Native
         val currentOnSnapshot = rememberUpdatedState(onSnapshot)
@@ -874,7 +1005,6 @@ internal object WindowsMpvPlayerBackend : DesktopPlaybackBackend {
                         overlayNuvioTokens = overlayNuvioTokens,
                         overlayTypeScale = overlayTypeScale,
                         overlayAppTheme = overlayAppTheme,
-                        overlayDensity = overlayDensity,
                         overlayRippleConfiguration = overlayRippleConfiguration,
                         state = windowState,
                         onClose = {
@@ -962,11 +1092,9 @@ internal object WindowsMpvPlayerBackend : DesktopPlaybackBackend {
                 windowState.currentSourceAudioUrl = sourceAudioUrl
                     windowState.currentHeaders = playbackHeaders
                     lastTrackPollEpochMs = 0L
-                    SwingUtilities.invokeLater {
-                    windowState.panelRef?.loadFile(sourceUrl, sourceAudioUrl, playbackHeaders)
-                    backendPerfStats.recordSourceLoadSignal()
-                    playerStateSignals.tryEmit(Unit)
-                }
+                windowState.panelRef?.loadFile(sourceUrl, sourceAudioUrl, playbackHeaders)
+                backendPerfStats.recordSourceLoadSignal()
+                playerStateSignals.tryEmit(Unit)
             }
             }
 
@@ -1343,10 +1471,11 @@ internal object WindowsMpvPlayerBackend : DesktopPlaybackBackend {
                 }
 
                 override fun switchSource(url: String, audioUrl: String?, headersJson: String?) {
-                    val sanitizedHeaders = sanitizePlaybackHeaders(windowState.currentHeaders)
-                    SwingUtilities.invokeLater {
-                        windowState.panelRef?.loadFile(url, audioUrl, sanitizedHeaders)
-                    }
+                    val sanitizedHeaders = sanitizePlaybackHeaders(parseWindowsPlaybackHeaders(headersJson))
+                    windowState.currentSourceUrl = url
+                    windowState.currentSourceAudioUrl = audioUrl
+                    windowState.currentHeaders = sanitizedHeaders
+                    windowState.panelRef?.loadFile(url, audioUrl, sanitizedHeaders)
                 }
             }
         }
@@ -1373,6 +1502,7 @@ internal object WindowsMpvPlayerBackend : DesktopPlaybackBackend {
                     return@collect
                 }
                 val pollGeneration = windowState.sourceGeneration
+                val pollLoadRequestGeneration = windowState.pendingLoadRequestGeneration
                 val pollResult = withContext(Dispatchers.IO) {
                     windowState.mpvCallLock.withLock {
                     val pollStartNs = System.nanoTime()
@@ -1467,27 +1597,31 @@ internal object WindowsMpvPlayerBackend : DesktopPlaybackBackend {
                         windowState.initialSeekTargetMs = 0L
                         desktopPlayerTrace("initial seek recovery target=0 result=$result elapsedMs=$initialSeekElapsedMs")
                     }
-                    val startupStallCandidate = isWindowsPlaybackStartupStallCandidate(
+                    val pendingLoad = pollLoadRequestGeneration != null
+                    val hasLoadedMedia = !pendingLoad && PlayerPlaybackSnapshot(
+                        isLoading = isPlayerLoading,
+                        isPlaying = isPlayerPlaying,
+                        durationMs = durationMs,
+                        positionMs = positionMs,
+                    ).hasLoadedMedia()
+                    val startupState = reduceWindowsPlaybackStartupState(
+                        state = WindowsPlaybackStartupState(
+                            stallSinceMs = windowState.startupStallSinceMs,
+                            isStalled = windowState.startupStalled,
+                        ),
                         path = path,
                         durationMs = durationMs,
                         idle = idle,
                         paused = paused,
-                    )
-                    val startupStallSinceMs = if (startupStallCandidate) {
-                        windowState.startupStallSinceMs.takeIf { it > 0L } ?: nowEpochMs
-                    } else {
-                        0L
-                    }
-                    windowState.startupStallSinceMs = startupStallSinceMs
-                    val startupStalled = isWindowsPlaybackStartupStalled(
-                        path = path,
-                        durationMs = durationMs,
-                        idle = idle,
-                        paused = paused,
-                        startedAtMs = startupStallSinceMs,
                         nowMs = nowEpochMs,
                         timeoutMs = WindowsPlayerStartupTimeoutMs,
+                        hasLoadedMedia = hasLoadedMedia,
+                        loadPending = pendingLoad,
                     )
+                    windowState.startupStallSinceMs = startupState.stallSinceMs
+                    windowState.startupStalled = startupState.isStalled
+                    windowState.hasLoadedMedia = windowState.hasLoadedMedia || hasLoadedMedia
+                    val startupStalled = startupState.isStalled
                     val shouldPollTracks =
                         nowEpochMs - lastTrackPollEpochMs >= WindowsPlayerTrackPollIntervalMs
 
@@ -1546,9 +1680,11 @@ internal object WindowsMpvPlayerBackend : DesktopPlaybackBackend {
                     }
 
                     val snapshot = PlayerPlaybackSnapshot(
-                        isLoading = isPlayerLoading,
-                        isPlaying = isPlayerPlaying,
-                        isEnded = isPlayerEnded,
+                        isLoading = pendingLoad || isPlayerLoading,
+                        isStartupStalled = startupStalled,
+                        mediaLoaded = !pendingLoad && windowState.hasLoadedMedia,
+                        isPlaying = !pendingLoad && isPlayerPlaying,
+                        isEnded = !pendingLoad && isPlayerEnded,
                         positionMs = positionMs,
                         durationMs = durationMs,
                         bufferedPositionMs = bufferedMs,
@@ -1558,12 +1694,15 @@ internal object WindowsMpvPlayerBackend : DesktopPlaybackBackend {
                     Triple(
                         WindowsPlaybackPollResult(
                             generation = pollGeneration,
+                            loadRequestGeneration = pollLoadRequestGeneration,
                             snapshot = snapshot,
                             audioTracks = audioTracksList,
                             subtitleTracks = subtitleTracksList,
                             volumeLevel = toPlayerAudioLevel(volumePercent),
                             polledTracks = shouldPollTracks,
-                            errorMessage = error?.takeIf { it.isNotBlank() },
+                            errorMessage = if (pendingLoad) null else error?.takeIf { it.isNotBlank() },
+                            terminalPlaybackError = windowState.terminalPlaybackError
+                                ?.takeIf { windowState.terminalPlaybackErrorGeneration == pollGeneration },
                             startupStalled = startupStalled,
                             logMessage = listOfNotNull(
                                 if (positionMs == 0L || isPlayerLoading || !error.isNullOrBlank()) {
@@ -1598,6 +1737,9 @@ internal object WindowsMpvPlayerBackend : DesktopPlaybackBackend {
                 if (pollPayload.generation != windowState.sourceGeneration) {
                     return@collect
                 }
+                if (pollPayload.loadRequestGeneration != windowState.pendingLoadRequestGeneration) {
+                    return@collect
+                }
                 val (isPlaying, isLoading, isIdle) = playbackFlags
 
                 if (pollPayload.polledTracks) {
@@ -1619,8 +1761,9 @@ internal object WindowsMpvPlayerBackend : DesktopPlaybackBackend {
                 currentOnSnapshot.value(pollPayload.snapshot)
                 val playbackError = selectWindowsPlaybackError(
                     mpvErrorMessage = pollPayload.errorMessage,
-                    hasLoadedMedia = pollPayload.snapshot.hasLoadedMedia(),
+                    hasLoadedMedia = windowState.hasLoadedMedia,
                     startupStalled = pollPayload.startupStalled,
+                    terminalPlaybackError = pollPayload.terminalPlaybackError,
                 )
                 if (playbackError == null) {
                     if (windowState.lastReportedPlaybackError != null) {
@@ -1647,10 +1790,12 @@ internal object WindowsMpvPlayerBackend : DesktopPlaybackBackend {
 // Window state storage class to share context across threads safely
 internal class WindowsPlayerWindowState {
     val mpvCallLock = ReentrantLock()
+    val loadRequestGate = WindowsPlaybackLoadRequestGate()
     @Volatile
     var playerPtr: Pointer? = null
     @Volatile
     var isClosed = false
+    @Volatile
     var panelRef: WindowsPlaybackPanel? = null
 
     // Meta details
@@ -1668,7 +1813,25 @@ internal class WindowsPlayerWindowState {
     var currentSourceUrl = ""
     @Volatile
     var sourceGeneration = 0L
+    @Volatile
+    var pendingLoadRequestGeneration: Long? = null
     var startupStallSinceMs = 0L
+    @Volatile
+    var startupStalled = false
+    @Volatile
+    var hasLoadedMedia = false
+    @Volatile
+    var activePlaylistEntryId: Long? = null
+    @Volatile
+    var activePlaylistEntryGeneration: Long? = null
+    @Volatile
+    var pendingPlaylistEntryId: Long? = null
+    @Volatile
+    var lastObservedPlaylistEntryId: Long? = null
+    @Volatile
+    var terminalPlaybackError: String? = null
+    @Volatile
+    var terminalPlaybackErrorGeneration: Long? = null
     @Volatile
     var initialSeekRequestedAtMs = 0L
     @Volatile
@@ -1725,7 +1888,13 @@ private fun WindowsPlayerWindowState.withMpv(block: (Pointer) -> Unit) {
 }
 
 internal interface WindowsPlaybackPanel {
-    fun loadFile(url: String, audioUrl: String?, headers: Map<String, String>)
+    fun loadFile(
+        url: String,
+        audioUrl: String?,
+        headers: Map<String, String>,
+        onCommitted: ((Long) -> Unit)? = null,
+        forceResolve: Boolean = false,
+    )
     fun loadSubtitleUrl(url: String)
     fun applyResizeMode(resizeMode: PlayerResizeMode)
     fun toggleFullScreen() {}
@@ -1748,7 +1917,11 @@ internal class EmbeddedWindowsPlayerPanel(
 ) : JPanel(BorderLayout()), WindowsPlaybackPanel {
     private val glPanel = GLJPanel(createGlCapabilities())
     private var mpvInitialized = false
+    @Volatile
     private var playerDisposed = false
+    private val urlResolutionScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var urlResolutionJob: Job? = null
+    private var initializedPlayerPtr: Pointer? = null
     private val fullscreenState = FullscreenWindowState()
     private var renderContext: Pointer? = null
     private var renderUpdateCallback: MpvRenderUpdateCallback? = null
@@ -1807,6 +1980,7 @@ internal class EmbeddedWindowsPlayerPanel(
 
     init {
         state.panelRef = this
+        state.isClosed = false
         background = java.awt.Color.BLACK
         isFocusable = true
         focusTraversalKeysEnabled = false
@@ -1844,6 +2018,14 @@ internal class EmbeddedWindowsPlayerPanel(
         add(glPanel, BorderLayout.CENTER)
         val keyListener = object : KeyAdapter() {
             override fun keyPressed(e: KeyEvent) {
+                if (state.startupStalled) {
+                    when (windowsStartupStallKeyAction(e.keyCode)) {
+                        WindowsStartupStallKeyAction.Retry -> retryPlayback()
+                        WindowsStartupStallKeyAction.Back -> closePlayer()
+                        WindowsStartupStallKeyAction.Consume -> Unit
+                    }
+                    return
+                }
                 when (e.keyCode) {
                     KeyEvent.VK_SPACE -> togglePlayPause()
                     KeyEvent.VK_LEFT -> seekByOffset(-10_000)
@@ -1920,6 +2102,7 @@ internal class EmbeddedWindowsPlayerPanel(
     private fun initializeMpv(drawable: GLAutoDrawable) {
         val lib = WindowsMpvLibrary.INSTANCE
         val ptr = lib.mpv_create() ?: throw RuntimeException("Failed to create libmpv instance")
+        initializedPlayerPtr = ptr
         lib.mpv_set_option_string(ptr, "vo", "libmpv")
         lib.mpv_set_option_string(ptr, "target-colorspace-hint", "yes")
         lib.mpv_set_option_string(ptr, "hdr-compute-peak", "yes")
@@ -1986,6 +2169,7 @@ internal class EmbeddedWindowsPlayerPanel(
         }
         lib.mpv_set_wakeup_callback(ptr, wakeupCallback, null)
         state.playerPtr = ptr
+        initializedPlayerPtr = ptr
         eventPump.request()
         desktopPlayerTrace(
             "embedded panel initialized with opengl render api " +
@@ -2014,13 +2198,22 @@ internal class EmbeddedWindowsPlayerPanel(
                 MPV_EVENT_LOG_MESSAGE -> {
                     traceMpvLogMessage(event.data)
                 }
-                MPV_EVENT_START_FILE,
-                MPV_EVENT_END_FILE,
-                -> desktopPlayerTrace("mpv event id=${event.event_id} error=${event.error}")
+                MPV_EVENT_START_FILE -> {
+                    desktopPlayerTrace(handleWindowsMpvStartFileEvent(state, event.data))
+                    hasUpdates = true
+                    eventCount += 1
+                }
+                MPV_EVENT_END_FILE -> {
+                    desktopPlayerTrace(handleWindowsMpvEndFileEvent(state, lib, event.data))
+                    hasUpdates = true
+                    eventCount += 1
+                }
                 MPV_EVENT_FILE_LOADED -> {
                     desktopPlayerTrace("mpv event id=${event.event_id} error=${event.error} applying subtitle style")
                     applyWindowsMpvSubtitleStyle(ptr, state.subtitleStyle)
                     configureWindowsVideoPipeline(state, ptr, "file-loaded")
+                    hasUpdates = true
+                    eventCount += 1
                 }
                 else -> {
                     hasUpdates = true
@@ -2035,52 +2228,102 @@ internal class EmbeddedWindowsPlayerPanel(
         }
     }
 
-    override fun loadFile(url: String, audioUrl: String?, headers: Map<String, String>) {
+    override fun loadFile(
+        url: String,
+        audioUrl: String?,
+        headers: Map<String, String>,
+        onCommitted: ((Long) -> Unit)?,
+        forceResolve: Boolean,
+    ) {
+        val ptr = state.playerPtr ?: return
+        if (playerDisposed || state.isClosed || state.panelRef !== this) return
+        val requestGeneration = state.loadRequestGate.allocate()
         state.mpvCallLock.withLock {
-        val ptr = state.playerPtr ?: return@withLock
-        if (state.isClosed) return@withLock
-        val lib = WindowsMpvLibrary.INSTANCE
-        state.sourceGeneration += 1L
-        val loadGeneration = state.sourceGeneration
-        state.lastReportedPlaybackError = null
-        state.startupStallSinceMs = 0L
-        state.initialSeekRequestedAtMs = 0L
-        state.initialSeekTargetMs = 0L
-        state.initialSeekRecoveryIssued = false
-        val effectiveUrl = DesktopPlaybackUrlResolver.resolveUrlIfNeeded(url, headers)
-        val effectiveAudioUrl = audioUrl?.let { DesktopPlaybackUrlResolver.resolveUrlIfNeeded(it, emptyMap()) }
-        val effectiveHeaders = if (effectiveUrl != url) emptyMap() else headers
-        val headersStr = effectiveHeaders.entries
-            .joinToString(",") { "${it.key}: ${it.value.replace("\\", "\\\\").replace(",", "\\,")}" }
-        desktopPlayerTrace(
-            "embedded panel loadFile host=${playbackUrlForLog(url)} " +
-                "effectiveHost=${playbackUrlForLog(effectiveUrl)} " +
-                "audioHost=${playbackUrlForLog(audioUrl)} " +
-                "effectiveAudioHost=${playbackUrlForLog(effectiveAudioUrl)} " +
-                "headerKeys=${effectiveHeaders.keys.joinToString()} headerBlobLength=${headersStr.length}"
-        )
-        resetWindowsVideoPipeline(state, ptr)
-        applyWindowsMpvSubtitleStyle(ptr, state.subtitleStyle)
-        lib.mpv_set_property_string(ptr, "http-header-fields", headersStr)
-        val loadResult = lib.mpv_command(ptr, arrayOf("loadfile", effectiveUrl, "replace", null))
-        if (loadResult < 0) {
-            desktopPlayerTrace("embedded panel loadFile failed commandResult=$loadResult")
+            state.sourceGeneration += 1L
+            state.pendingLoadRequestGeneration = requestGeneration
+            state.hasLoadedMedia = false
+            state.startupStallSinceMs = 0L
+            state.startupStalled = false
+            state.lastReportedPlaybackError = null
+            state.terminalPlaybackError = null
+            state.terminalPlaybackErrorGeneration = null
+            state.pendingPlaylistEntryId = null
         }
-        if (!effectiveAudioUrl.isNullOrBlank()) {
-            Timer().schedule(500) {
-                SwingUtilities.invokeLater {
-                    if (!state.isClosed && state.playerPtr == ptr && state.sourceGeneration == loadGeneration) {
-                        lib.mpv_command(ptr, arrayOf("audio-add", effectiveAudioUrl, "select", null))
+        urlResolutionJob?.cancel()
+        urlResolutionJob = urlResolutionScope.launch {
+            val resolved = runInterruptible {
+                resolveWindowsPlaybackUrls(url, audioUrl, headers, forceResolve)
+            }
+            if (!isActive) return@launch
+            SwingUtilities.invokeLater {
+                if (!canCommitLoad(requestGeneration, ptr)) return@invokeLater
+                var committedGeneration: Long? = null
+                state.mpvCallLock.withLock {
+                    if (!canCommitLoad(requestGeneration, ptr)) return@withLock
+                    val lib = WindowsMpvLibrary.INSTANCE
+                    val loadGeneration = state.sourceGeneration
+                    committedGeneration = loadGeneration
+                    state.pendingLoadRequestGeneration = null
+                    state.lastReportedPlaybackError = null
+                    state.startupStallSinceMs = 0L
+                    state.startupStalled = false
+                    state.hasLoadedMedia = false
+                    state.activePlaylistEntryId = null
+                    state.activePlaylistEntryGeneration = null
+                    state.pendingPlaylistEntryId = null
+                    state.terminalPlaybackError = null
+                    state.terminalPlaybackErrorGeneration = null
+                    state.initialSeekRequestedAtMs = 0L
+                    state.initialSeekTargetMs = 0L
+                    state.initialSeekRecoveryIssued = false
+                    val headersStr = resolved.headers.entries
+                        .joinToString(",") { "${it.key}: ${it.value.replace("\\", "\\\\").replace(",", "\\,")}" }
+                    desktopPlayerTrace(
+                        "embedded panel loadFile host=${playbackUrlForLog(url)} " +
+                            "effectiveHost=${playbackUrlForLog(resolved.url)} " +
+                            "audioHost=${playbackUrlForLog(audioUrl)} " +
+                            "effectiveAudioHost=${playbackUrlForLog(resolved.audioUrl)} " +
+                            "headerKeys=${resolved.headers.keys.joinToString()} headerBlobLength=${headersStr.length}"
+                    )
+                    resetWindowsVideoPipeline(state, ptr)
+                    val discardedEvents = discardPendingWindowsMpvEvents(lib, ptr)
+                    if (discardedEvents > 0) {
+                        desktopPlayerTrace("embedded panel discarded pending mpv events count=$discardedEvents")
                     }
+                    applyWindowsMpvSubtitleStyle(ptr, state.subtitleStyle)
+                    lib.mpv_set_property_string(ptr, "http-header-fields", headersStr)
+                    val loadResult = lib.mpv_command(ptr, arrayOf("loadfile", resolved.url, "replace", null))
+                    state.pendingPlaylistEntryId = loadResult.takeIf { it >= 0 }
+                        ?.let { readMpvPropertyString(lib, ptr, "playlist/0/id")?.toLongOrNull() }
+                    selectWindowsPlaybackCommandError(loadResult)?.let { playbackError ->
+                        state.terminalPlaybackError = playbackError
+                        state.terminalPlaybackErrorGeneration = loadGeneration
+                        stateChangedNotifier.request()
+                        desktopPlayerTrace("embedded panel loadFile failed commandResult=$loadResult")
+                    }
+                    if (!resolved.audioUrl.isNullOrBlank()) {
+                        scheduleWindowsSwingAction(500) {
+                            if (!state.isClosed && state.playerPtr == ptr && state.sourceGeneration == loadGeneration) {
+                                lib.mpv_command(ptr, arrayOf("audio-add", resolved.audioUrl, "select", null))
+                            }
+                        }
+                    }
+                    reapplyWindowsMpvSubtitleStyleLater(state, ptr, state.subtitleStyle)
+                    requestFocusInWindow()
+                    glPanel.requestFocusInWindow()
+                    scheduleRender(force = true)
                 }
+                committedGeneration?.let { onCommitted?.invoke(it) }
             }
         }
-        reapplyWindowsMpvSubtitleStyleLater(state, ptr, state.subtitleStyle)
-        requestFocusInWindow()
-        glPanel.requestFocusInWindow()
-        scheduleRender(force = true)
-        }
     }
+
+    private fun canCommitLoad(requestGeneration: Long, ptr: Pointer): Boolean =
+        !playerDisposed &&
+            !state.isClosed &&
+            state.panelRef === this &&
+            state.playerPtr == ptr &&
+            state.loadRequestGate.isCurrent(requestGeneration)
 
     override fun loadSubtitleUrl(url: String) {
         val ptr = state.playerPtr ?: return
@@ -2115,15 +2358,19 @@ internal class EmbeddedWindowsPlayerPanel(
         val lib = WindowsMpvLibrary.INSTANCE
         val sourceUrl = state.currentSourceUrl.takeIf { it.isNotBlank() } ?: return
         val pos = getDouble("time-pos")
-        loadFile(sourceUrl, state.currentSourceAudioUrl, state.currentHeaders)
-        val loadGeneration = state.sourceGeneration
-        Timer().schedule(500) {
-            SwingUtilities.invokeLater {
+        loadFile(
+            sourceUrl,
+            state.currentSourceAudioUrl,
+            state.currentHeaders,
+            onCommitted = { loadGeneration ->
+            scheduleWindowsSwingAction(500) {
                 if (!state.isClosed && state.playerPtr == ptr && state.sourceGeneration == loadGeneration) {
                     lib.mpv_command(ptr, arrayOf("seek", String.format("%.3f", pos), "absolute", null))
                 }
             }
-        }
+            },
+            forceResolve = true,
+        )
     }
 
     override fun clearExternalSubtitles() {
@@ -2170,13 +2417,21 @@ internal class EmbeddedWindowsPlayerPanel(
             return
         }
         playerDisposed = true
-        state.isClosed = true
+        pointerCheckTimer.stop()
+        val ownsState = state.panelRef === this
+        if (ownsState) {
+            state.loadRequestGate.invalidate()
+            state.panelRef = null
+            state.isClosed = true
+        }
+        urlResolutionScope.cancel()
+        urlResolutionJob = null
         eventPump.closeAndAwait()
         onWindowFocusChanged(false, null)
         desktopPlayerTrace("embedded panel dispose start displayable=${glPanel.isDisplayable}")
         fullscreenState.exit(SwingUtilities.getWindowAncestor(this))
         state.mpvCallLock.withLock {
-            state.playerPtr?.let { ptr ->
+            initializedPlayerPtr?.let { ptr ->
                 WindowsMpvLibrary.INSTANCE.mpv_set_wakeup_callback(ptr, null, null)
             }
         }
@@ -2202,7 +2457,7 @@ internal class EmbeddedWindowsPlayerPanel(
 
     private fun releasePlayerResources() {
         val renderPtr = renderContext
-        val playerPtr = state.playerPtr
+        val playerPtr = initializedPlayerPtr
         desktopPlayerTrace("embedded panel release resources render=${renderPtr != null} player=${playerPtr != null}")
         renderContext = null
         glInitParams = null
@@ -2210,11 +2465,14 @@ internal class EmbeddedWindowsPlayerPanel(
             if (renderPtr != null) {
                 WindowsMpvLibrary.INSTANCE.mpv_render_context_free(renderPtr)
             }
-            state.playerPtr = null
+            if (state.playerPtr == playerPtr) {
+                state.playerPtr = null
+            }
             if (playerPtr != null) {
                 WindowsMpvLibrary.INSTANCE.mpv_terminate_destroy(playerPtr)
             }
         }
+        initializedPlayerPtr = null
     }
 
     private fun scheduleRender(force: Boolean) {
@@ -2353,7 +2611,6 @@ internal class WindowsPlayerPanel(
     private val overlayNuvioTokens: NuvioThemeTokens,
     private val overlayTypeScale: NuvioTypeScale,
     private val overlayAppTheme: AppTheme,
-    private val overlayDensity: Density,
     private val overlayRippleConfiguration: RippleConfiguration?,
     private val state: WindowsPlayerWindowState,
     private val onClose: () -> Unit,
@@ -2385,6 +2642,11 @@ internal class WindowsPlayerPanel(
                         mpvInitialized = true
                     } catch (error: Throwable) {
                         state.isClosed = true
+                        state.loadRequestGate.invalidate()
+                        state.panelRef = null
+                        urlResolutionScope.cancel()
+                        urlResolutionJob = null
+                        eventPump.closeAndAwait()
                         onInitializationError(error.message ?: "Native video initialization failed")
                     }
                 }
@@ -2417,6 +2679,11 @@ internal class WindowsPlayerPanel(
     private var lastMouseMovedTime = System.currentTimeMillis()
     private var isSeeking = false
     private var mpvInitialized = false
+    @Volatile
+    private var playerDisposed = false
+    private val urlResolutionScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var urlResolutionJob: Job? = null
+    private var initializedPlayerPtr: Pointer? = null
     private var wakeupCallback: MpvWakeupCallback? = null
     private val stateChangedNotifier = SwingStateNotifier(onPlayerStateChanged)
     private val eventPump = MpvEventPump(::readEvents)
@@ -2499,6 +2766,7 @@ internal class WindowsPlayerPanel(
 
     init {
         state.panelRef = this
+        state.isClosed = false
 
         val defaultBg = playerTheme.buttonBgColor
         val accent = playerTheme.accentColor
@@ -2566,7 +2834,6 @@ internal class WindowsPlayerPanel(
         overlayPanel.background = java.awt.Color(0, 0, 0, 0)
         overlayPanel.setContent {
             CompositionLocalProvider(
-                LocalDensity provides overlayDensity,
                 LocalNuvioThemeTokens provides overlayNuvioTokens,
                 LocalNuvioTypeScale provides overlayTypeScale,
                 LocalAppTheme provides overlayAppTheme,
@@ -2587,6 +2854,7 @@ internal class WindowsPlayerPanel(
         if (overlayWindow == null) {
             overlayWindow = JWindow(owner).apply {
                 setFocusableWindowState(false)
+                isAutoRequestFocus = false
                 setBackground(java.awt.Color(0, 0, 0, 0))
                 (contentPane as? JComponent)?.isOpaque = false
                 contentPane.background = java.awt.Color(0, 0, 0, 0)
@@ -2721,9 +2989,9 @@ internal class WindowsPlayerPanel(
 
         canvas.addMouseListener(interactionListener)
         canvas.addMouseMotionListener(interactionListener)
-        overlayPanel.addMouseListener(object : MouseAdapter() {
-            override fun mousePressed(e: MouseEvent) {
-                canvas.requestFocusInWindow()
+        overlayPanel.addMouseListener(createWindowsOverlayPointerListener {
+            if (!updatePointerPresence()) {
+                hideControls()
             }
         })
         overlayPanel.addMouseMotionListener(interactionListener)
@@ -2732,6 +3000,14 @@ internal class WindowsPlayerPanel(
 
         val keyListener = object : KeyAdapter() {
             override fun keyPressed(e: KeyEvent) {
+                if (state.startupStalled) {
+                    when (windowsStartupStallKeyAction(e.keyCode)) {
+                        WindowsStartupStallKeyAction.Retry -> retryPlayback()
+                        WindowsStartupStallKeyAction.Back -> closePlayer()
+                        WindowsStartupStallKeyAction.Consume -> Unit
+                    }
+                    return
+                }
                 lastMouseMovedTime = System.currentTimeMillis()
                 showControls()
                 when (e.keyCode) {
@@ -3016,6 +3292,7 @@ internal class WindowsPlayerPanel(
             }
             lib.mpv_set_wakeup_callback(ptr, wakeupCallback, null)
             state.playerPtr = ptr
+            initializedPlayerPtr = ptr
             eventPump.request()
         } catch (error: Throwable) {
             lib.mpv_terminate_destroy(ptr)
@@ -3023,53 +3300,100 @@ internal class WindowsPlayerPanel(
         }
     }
 
-    override fun loadFile(url: String, audioUrl: String?, headers: Map<String, String>) {
+    override fun loadFile(
+        url: String,
+        audioUrl: String?,
+        headers: Map<String, String>,
+        onCommitted: ((Long) -> Unit)?,
+        forceResolve: Boolean,
+    ) {
+        val ptr = state.playerPtr ?: return
+        if (playerDisposed || state.isClosed || state.panelRef !== this) return
+        val requestGeneration = state.loadRequestGate.allocate()
         state.mpvCallLock.withLock {
-        val ptr = state.playerPtr ?: return@withLock
-        if (state.isClosed) return@withLock
-        val lib = WindowsMpvLibrary.INSTANCE
-        state.sourceGeneration += 1L
-        val loadGeneration = state.sourceGeneration
-        state.lastReportedPlaybackError = null
-        state.startupStallSinceMs = 0L
-        state.initialSeekRequestedAtMs = 0L
-        state.initialSeekTargetMs = 0L
-        state.initialSeekRecoveryIssued = false
-
-        val effectiveUrl = DesktopPlaybackUrlResolver.resolveUrlIfNeeded(url, headers)
-        val effectiveAudioUrl = audioUrl?.let { DesktopPlaybackUrlResolver.resolveUrlIfNeeded(it, emptyMap()) }
-        val effectiveHeaders = if (effectiveUrl != url) emptyMap() else headers
-        val headersStr = effectiveHeaders.entries
-            .joinToString(",") { "${it.key}: ${it.value.replace("\\", "\\\\").replace(",", "\\,")}" }
-
-        lib.mpv_set_property_string(ptr, "http-header-fields", headersStr)
-        resetWindowsVideoPipeline(state, ptr)
-        desktopPlayerTrace(
-            "native panel loadFile host=${playbackUrlForLog(url)} " +
-                "effectiveHost=${playbackUrlForLog(effectiveUrl)} " +
-                "audioHost=${playbackUrlForLog(audioUrl)} " +
-                "effectiveAudioHost=${playbackUrlForLog(effectiveAudioUrl)} " +
-                "headerKeys=${effectiveHeaders.keys.joinToString()} headerBlobLength=${headersStr.length}"
-        )
-        applyWindowsMpvSubtitleStyle(ptr, state.subtitleStyle)
-        val loadResult = lib.mpv_command(ptr, arrayOf("loadfile", effectiveUrl, "replace", null))
-        if (loadResult < 0) {
-            desktopPlayerTrace("native panel loadFile failed commandResult=$loadResult")
+            state.sourceGeneration += 1L
+            state.pendingLoadRequestGeneration = requestGeneration
+            state.hasLoadedMedia = false
+            state.startupStallSinceMs = 0L
+            state.startupStalled = false
+            state.lastReportedPlaybackError = null
+            state.terminalPlaybackError = null
+            state.terminalPlaybackErrorGeneration = null
+            state.pendingPlaylistEntryId = null
         }
-
-        if (!effectiveAudioUrl.isNullOrBlank()) {
-            Timer().schedule(500) {
-                SwingUtilities.invokeLater {
-                    if (!state.isClosed && state.playerPtr == ptr) {
-                        if (state.sourceGeneration != loadGeneration) return@invokeLater
-                        lib.mpv_command(ptr, arrayOf("audio-add", effectiveAudioUrl, "select", null))
+        urlResolutionJob?.cancel()
+        urlResolutionJob = urlResolutionScope.launch {
+            val resolved = runInterruptible {
+                resolveWindowsPlaybackUrls(url, audioUrl, headers, forceResolve)
+            }
+            if (!isActive) return@launch
+            SwingUtilities.invokeLater {
+                if (!canCommitLoad(requestGeneration, ptr)) return@invokeLater
+                var committedGeneration: Long? = null
+                state.mpvCallLock.withLock {
+                    if (!canCommitLoad(requestGeneration, ptr)) return@withLock
+                    val lib = WindowsMpvLibrary.INSTANCE
+                    val loadGeneration = state.sourceGeneration
+                    committedGeneration = loadGeneration
+                    state.pendingLoadRequestGeneration = null
+                    state.lastReportedPlaybackError = null
+                    state.startupStallSinceMs = 0L
+                    state.startupStalled = false
+                    state.hasLoadedMedia = false
+                    state.activePlaylistEntryId = null
+                    state.activePlaylistEntryGeneration = null
+                    state.pendingPlaylistEntryId = null
+                    state.terminalPlaybackError = null
+                    state.terminalPlaybackErrorGeneration = null
+                    state.initialSeekRequestedAtMs = 0L
+                    state.initialSeekTargetMs = 0L
+                    state.initialSeekRecoveryIssued = false
+                    val headersStr = resolved.headers.entries
+                        .joinToString(",") { "${it.key}: ${it.value.replace("\\", "\\\\").replace(",", "\\,")}" }
+                    lib.mpv_set_property_string(ptr, "http-header-fields", headersStr)
+                    resetWindowsVideoPipeline(state, ptr)
+                    desktopPlayerTrace(
+                        "native panel loadFile host=${playbackUrlForLog(url)} " +
+                            "effectiveHost=${playbackUrlForLog(resolved.url)} " +
+                            "audioHost=${playbackUrlForLog(audioUrl)} " +
+                            "effectiveAudioHost=${playbackUrlForLog(resolved.audioUrl)} " +
+                            "headerKeys=${resolved.headers.keys.joinToString()} headerBlobLength=${headersStr.length}"
+                    )
+                    applyWindowsMpvSubtitleStyle(ptr, state.subtitleStyle)
+                    val discardedEvents = discardPendingWindowsMpvEvents(lib, ptr)
+                    if (discardedEvents > 0) {
+                        desktopPlayerTrace("native panel discarded pending mpv events count=$discardedEvents")
                     }
+                    val loadResult = lib.mpv_command(ptr, arrayOf("loadfile", resolved.url, "replace", null))
+                    state.pendingPlaylistEntryId = loadResult.takeIf { it >= 0 }
+                        ?.let { readMpvPropertyString(lib, ptr, "playlist/0/id")?.toLongOrNull() }
+                    selectWindowsPlaybackCommandError(loadResult)?.let { playbackError ->
+                        state.terminalPlaybackError = playbackError
+                        state.terminalPlaybackErrorGeneration = loadGeneration
+                        stateChangedNotifier.request()
+                        desktopPlayerTrace("native panel loadFile failed commandResult=$loadResult")
+                    }
+
+                    if (!resolved.audioUrl.isNullOrBlank()) {
+                        scheduleWindowsSwingAction(500) {
+                            if (!state.isClosed && state.playerPtr == ptr && state.sourceGeneration == loadGeneration) {
+                                lib.mpv_command(ptr, arrayOf("audio-add", resolved.audioUrl, "select", null))
+                            }
+                        }
+                    }
+                    reapplyWindowsMpvSubtitleStyleLater(state, ptr, state.subtitleStyle)
                 }
+                committedGeneration?.let { onCommitted?.invoke(it) }
             }
         }
-        reapplyWindowsMpvSubtitleStyleLater(state, ptr, state.subtitleStyle)
-        }
     }
+
+    private fun canCommitLoad(requestGeneration: Long, ptr: Pointer): Boolean =
+        !playerDisposed &&
+            !state.isClosed &&
+            state.panelRef === this &&
+            state.playerPtr == ptr &&
+            state.loadRequestGate.isCurrent(requestGeneration)
 
     fun updatePlaybackState(
         positionMs: Long,
@@ -3154,21 +3478,21 @@ internal class WindowsPlayerPanel(
     override fun retryPlayback() {
         val ptr = state.playerPtr ?: return
         val lib = WindowsMpvLibrary.INSTANCE
-        val path = lib.mpv_get_property_string(ptr, "path")
-        if (path != null) {
-            val pathStr = path.getString(0)
-            lib.mpv_free(path)
-            val pos = getDouble("time-pos")
-            loadFile(pathStr, state.currentSourceAudioUrl, state.currentHeaders)
-            val loadGeneration = state.sourceGeneration
-            Timer().schedule(500) {
-                SwingUtilities.invokeLater {
+        val sourceUrl = state.currentSourceUrl.takeIf { it.isNotBlank() } ?: return
+        val pos = getDouble("time-pos")
+        loadFile(
+            sourceUrl,
+            state.currentSourceAudioUrl,
+            state.currentHeaders,
+            onCommitted = { loadGeneration ->
+                scheduleWindowsSwingAction(500) {
                     if (!state.isClosed && state.playerPtr == ptr && state.sourceGeneration == loadGeneration) {
                         lib.mpv_command(ptr, arrayOf("seek", String.format("%.3f", pos), "absolute", null))
                     }
                 }
-            }
-        }
+            },
+            forceResolve = true,
+        )
     }
 
     override fun clearExternalSubtitles() {
@@ -3324,18 +3648,34 @@ internal class WindowsPlayerPanel(
     }
 
     override fun dispose() {
-        state.isClosed = true
+        if (playerDisposed) return
+        playerDisposed = true
+        controlsTimer.stop()
+        val ownsState = state.panelRef === this
+        if (ownsState) {
+            state.loadRequestGate.invalidate()
+            state.panelRef = null
+            state.isClosed = true
+        }
+        urlResolutionScope.cancel()
+        urlResolutionJob = null
+        overlayWindow?.isVisible = false
+        overlayWindow?.dispose()
+        overlayWindow = null
         eventPump.closeAndAwait()
         onWindowFocusChanged(false, null)
         fullscreenState.exit(SwingUtilities.getWindowAncestor(this))
         state.mpvCallLock.withLock {
-            val ptr = state.playerPtr
-            state.playerPtr = null
+            val ptr = initializedPlayerPtr
+            if (state.playerPtr == ptr) {
+                state.playerPtr = null
+            }
             if (ptr != null) {
                 WindowsMpvLibrary.INSTANCE.mpv_set_wakeup_callback(ptr, null, null)
                 WindowsMpvLibrary.INSTANCE.mpv_terminate_destroy(ptr)
             }
         }
+        initializedPlayerPtr = null
         wakeupCallback = null
         val w = SwingUtilities.getWindowAncestor(this)
         if (w != null) {
@@ -3360,13 +3700,22 @@ internal class WindowsPlayerPanel(
                 MPV_EVENT_LOG_MESSAGE -> {
                     traceMpvLogMessage(event.data)
                 }
-                MPV_EVENT_START_FILE,
-                MPV_EVENT_END_FILE,
-                -> desktopPlayerTrace("mpv event id=${event.event_id} error=${event.error}")
+                MPV_EVENT_START_FILE -> {
+                    desktopPlayerTrace(handleWindowsMpvStartFileEvent(state, event.data))
+                    hasUpdates = true
+                    eventCount += 1
+                }
+                MPV_EVENT_END_FILE -> {
+                    desktopPlayerTrace(handleWindowsMpvEndFileEvent(state, lib, event.data))
+                    hasUpdates = true
+                    eventCount += 1
+                }
                 MPV_EVENT_FILE_LOADED -> {
                     desktopPlayerTrace("mpv event id=${event.event_id} error=${event.error} applying subtitle style")
                     applyWindowsMpvSubtitleStyle(ptr, state.subtitleStyle)
                     configureWindowsVideoPipeline(state, ptr, "file-loaded")
+                    hasUpdates = true
+                    eventCount += 1
                 }
                 else -> {
                     hasUpdates = true
@@ -3612,11 +3961,9 @@ private fun reapplyWindowsMpvSubtitleStyleLater(
     style: SubtitleStyleState,
 ) {
     val generation = state.sourceGeneration
-    Timer().schedule(300) {
-        SwingUtilities.invokeLater {
-            if (!state.isClosed && state.playerPtr == ptr && state.sourceGeneration == generation) {
-                applyWindowsMpvSubtitleStyle(ptr, style)
-            }
+    scheduleWindowsSwingAction(300) {
+        if (!state.isClosed && state.playerPtr == ptr && state.sourceGeneration == generation) {
+            applyWindowsMpvSubtitleStyle(ptr, style)
         }
     }
 }

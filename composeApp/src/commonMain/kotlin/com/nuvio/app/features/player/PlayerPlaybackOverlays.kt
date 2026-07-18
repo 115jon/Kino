@@ -64,6 +64,7 @@ internal fun BoxScope.PlayerPlaybackOverlays(
     nextEpisodeAutoPlayCountdown: Int?,
     onPlayNextEpisode: () -> Unit,
     onDismissNextEpisode: () -> Unit,
+    onRetryStartup: () -> Unit,
     errorMessage: String?,
     onDismissError: () -> Unit,
 ) {
@@ -95,6 +96,13 @@ internal fun BoxScope.PlayerPlaybackOverlays(
             modifier = Modifier.fillMaxSize(),
             message = p2pInitialLoadingMessage,
             progress = p2pInitialLoadingProgress,
+        )
+    }
+
+    if (playbackSnapshot.isStartupStalled && errorMessage == null) {
+        StartupStalledOverlay(
+            onRetry = onRetryStartup,
+            onBack = onBackWithProgress,
         )
     }
 

@@ -188,10 +188,14 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi() {
                   },
                    onSnapshot = { snapshot ->
                       if (playerControllerSourceUrl != playerSurfaceSourceUrl) return@PlatformPlayerSurface
-                      publishPlaybackSnapshot(snapshot)
-                      if (snapshot.hasLoadedMedia()) initialLoadCompleted = true
-                      if (snapshot.hasLoadedMedia()) errorMessage = null
-                     if (snapshot.isEnded && snapshot.hasLoadedMedia()) {
+                       publishPlaybackSnapshot(snapshot)
+                       if (snapshot.hasLoadedMedia()) initialLoadCompleted = true
+                       if (snapshot.hasLoadedMedia()) errorMessage = null
+                       if (snapshot.isStartupStalled) {
+                           controlsVisible = !playerControlsLocked
+                           pausedOverlayVisible = false
+                       }
+                      if (snapshot.isEnded && snapshot.hasLoadedMedia()) {
                          shouldPlay = false
                          controlsVisible = !playerControlsLocked
                       }
@@ -371,7 +375,10 @@ private fun BoxScope.RenderPlaybackOverlays(
         metrics = metrics,
         horizontalSafePadding = horizontalSafePadding,
         onUnlock = { unlockPlayerControls() },
-        showOpeningOverlay = playerSettingsUiState.showLoadingOverlay && !initialLoadCompleted && errorMessage == null,
+         showOpeningOverlay = playerSettingsUiState.showLoadingOverlay &&
+             !initialLoadCompleted &&
+             !playbackSnapshot.isStartupStalled &&
+             errorMessage == null,
          backdropArtwork = displayArtwork,
          logo = displayLogo,
         title = title,
@@ -409,14 +416,18 @@ private fun BoxScope.RenderPlaybackOverlays(
             nextEpisodeAutoPlayJob?.cancel()
             playNextEpisode()
         },
-        onDismissNextEpisode = {
-            nextEpisodeAutoPlayJob?.cancel()
-            showNextEpisodeCard = false
-            nextEpisodeAutoPlaySearching = false
-            nextEpisodeAutoPlaySourceName = null
-            nextEpisodeAutoPlayCountdown = null
-        },
-        errorMessage = errorMessage,
+         onDismissNextEpisode = {
+             nextEpisodeAutoPlayJob?.cancel()
+             showNextEpisodeCard = false
+             nextEpisodeAutoPlaySearching = false
+             nextEpisodeAutoPlaySourceName = null
+             nextEpisodeAutoPlayCountdown = null
+         },
+         onRetryStartup = {
+             errorMessage = null
+             playerController?.retry()
+         },
+         errorMessage = errorMessage,
             onDismissError = {
                 flushWatchProgress()
                 args.onBack()

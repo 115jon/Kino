@@ -30,6 +30,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -59,6 +60,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -74,6 +77,8 @@ import nuvio.composeapp.generated.resources.compose_player_close
 import nuvio.composeapp.generated.resources.compose_player_episode_code_full
 import nuvio.composeapp.generated.resources.compose_player_go_back
 import nuvio.composeapp.generated.resources.compose_player_playback_error
+import nuvio.composeapp.generated.resources.compose_player_playback_stalled
+import nuvio.composeapp.generated.resources.action_retry
 import nuvio.composeapp.generated.resources.compose_player_youre_watching
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
@@ -559,6 +564,75 @@ internal fun ErrorModal(
                     color = MaterialTheme.colorScheme.onPrimary,
                     textAlign = TextAlign.Center,
                 )
+            }
+        }
+    }
+}
+
+@Composable
+internal fun StartupStalledOverlay(
+    onRetry: () -> Unit,
+    onBack: () -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.82f))
+            .pointerInput(Unit) {
+                awaitEachGesture {
+                    while (true) {
+                        val event = awaitPointerEvent(PointerEventPass.Final)
+                        event.changes.forEach { it.consume() }
+                        if (event.changes.none { it.pressed }) break
+                    }
+                }
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Text(
+                text = stringResource(Res.string.compose_player_playback_stalled),
+                style = MaterialTheme.nuvioTypeScale.displaySm.copy(fontWeight = FontWeight.Bold),
+                color = Color.White,
+                textAlign = TextAlign.Center,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Surface(
+                    modifier = Modifier
+                        .widthIn(min = 140.dp, max = 220.dp)
+                        .clickable(onClick = onRetry),
+                    color = MaterialTheme.colorScheme.primary,
+                    shape = RoundedCornerShape(12.dp),
+                ) {
+                    Text(
+                        text = stringResource(Res.string.action_retry),
+                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
+                        style = MaterialTheme.nuvioTypeScale.bodyLg.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.onPrimary,
+                        textAlign = TextAlign.Center,
+                    )
+                }
+                Surface(
+                    modifier = Modifier
+                        .widthIn(min = 140.dp, max = 220.dp)
+                        .clickable(onClick = onBack),
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    shape = RoundedCornerShape(12.dp),
+                ) {
+                    Text(
+                        text = stringResource(Res.string.compose_player_go_back),
+                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
+                        style = MaterialTheme.nuvioTypeScale.bodyLg.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
+                    )
+                }
             }
         }
     }

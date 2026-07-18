@@ -21,14 +21,41 @@ internal object DesktopPlaybackUrlResolver {
         .followRedirects(HttpClient.Redirect.NORMAL)
         .build()
 
-    private val resolvedUrlCache = ConcurrentHashMap<String, String>()
+    private const val ResolvedUrlCacheTtlMs = 5 * 60 * 1000L
+    private const val ResolvedUrlCacheMaxEntries = 256
 
-    fun resolveUrlIfNeeded(url: String, headers: Map<String, String>): String {
+    private data class ResolvedUrlCacheEntry(
+        val url: String,
+        val expiresAtMs: Long,
+    )
+
+    private val resolvedUrlCache = ConcurrentHashMap<String, ResolvedUrlCacheEntry>()
+    private val resolvedUrlCacheLock = Any()
+
+    private fun resolvedUrlCacheKey(url: String, headers: Map<String, String>): String = buildString {
+        append(url)
+        headers.toSortedMap(String.CASE_INSENSITIVE_ORDER).forEach { (key, value) ->
+            append('\u0000').append(key).append('=').append(value)
+        }
+    }
+
+    fun resolveUrlIfNeeded(
+        url: String,
+        headers: Map<String, String>,
+        forceRefresh: Boolean = false,
+    ): String {
         val host = runCatching { URI.create(url).host?.lowercase(Locale.ROOT) }.getOrNull()
         if (host.isNullOrBlank() || !host.endsWith("elfhosted.com")) {
             return url
         }
-        resolvedUrlCache[url]?.let { return it }
+        val cacheKey = resolvedUrlCacheKey(url, headers)
+        if (!forceRefresh) {
+            val nowMs = System.currentTimeMillis()
+            resolvedUrlCache[cacheKey]?.let { entry ->
+                if (entry.expiresAtMs > nowMs) return entry.url
+                resolvedUrlCache.remove(cacheKey, entry)
+            }
+        }
 
         return runCatching {
             val builder = HttpRequest.newBuilder()
@@ -47,7 +74,15 @@ internal object DesktopPlaybackUrlResolver {
                 "resolved sourceHost=$host status=${response.statusCode()} finalUrl=${finalUrl.take(240)}"
             )
             if (finalUrl.isNotBlank() && finalUrl != url) {
-                resolvedUrlCache[url] = finalUrl
+                synchronized(resolvedUrlCacheLock) {
+                    if (resolvedUrlCache.size >= ResolvedUrlCacheMaxEntries && !resolvedUrlCache.containsKey(cacheKey)) {
+                        resolvedUrlCache.clear()
+                    }
+                    resolvedUrlCache[cacheKey] = ResolvedUrlCacheEntry(
+                        url = finalUrl,
+                        expiresAtMs = System.currentTimeMillis() + ResolvedUrlCacheTtlMs,
+                    )
+                }
                 finalUrl
             } else {
                 url
