@@ -35,6 +35,7 @@ private fun configureComposeInterop() {
 
 fun main() {
     configureWindowsAppUserModelId()
+    configureWindowsCaptureCompatibility()
     configureMacOsNativeAppearance()
     System.setProperty("java.net.preferIPv4Stack", "true")
     configureComposeInterop()
