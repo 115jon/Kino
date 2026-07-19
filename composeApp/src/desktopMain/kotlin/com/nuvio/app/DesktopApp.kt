@@ -11,8 +11,12 @@ import nuvio.composeapp.generated.resources.Res
 import nuvio.composeapp.generated.resources.app_logo
 import org.jetbrains.compose.resources.painterResource
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.withContext
 import java.awt.Dimension
 import java.awt.Color as AwtColor
+import java.awt.EventQueue
 
 private val DesktopWindowBackground = AwtColor(0x0C, 0x0C, 0x0C)
 
@@ -48,6 +52,25 @@ fun main() {
             title = "Kino",
             icon = painterResource(Res.drawable.app_logo),
         ) {
+            LaunchedEffect(window) {
+                if (!isWindowsPlatform()) return@LaunchedEffect
+                val initialDarkMode = withContext(Dispatchers.IO) { readWindowsDarkMode() }
+                applyWindowsTitleBarTheme(window, initialDarkMode)
+                val subscription = subscribeToWindowsThemeChanges {
+                    val darkMode = readWindowsDarkMode()
+                    EventQueue.invokeLater {
+                        if (window.isDisplayable) {
+                            applyWindowsTitleBarTheme(window, darkMode)
+                        }
+                    }
+                }
+                try {
+                    awaitCancellation()
+                } finally {
+                    subscription?.close()
+                }
+            }
+
             DisposableEffect(window) {
                 window.minimumSize = Dimension(960, 640)
                 window.background = DesktopWindowBackground
