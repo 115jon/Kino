@@ -2,6 +2,11 @@ name: Desktop Release
 
 on:
   workflow_dispatch:
+    inputs:
+      tag:
+        description: Platform release tag to build
+        required: true
+        type: string
   push:
     tags:
       - 'desktop-v*'
@@ -17,6 +22,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ inputs.tag || github.ref }}
 
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -31,8 +37,10 @@ jobs:
 
       - name: Validate release tag
         shell: pwsh
+        env:
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
         run: |
-          if ($env:GITHUB_REF_TYPE -ne "tag" -or -not $env:GITHUB_REF_NAME.StartsWith("desktop-v")) {
+          if (-not $env:RELEASE_TAG.StartsWith("desktop-v")) {
             throw "Desktop releases must run from a desktop-v* tag."
           }
 
@@ -61,8 +69,10 @@ jobs:
 
       - name: Prepare release assets
         shell: pwsh
+        env:
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
         run: |
-          $version = $env:GITHUB_REF_NAME.Substring("desktop-v".Length)
+          $version = $env:RELEASE_TAG.Substring("desktop-v".Length)
           $installer = Get-ChildItem -LiteralPath ".\desktop\installer\bin\Release" -Filter "KinoSetup-*.exe" -File |
             Sort-Object LastWriteTime -Descending |
             Select-Object -First 1
@@ -77,11 +87,11 @@ jobs:
             "--version-code=$versionCode" `
             "--asset=$assetPath" `
             "--output=release-assets/release-manifest.json"
-          node .\scripts\verify-release-state.mjs "--platform=desktop" "--tag=$env:GITHUB_REF_NAME"
+          node .\scripts\verify-release-state.mjs "--platform=desktop" "--tag=$env:RELEASE_TAG"
 
       - name: Publish installer
         uses: softprops/action-gh-release@v2
         with:
           files: release-assets/*
-          name: Kino Desktop ${{ github.ref_name }}
+          name: Kino Desktop ${{ inputs.tag || github.ref_name }}
           generate_release_notes: true

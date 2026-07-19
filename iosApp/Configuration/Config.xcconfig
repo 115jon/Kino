@@ -1,4 +1,4 @@
-#include? "../../release/versions/ios.xcconfig"
+#include "../../release/versions/ios.xcconfig"
 
 TEAM_ID=
 

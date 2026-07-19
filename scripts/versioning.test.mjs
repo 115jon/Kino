@@ -53,6 +53,7 @@ test("increments stable and prerelease versions without producing invalid number
 test("uses platform-specific release tags", () => {
   assert.equal(getPlatformTag("android", "0.3.0"), "android-v0.3.0");
   assert.equal(getPlatformTag("desktop", "0.2.5"), "desktop-v0.2.5");
+  assert.equal(getPlatformTag("ios", "0.2.5"), "ios-v0.2.5");
 });
 
 test("compares semantic versions including prereleases", () => {
