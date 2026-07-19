@@ -230,7 +230,7 @@ internal fun PlayerControlsShell(
                         .align(Alignment.BottomEnd)
                         .padding(
                             end = metrics.horizontalPadding,
-                            bottom = metrics.sliderBottomOffset + 8.dp,
+                            bottom = metrics.sliderBottomOffset,
                         ),
                 )
             }

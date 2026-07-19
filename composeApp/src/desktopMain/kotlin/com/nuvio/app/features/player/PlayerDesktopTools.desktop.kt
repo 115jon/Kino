@@ -107,39 +107,41 @@ internal actual fun DesktopPlayerToolCluster(
 
         Surface(
             color = ColorBlack.copy(alpha = 0.5f),
-            shape = MaterialTheme.shapes.extraLarge,
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp),
             modifier = Modifier.border(
                 width = 1.dp,
                 color = Color.White.copy(alpha = 0.2f),
-                shape = MaterialTheme.shapes.extraLarge,
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp),
             ),
         ) {
             Row(
-                modifier = Modifier.padding(horizontal = 2.dp, vertical = 2.dp),
-                horizontalArrangement = Arrangement.spacedBy(2.dp),
+                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 if (showVolumeControl) {
                     IconButton(
                         onClick = { isHovered = true },
-                        modifier = Modifier.size(44.dp),
+                        modifier = Modifier.size(40.dp),
                     ) {
                         Icon(
                             imageVector = volumeIcon,
                             contentDescription = desktopVolumeLabel(volumeLevel),
                             tint = Color.White,
+                            modifier = Modifier.size(20.dp),
                         )
                     }
                 }
                 if (showFullscreenControl) {
                     IconButton(
                         onClick = onFullscreenClick,
-                        modifier = Modifier.size(44.dp),
+                        modifier = Modifier.size(40.dp),
                     ) {
                         Icon(
                             imageVector = Icons.Rounded.Fullscreen,
                             contentDescription = stringResource(Res.string.compose_player_fullscreen),
                             tint = Color.White,
+                            modifier = Modifier.size(20.dp),
                         )
                     }
                 }
