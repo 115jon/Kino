@@ -76,6 +76,9 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: Configure empty local properties
+        run: printf '' > local.properties
+
       - name: Validate Android compilation
         run: ./gradlew --no-daemon -Pkino.release.platform=android :androidApp:assembleFullDebug
 
@@ -92,6 +95,9 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+
+      - name: Configure empty local properties
+        run: printf '' > local.properties
 
       - name: Validate desktop compilation
         run: ./gradlew --no-daemon -Pkino.release.platform=desktop :composeApp:compileKotlinDesktop
