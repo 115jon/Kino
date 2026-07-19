@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeContent
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
@@ -22,13 +24,14 @@ import com.nuvio.app.features.player.skip.NextEpisodeCard
 import com.nuvio.app.features.player.skip.NextEpisodeInfo
 import com.nuvio.app.features.player.skip.SkipIntroButton
 import com.nuvio.app.features.player.skip.SkipInterval
+import kotlinx.coroutines.flow.StateFlow
 
 @Composable
 internal fun BoxScope.PlayerPlaybackOverlays(
     playerControlsLocked: Boolean,
     lockedOverlayVisible: Boolean,
     playbackSnapshot: PlayerPlaybackSnapshot,
-    displayedPositionMs: Long,
+    playbackTimeline: StateFlow<PlayerPlaybackTimeline>,
     metrics: PlayerLayoutMetrics,
     horizontalSafePadding: Dp,
     onUnlock: () -> Unit,
@@ -61,6 +64,7 @@ internal fun BoxScope.PlayerPlaybackOverlays(
     nextEpisodeAutoPlayCountdown: Int?,
     onPlayNextEpisode: () -> Unit,
     onDismissNextEpisode: () -> Unit,
+    onRetryStartup: () -> Unit,
     errorMessage: String?,
     onDismissError: () -> Unit,
 ) {
@@ -69,13 +73,12 @@ internal fun BoxScope.PlayerPlaybackOverlays(
         enter = fadeIn(),
         exit = fadeOut(),
     ) {
-        LockedPlayerOverlay(
+        LockedPlayerOverlayHost(
             playbackSnapshot = playbackSnapshot,
-            displayedPositionMs = displayedPositionMs,
+            playbackTimeline = playbackTimeline,
             metrics = metrics,
             horizontalSafePadding = horizontalSafePadding,
             onUnlock = onUnlock,
-            modifier = Modifier.fillMaxSize(),
         )
     }
 
@@ -93,6 +96,13 @@ internal fun BoxScope.PlayerPlaybackOverlays(
             modifier = Modifier.fillMaxSize(),
             message = p2pInitialLoadingMessage,
             progress = p2pInitialLoadingProgress,
+        )
+    }
+
+    if (playbackSnapshot.isStartupStalled && errorMessage == null) {
+        StartupStalledOverlay(
+            onRetry = onRetryStartup,
+            onBack = onBackWithProgress,
         )
     }
 
@@ -162,4 +172,22 @@ internal fun BoxScope.PlayerPlaybackOverlays(
             onDismiss = onDismissError,
         )
     }
+}
+
+@Composable
+private fun LockedPlayerOverlayHost(
+    playbackSnapshot: PlayerPlaybackSnapshot,
+    playbackTimeline: StateFlow<PlayerPlaybackTimeline>,
+    metrics: PlayerLayoutMetrics,
+    horizontalSafePadding: Dp,
+    onUnlock: () -> Unit,
+) {
+    val timeline by playbackTimeline.collectAsState()
+    LockedPlayerOverlay(
+        playbackSnapshot = playbackSnapshot,
+        displayedPositionMs = timeline.positionMs,
+        metrics = metrics,
+        horizontalSafePadding = horizontalSafePadding,
+        onUnlock = onUnlock,
+    )
 }

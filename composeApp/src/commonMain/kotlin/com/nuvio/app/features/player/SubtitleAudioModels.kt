@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import nuvio.composeapp.generated.resources.Res
 import nuvio.composeapp.generated.resources.compose_player_track_number
+import nuvio.composeapp.generated.resources.subtitle_language_unknown
 import org.jetbrains.compose.resources.stringResource
 import kotlin.math.roundToInt
 
@@ -152,9 +153,29 @@ data class SubtitleAudioUiState(
     val activeSubtitleTab: SubtitleTab = SubtitleTab.BuiltIn,
 )
 
+private val trackMetadataPlaceholders = setOf(
+    "unknown",
+    "und",
+    "undefined",
+    "null",
+    "n/a",
+    "na",
+    "-",
+)
+
+internal fun trackMetadataFallbackValue(label: String?, language: String?): String? =
+    label?.trim()?.takeUnless { it.isBlank() || it.lowercase() in trackMetadataPlaceholders }
+        ?: language?.trim()?.takeUnless { it.isBlank() || it.lowercase() in trackMetadataPlaceholders }
+
 @Composable
 fun localizedTrackDisplayName(label: String?, language: String?, index: Int): String {
-    if (!label.isNullOrBlank()) return label
-    if (!language.isNullOrBlank()) return languageLabelForCode(language)
+    val metadata = trackMetadataFallbackValue(label, language)
+    val normalizedLabel = label?.trim()
+    if (metadata != null && metadata == normalizedLabel) return metadata
+    if (metadata != null) {
+        val resolvedLanguage = languageLabelForCode(metadata)
+        val unknownLanguage = stringResource(Res.string.subtitle_language_unknown)
+        if (resolvedLanguage != unknownLanguage) return resolvedLanguage
+    }
     return stringResource(Res.string.compose_player_track_number, index + 1)
 }

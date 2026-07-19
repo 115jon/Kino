@@ -981,7 +981,7 @@
     <string name="theme_ocean">Samudra</string>
     <string name="theme_rose">Mawar</string>
     <string name="theme_violet">Lavender</string>
-    <string name="theme_white">Melati</string>
+    <string name="theme_white">Kino</string>
     <string name="player_next_episode">Episode Berikutnya</string>
     <string name="player_next_episode_finding_source">Mencari sumber…</string>
     <string name="player_next_episode_playing_via_countdown">Memutar melalui %1$s dalam %2$d…</string>
@@ -1249,7 +1249,7 @@
     <string name="addon_already_installed">Addon tersebut sudah terpasang.</string>
     <string name="addon_invalid_url">Masukkan URL addon yang valid</string>
     <string name="addon_load_manifest_failed">Tidak dapat memuat manifes</string>
-    <string name="app_brand_name">Nuvio</string>
+    <string name="app_brand_name">Kino</string>
     <string name="auth_account_deletion_failed">Penghapusan akun gagal</string>
     <string name="auth_sign_in_failed">Masuk gagal</string>
     <string name="auth_sign_out_failed">Keluar gagal</string>

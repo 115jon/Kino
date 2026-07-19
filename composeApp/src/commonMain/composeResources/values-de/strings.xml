@@ -805,7 +805,7 @@
     <string name="theme_ocean">Ozean</string>
     <string name="theme_rose">Rose</string>
     <string name="theme_violet">Violett</string>
-    <string name="theme_white">Weiß</string>
+    <string name="theme_white">Kino</string>
     <string name="player_next_episode">Nächste Episode</string>
     <string name="player_next_episode_finding_source">Quelle wird gesucht…</string>
     <string name="player_next_episode_playing_via_countdown">Abspielen über %1$s in %2$d…</string>
@@ -1057,7 +1057,7 @@
     <string name="addon_already_installed">Dieses Addon ist bereits installiert.</string>
     <string name="addon_invalid_url">Gib eine gültige Addon-URL ein</string>
     <string name="addon_load_manifest_failed">Manifest konnte nicht geladen werden</string>
-    <string name="app_brand_name">Nuvio</string>
+    <string name="app_brand_name">Kino</string>
     <string name="auth_account_deletion_failed">Kontolöschung fehlgeschlagen</string>
     <string name="auth_sign_in_failed">Anmeldung fehlgeschlagen</string>
     <string name="auth_sign_out_failed">Abmeldung fehlgeschlagen</string>

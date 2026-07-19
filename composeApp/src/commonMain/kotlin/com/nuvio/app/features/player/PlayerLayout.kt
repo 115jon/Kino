@@ -25,7 +25,7 @@ internal fun playerWindowMode(
     widthDp: Float,
     desktopPlatform: Boolean = false,
 ): PlayerWindowMode =
-    if ((desktopPlatform && widthDp >= 768f) || widthDp >= 1024f) {
+    if (desktopPlatform || widthDp >= 1024f) {
         PlayerWindowMode.Desktop
     } else {
         PlayerWindowMode.Mobile

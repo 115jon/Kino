@@ -10,9 +10,11 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.nuvio.app.core.ui.isDesktopPlatform
 import com.nuvio.app.features.addons.AddonRepository
 import com.nuvio.app.features.details.MetaDetailsRepository
 import com.nuvio.app.features.details.MetaScreenSettingsRepository
@@ -81,11 +83,32 @@ internal fun PlayerScreenContent(args: PlayerScreenArgs) {
         val density = LocalDensity.current
         val horizontalSafePadding = playerHorizontalSafePadding()
         val metrics = remember(maxWidth) { PlayerLayoutMetrics.fromWidth(maxWidth) }
-        val isDesktopLayout = maxWidth >= 1024.dp
+        val isDesktopLayout = playerWindowMode(
+            widthDp = maxWidth.value,
+            desktopPlatform = isDesktopPlatform,
+        ) == PlayerWindowMode.Desktop
 
         runtime.scope = rememberCoroutineScope()
         runtime.hapticFeedback = LocalHapticFeedback.current
-        runtime.gestureController = rememberPlayerGestureController()
+        val platformGestureController = rememberPlayerGestureController()
+        val desktopGestureController = remember {
+            object : PlayerGestureController {
+                override fun currentBrightness(): Float? = null
+
+                override fun setBrightness(level: Float): Float? = null
+
+                override fun currentVolume(): PlayerAudioLevel? =
+                    runtime.playerController?.currentVolumeLevel()
+
+                override fun setVolume(level: Float): PlayerAudioLevel? =
+                    runtime.playerController?.setVolumeLevel(level)
+            }
+        }
+        runtime.gestureController = if (isDesktopPlatform) {
+            desktopGestureController
+        } else {
+            platformGestureController
+        }
         runtime.playerSettingsUiState = playerSettingsUiState
         runtime.p2pSettingsUiState = p2pSettingsUiState
         runtime.p2pStreamingState = p2pStreamingState
@@ -141,7 +164,10 @@ internal fun PlayerScreenContent(args: PlayerScreenArgs) {
         EnterImmersivePlayerMode(keepScreenAwake = keepScreenAwake)
         ManagePlayerPictureInPicture(
             isPlaying = runtime.playbackSnapshot.isPlaying,
-            playerSize = runtime.layoutSize,
+            videoSize = IntSize(
+                runtime.playbackSnapshot.videoWidth,
+                runtime.playbackSnapshot.videoHeight,
+            ),
         )
         runtime.BindPlayerRuntimeEffects()
         runtime.RenderPlayerRuntimeUi()

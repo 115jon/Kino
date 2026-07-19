@@ -33,6 +33,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import com.nuvio.app.core.ui.nuvioSecondaryClick
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
@@ -93,6 +94,7 @@ internal fun StreamCard(
                 onClick = onClick,
                 onLongClick = onLongClick,
             )
+            .nuvioSecondaryClick(onLongClick)
             .padding(14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

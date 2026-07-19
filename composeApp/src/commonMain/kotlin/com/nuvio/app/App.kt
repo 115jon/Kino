@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -88,12 +89,15 @@ import com.nuvio.app.core.deeplink.AppDeepLink
 import com.nuvio.app.core.deeplink.AppDeepLinkRepository
 import com.nuvio.app.core.network.NetworkCondition
 import com.nuvio.app.core.network.NetworkStatusRepository
+import com.nuvio.app.core.network.shouldRefreshAfterNetworkRecovery
 import com.nuvio.app.core.sync.AppForegroundMonitor
 import com.nuvio.app.core.sync.ProfileSettingsSync
 import com.nuvio.app.core.sync.RealtimeSyncConfig
 import com.nuvio.app.core.sync.RealtimeSyncInvalidationService
 import com.nuvio.app.core.sync.SyncManager
 import com.nuvio.app.core.ui.NuvioNavigationBar
+import com.nuvio.app.core.ui.NuvioDesktopNavigationItem
+import com.nuvio.app.core.ui.NuvioDesktopNavigationRail
 import com.nuvio.app.core.format.formatReleaseDateForDisplay
 import com.nuvio.app.core.ui.NuvioContinueWatchingActionSheet
 import com.nuvio.app.core.ui.NuvioPosterZoomActionOverlay
@@ -120,6 +124,7 @@ import com.nuvio.app.core.ui.NativeTabBridge
 import com.nuvio.app.core.ui.isLiquidGlassNativeTabBarSupported
 import com.nuvio.app.core.ui.localizedContinueWatchingSubtitle
 import com.nuvio.app.core.ui.nuvio
+import com.nuvio.app.core.ui.isDesktopPlatform
 import com.nuvio.app.features.auth.AuthScreen
 import com.nuvio.app.features.addons.AddAddonResult
 import com.nuvio.app.features.addons.AddonRepository
@@ -385,14 +390,6 @@ private fun PlayerLaunch.toExternalPlayerPlaybackRequest(): ExternalPlayerPlayba
         episodeTitle = episodeTitle,
     )
 
-private enum class AppGateScreen {
-    Loading,
-    Auth,
-    ProfileSelection,
-    ProfileEdit,
-    Main,
-}
-
 private object NativeAppGateRequests {
     val profileSelection = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
 
@@ -566,40 +563,66 @@ fun App(
             }
         }
 
+        fun applyAppGateTransition(
+            transition: AppGateTransition,
+            profiles: List<NuvioProfile>,
+            syncOnEnter: Boolean,
+        ) {
+            when (transition) {
+                AppGateTransition.KeepCurrent -> Unit
+                AppGateTransition.ShowLoading -> gateScreen = AppGateScreen.Loading.name
+                AppGateTransition.ShowAuth -> {
+                    ProfileRepository.clearInMemory()
+                    gateScreen = AppGateScreen.Auth.name
+                }
+                AppGateTransition.EnterProfileGate -> enterProfileGate(profiles, syncOnEnter)
+            }
+        }
+
         LaunchedEffect(authState, networkStatusUiState.condition, profileState.profiles) {
             val cachedProfiles = profileState.profiles
-            val hasCachedProfileAccess =
-                cachedProfiles.isNotEmpty() &&
-                    authState !is AuthState.Authenticated
-            val allowCachedProfileAccess =
-                hasCachedProfileAccess &&
-                    (
-                        networkStatusUiState.condition != NetworkCondition.Online ||
-                            gateScreen != AppGateScreen.Auth.name
-                    )
-
+            val currentGateScreen = AppGateScreen.entries
+                .firstOrNull { it.name == gateScreen }
+                ?: AppGateScreen.Loading
             when (authState) {
                 is AuthState.Loading -> {
-                    if (hasCachedProfileAccess) {
-                        enterProfileGate(cachedProfiles, syncOnEnter = false)
-                    } else {
-                        gateScreen = AppGateScreen.Loading.name
-                    }
+                    applyAppGateTransition(
+                        transition = appGateTransition(
+                            currentScreen = currentGateScreen,
+                            authState = authState,
+                            hasCachedProfiles = cachedProfiles.isNotEmpty(),
+                            networkCondition = networkStatusUiState.condition,
+                        ),
+                        profiles = cachedProfiles,
+                        syncOnEnter = false,
+                    )
                 }
                 is AuthState.Unauthenticated -> {
-                    if (allowCachedProfileAccess) {
-                        enterProfileGate(cachedProfiles, syncOnEnter = false)
-                    } else {
-                        ProfileRepository.clearInMemory()
-                        gateScreen = AppGateScreen.Auth.name
-                    }
+                    applyAppGateTransition(
+                        transition = appGateTransition(
+                            currentScreen = currentGateScreen,
+                            authState = authState,
+                            hasCachedProfiles = cachedProfiles.isNotEmpty(),
+                            networkCondition = networkStatusUiState.condition,
+                        ),
+                        profiles = cachedProfiles,
+                        syncOnEnter = false,
+                    )
                 }
                 is AuthState.Authenticated -> {
                     val authenticatedState = authState as AuthState.Authenticated
                     ProfileRepository.ensureLoaded(authenticatedState.userId)
-                    if (gateScreen == AppGateScreen.Loading.name || gateScreen == AppGateScreen.Auth.name) {
-                        enterProfileGate(ProfileRepository.state.value.profiles, syncOnEnter = true)
-                    }
+                    val loadedProfiles = ProfileRepository.state.value.profiles
+                    applyAppGateTransition(
+                        transition = appGateTransition(
+                            currentScreen = currentGateScreen,
+                            authState = authState,
+                            hasCachedProfiles = loadedProfiles.isNotEmpty(),
+                            networkCondition = networkStatusUiState.condition,
+                        ),
+                        profiles = loadedProfiles,
+                        syncOnEnter = true,
+                    )
                 }
             }
         }
@@ -823,7 +846,7 @@ private fun MainAppContent(
         val profileState by ProfileRepository.state.collectAsStateWithLifecycle()
         val launchOverlayProfileColor = remember(profileState.activeProfile, profileState.profiles) {
             val sourceProfile = profileState.activeProfile ?: profileState.profiles.firstOrNull()
-            sourceProfile?.avatarColorHex?.let(::parseHexColor) ?: Color(0xFF1E88E5)
+            sourceProfile?.avatarColorHex?.let(::parseHexColor) ?: Color(0xFFA5DC96)
         }
     val playerSettingsUiState by remember {
         PlayerSettingsRepository.ensureLoaded()
@@ -876,6 +899,7 @@ private fun MainAppContent(
     var offlineLaunchRouteHandled by rememberSaveable { mutableStateOf(false) }
     var networkToastBaselineReady by rememberSaveable { mutableStateOf(false) }
     var lastNetworkToastCondition by rememberSaveable { mutableStateOf(NetworkCondition.Unknown.name) }
+    var lastObservedNetworkCondition by remember { mutableStateOf(NetworkCondition.Unknown) }
     var watchSourceReconnectPending by remember { mutableStateOf(false) }
 
     fun activateTab(tab: AppScreenTab) {
@@ -1044,6 +1068,8 @@ private fun MainAppContent(
         }
 
         val previousConditionName = lastNetworkToastCondition
+        val previousObservedCondition = lastObservedNetworkCondition
+        lastObservedNetworkCondition = condition
         if (previousConditionName == condition.name) return@LaunchedEffect
 
         when (condition) {
@@ -1056,6 +1082,9 @@ private fun MainAppContent(
             }
 
             NetworkCondition.Online -> {
+                if (shouldRefreshAfterNetworkRecovery(previousObservedCondition, condition)) {
+                    AddonRepository.refreshAll()
+                }
                 if (
                     previousConditionName == NetworkCondition.NoInternet.name ||
                     previousConditionName == NetworkCondition.ServersUnreachable.name
@@ -1781,6 +1810,10 @@ private fun MainAppContent(
             selectedContinueWatchingForActions = item
         }
 
+        AppUpdaterHost(
+            controller = appUpdaterController,
+            modifier = Modifier.fillMaxSize(),
+        ) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -1822,7 +1855,12 @@ private fun MainAppContent(
                     )
 
                     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-                        val isTabletLayout = useTabletFloatingTabBar || maxWidth >= 768.dp
+                        val navigationMode = appNavigationMode(
+                            widthDp = maxWidth.value,
+                            desktopPlatform = isDesktopPlatform,
+                        )
+                        val isDesktopLayout = navigationMode == AppNavigationMode.Desktop
+                        val isTabletLayout = useTabletFloatingTabBar || navigationMode != AppNavigationMode.Mobile
                         val useNativeBottomTabs = if (useNativeNavigation) {
                             useNativeTabBar
                         } else {
@@ -1879,14 +1917,28 @@ private fun MainAppContent(
                                 }
                             },
                         ) { innerPadding ->
-                            Box(modifier = Modifier.fillMaxSize()) {
-                                CompositionLocalProvider(
-                                    LocalNuvioBottomNavigationOverlayPadding provides if (useNativeBottomTabs) 49.dp else 0.dp,
+                            Row(modifier = Modifier.fillMaxSize()) {
+                                if (isDesktopLayout) {
+                                    DesktopAppNavigationRail(
+                                        selectedTab = selectedTab,
+                                        onTabSelected = ::handleRootTabClick,
+                                        onProfileSelected = onProfileSelected,
+                                        onAddProfileRequested = onSwitchProfile,
+                                    )
+                                }
+
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .fillMaxHeight(),
                                 ) {
-                                    AppTabHost(
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .padding(innerPadding),
+                                    CompositionLocalProvider(
+                                        LocalNuvioBottomNavigationOverlayPadding provides if (useNativeBottomTabs) 49.dp else 0.dp,
+                                    ) {
+                                        AppTabHost(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .padding(innerPadding),
                                         selectedTab = selectedTab,
                                         searchFocusRequestCount = searchFocusRequestCount,
                                         rootActionsEnabled = tabsRouteActive,
@@ -2009,17 +2061,18 @@ private fun MainAppContent(
                                         onRequestedSettingsPageConsumed = {
                                             requestedSettingsPageName = null
                                         },
-                                        onInitialHomeContentRendered = { initialHomeReady = true },
-                                    )
-                                }
+                                            onInitialHomeContentRendered = { initialHomeReady = true },
+                                        )
 
-                                if (isTabletLayout && !useNativeBottomTabs) {
-                                    TabletFloatingTopBar(
-                                        selectedTab = selectedTab,
-                                        onTabSelected = ::handleRootTabClick,
-                                        onProfileSelected = onProfileSelected,
-                                        onAddProfileRequested = onSwitchProfile,
-                                    )
+                                        if (isTabletLayout && !isDesktopLayout && !useNativeBottomTabs) {
+                                            TabletFloatingTopBar(
+                                                selectedTab = selectedTab,
+                                                onTabSelected = ::handleRootTabClick,
+                                                onProfileSelected = onProfileSelected,
+                                                onAddProfileRequested = onSwitchProfile,
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -3480,12 +3533,7 @@ private fun MainAppContent(
                     .zIndex(20f),
             )
 
-            AppUpdaterHost(
-                controller = appUpdaterController,
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .zIndex(25f),
-            )
+        }
         }
 }
 
@@ -3506,6 +3554,102 @@ private fun rememberGuardedPopBackStack(
             }
         }
     }
+}
+
+@Composable
+private fun DesktopAppNavigationRail(
+    selectedTab: AppScreenTab,
+    onTabSelected: (AppScreenTab) -> Unit,
+    onProfileSelected: (NuvioProfile) -> Unit,
+    onAddProfileRequested: () -> Unit,
+) {
+    val profileState by ProfileRepository.state.collectAsStateWithLifecycle()
+
+    NuvioDesktopNavigationRail(
+        header = {
+            Image(
+                painter = painterResource(Res.drawable.app_logo_wordmark),
+                contentDescription = stringResource(Res.string.app_brand_name),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(42.dp),
+                alignment = Alignment.CenterStart,
+                contentScale = ContentScale.Fit,
+            )
+        },
+        content = {
+            NuvioDesktopNavigationItem(
+                selected = selectedTab == AppScreenTab.Home,
+                onClick = { onTabSelected(AppScreenTab.Home) },
+                label = stringResource(Res.string.compose_nav_home),
+                contentDescription = stringResource(Res.string.compose_nav_home),
+                icon = {
+                    Icon(
+                        imageVector = Icons.Filled.Home,
+                        contentDescription = null,
+                        tint = if (selectedTab == AppScreenTab.Home) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                    )
+                },
+            )
+            NuvioDesktopNavigationItem(
+                selected = selectedTab == AppScreenTab.Search,
+                onClick = { onTabSelected(AppScreenTab.Search) },
+                label = stringResource(Res.string.compose_nav_search),
+                contentDescription = stringResource(Res.string.compose_nav_search),
+                icon = {
+                    Icon(
+                        painter = painterResource(Res.drawable.sidebar_search),
+                        contentDescription = null,
+                        tint = if (selectedTab == AppScreenTab.Search) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                    )
+                },
+            )
+            NuvioDesktopNavigationItem(
+                selected = selectedTab == AppScreenTab.Library,
+                onClick = { onTabSelected(AppScreenTab.Library) },
+                label = stringResource(Res.string.compose_nav_library),
+                contentDescription = stringResource(Res.string.compose_nav_library),
+                icon = {
+                    Icon(
+                        painter = painterResource(Res.drawable.sidebar_library),
+                        contentDescription = null,
+                        tint = if (selectedTab == AppScreenTab.Library) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                    )
+                },
+            )
+        },
+        footer = {
+            NuvioDesktopNavigationItem(
+                selected = selectedTab == AppScreenTab.Settings,
+                onClick = { onTabSelected(AppScreenTab.Settings) },
+                label = profileState.activeProfile?.name
+                    ?.takeIf { it.isNotBlank() }
+                    ?: stringResource(Res.string.compose_nav_profile),
+                contentDescription = stringResource(Res.string.compose_nav_profile),
+                icon = {
+                    ProfileSwitcherTab(
+                        selected = selectedTab == AppScreenTab.Settings,
+                        onClick = { onTabSelected(AppScreenTab.Settings) },
+                        onProfileSelected = onProfileSelected,
+                        onAddProfileRequested = onAddProfileRequested,
+                        modifier = Modifier.size(28.dp),
+                    )
+                },
+            )
+        },
+    )
 }
 
 @Composable

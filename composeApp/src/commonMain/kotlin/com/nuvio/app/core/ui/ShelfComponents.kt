@@ -16,8 +16,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
@@ -70,6 +72,7 @@ fun <T> NuvioShelfSection(
     viewAllPillSize: NuvioViewAllPillSize = NuvioViewAllPillSize.Default,
     key: ((T) -> Any)? = null,
     animatePlacement: Boolean = false,
+    state: LazyListState = rememberLazyListState(),
     itemContent: @Composable (T) -> Unit,
 ) {
     val tokens = MaterialTheme.nuvio
@@ -87,6 +90,7 @@ fun <T> NuvioShelfSection(
             )
         }
         LazyRow(
+            state = state,
             contentPadding = rowContentPadding,
             horizontalArrangement = Arrangement.spacedBy(itemSpacing),
         ) {
@@ -367,25 +371,27 @@ internal fun Modifier.posterCardClickable(
 ): Modifier {
     if (onClick == null && onLongClick == null) return this
     val bounds = remember { mutableStateOf<Rect?>(null) }
+    val invokeLongClick = onLongClick?.let { longClick ->
+        {
+            bounds.value?.let { cardBounds ->
+                PosterZoomAnchorHolder.stash(
+                    PosterZoomAnchor(
+                        boundsInRoot = cardBounds,
+                        imageUrl = zoomImageUrl,
+                        cornerRadius = zoomCornerRadius,
+                    ),
+                )
+            }
+            longClick()
+        }
+    }
     return this
         .onGloballyPositioned { coordinates -> bounds.value = coordinates.unclippedBoundsInRoot() }
         .combinedClickable(
             onClick = { onClick?.invoke() },
-            onLongClick = onLongClick?.let { longClick ->
-                {
-                    bounds.value?.let { cardBounds ->
-                        PosterZoomAnchorHolder.stash(
-                            PosterZoomAnchor(
-                                boundsInRoot = cardBounds,
-                                imageUrl = zoomImageUrl,
-                                cornerRadius = zoomCornerRadius,
-                            ),
-                        )
-                    }
-                    longClick()
-                }
-            },
+            onLongClick = invokeLongClick,
         )
+        .nuvioSecondaryClick(invokeLongClick)
 }
 
 private fun androidx.compose.ui.layout.LayoutCoordinates.unclippedBoundsInRoot(): Rect {

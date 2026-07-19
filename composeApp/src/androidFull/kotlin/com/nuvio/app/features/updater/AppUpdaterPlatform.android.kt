@@ -2,7 +2,7 @@ package com.nuvio.app.features.updater
 
 actual object AppUpdaterPlatform {
     actual val isSupported: Boolean = true
-    actual val isDesktop: Boolean = false
+    actual val platform: String = "android"
 
     actual fun getSupportedAbis(): List<String> = AndroidAppUpdaterPlatform.getSupportedAbis()
 
@@ -15,8 +15,9 @@ actual object AppUpdaterPlatform {
     actual suspend fun downloadApk(
         assetUrl: String,
         assetName: String,
+        expectedSha256: String,
         onProgress: (downloadedBytes: Long, totalBytes: Long?) -> Unit,
-    ): Result<String> = AndroidAppUpdaterPlatform.downloadApk(assetUrl, assetName, onProgress)
+    ): Result<String> = AndroidAppUpdaterPlatform.downloadApk(assetUrl, assetName, expectedSha256, onProgress)
 
     actual fun canRequestPackageInstalls(): Boolean = AndroidAppUpdaterPlatform.canRequestPackageInstalls()
 

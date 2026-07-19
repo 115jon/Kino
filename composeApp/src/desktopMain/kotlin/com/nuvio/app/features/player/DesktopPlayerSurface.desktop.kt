@@ -3,6 +3,7 @@ package com.nuvio.app.features.player
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -21,11 +22,22 @@ actual fun PlatformPlayerSurface(
     playWhenReady: Boolean,
     resizeMode: PlayerResizeMode,
     useNativeController: Boolean,
+    overlayContent: @Composable () -> Unit,
     onControllerReady: (PlayerEngineController) -> Unit,
     onSnapshot: (PlayerPlaybackSnapshot) -> Unit,
     onError: (String?) -> Unit,
+    onSurfaceInteraction: (Boolean) -> Unit,
+    onSurfaceExit: () -> Unit,
 ) {
     val backend = remember { desktopPlaybackBackend() }
+    val mediaKeySession = remember { DesktopMediaKeySession() }
+    DisposableEffect(mediaKeySession) {
+        onDispose { mediaKeySession.close() }
+    }
+    DisposableEffect(sourceUrl, sourceAudioUrl, sourceHeaders, sourceResponseHeaders) {
+        mediaKeySession.sourceChanged()
+        onDispose { }
+    }
     backend.PlayerSurface(
         sourceUrl = sourceUrl,
         sourceAudioUrl = sourceAudioUrl,
@@ -38,10 +50,25 @@ actual fun PlatformPlayerSurface(
         playWhenReady = playWhenReady,
         resizeMode = resizeMode,
         useNativeController = useNativeController,
-        onControllerReady = onControllerReady,
-        onSnapshot = onSnapshot,
+        overlayContent = overlayContent,
+        onControllerReady = { controller ->
+            onControllerReady(mediaKeySession.bind(controller))
+        },
+        onSnapshot = { snapshot ->
+            mediaKeySession.updatePlayback(snapshot)
+            onSnapshot(snapshot)
+        },
         onError = onError,
+        onSurfaceInteraction = onSurfaceInteraction,
+        onSurfaceExit = onSurfaceExit,
+        onWindowFocusChanged = mediaKeySession::updateFocus,
     )
+}
+
+internal actual fun platformPlayerSurfaceOwnsOverlay(): Boolean {
+    val osName = System.getProperty("os.name").orEmpty().lowercase()
+    val surface = System.getProperty("kino.windows.video-surface")?.trim()?.lowercase()
+    return osName.contains("win") && surface !in setOf("embedded", "gl", "opengl")
 }
 
 internal interface DesktopPlaybackBackend {
@@ -58,9 +85,13 @@ internal interface DesktopPlaybackBackend {
         playWhenReady: Boolean,
         resizeMode: PlayerResizeMode,
         useNativeController: Boolean,
+        overlayContent: @Composable () -> Unit,
         onControllerReady: (PlayerEngineController) -> Unit,
         onSnapshot: (PlayerPlaybackSnapshot) -> Unit,
         onError: (String?) -> Unit,
+        onSurfaceInteraction: (Boolean) -> Unit,
+        onSurfaceExit: () -> Unit,
+        onWindowFocusChanged: (Boolean, Long?) -> Unit,
     )
 }
 
@@ -91,10 +122,18 @@ private class UnsupportedDesktopPlaybackBackend(
         playWhenReady: Boolean,
         resizeMode: PlayerResizeMode,
         useNativeController: Boolean,
+        overlayContent: @Composable () -> Unit,
         onControllerReady: (PlayerEngineController) -> Unit,
         onSnapshot: (PlayerPlaybackSnapshot) -> Unit,
         onError: (String?) -> Unit,
+        onSurfaceInteraction: (Boolean) -> Unit,
+        onSurfaceExit: () -> Unit,
+        onWindowFocusChanged: (Boolean, Long?) -> Unit,
     ) {
+        overlayContent
+        onSurfaceInteraction
+        onSurfaceExit
+        onWindowFocusChanged
         LaunchedEffect(osName) {
             onError("Desktop playback is not implemented for $osName")
         }

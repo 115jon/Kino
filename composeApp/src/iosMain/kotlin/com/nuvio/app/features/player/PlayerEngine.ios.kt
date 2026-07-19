@@ -53,10 +53,16 @@ actual fun PlatformPlayerSurface(
     playWhenReady: Boolean,
     resizeMode: PlayerResizeMode,
     useNativeController: Boolean,
+    overlayContent: @Composable () -> Unit,
     onControllerReady: (PlayerEngineController) -> Unit,
     onSnapshot: (PlayerPlaybackSnapshot) -> Unit,
     onError: (String?) -> Unit,
+    onSurfaceInteraction: (Boolean) -> Unit,
+    onSurfaceExit: () -> Unit,
 ) {
+    overlayContent
+    onSurfaceInteraction
+    onSurfaceExit
     sanitizePlaybackResponseHeaders(sourceResponseHeaders)
     val latestOnControllerReady = rememberUpdatedState(onControllerReady)
     val latestOnSnapshot = rememberUpdatedState(onSnapshot)
@@ -397,6 +403,8 @@ actual fun PlatformPlayerSurface(
         }
     }
 }
+
+internal actual fun platformPlayerSurfaceOwnsOverlay(): Boolean = false
 
 private fun NuvioPlayerBridge.applyIosVideoOutputSettings(settings: PlayerSettingsUiState) {
     configureAudioOutput(audioOutput = settings.iosAudioOutputMode.mpvValue)

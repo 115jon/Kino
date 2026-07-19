@@ -100,8 +100,8 @@
     <Icon Id="JpARPPRODUCTICON" SourceFile="$(var.JpIcon)"/>
     <?endif?>
 
-    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="Launch Nuvio"/>
-    <CustomAction Id="SetWixShellExecTarget" Property="WixShellExecTarget" Value="[INSTALLDIR]Nuvio.exe" />
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="Launch Kino"/>
+    <CustomAction Id="SetWixShellExecTarget" Property="WixShellExecTarget" Value="[INSTALLDIR]Kino.exe" />
 
     <UIRef Id="JpUI"/>
     <UI>

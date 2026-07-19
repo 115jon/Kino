@@ -2,5 +2,52 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              StartupUri="MainWindow.xaml">
-    <Application.Resources />
+    <Application.Resources>
+        <SolidColorBrush x:Key="KinoBackgroundBrush" Color="#0C0C0C" />
+        <SolidColorBrush x:Key="KinoSurfaceBrush" Color="#141914" />
+        <SolidColorBrush x:Key="KinoSurfaceHoverBrush" Color="#1D231A" />
+        <SolidColorBrush x:Key="KinoBorderBrush" Color="#2B342B" />
+        <SolidColorBrush x:Key="KinoAccentBrush" Color="#A5DC96" />
+        <SolidColorBrush x:Key="KinoTextPrimaryBrush" Color="#F1EDE6" />
+        <SolidColorBrush x:Key="KinoTextSecondaryBrush" Color="#AFC0A1" />
+        <SolidColorBrush x:Key="KinoTextMutedBrush" Color="#788574" />
+        <SolidColorBrush x:Key="KinoDangerBrush" Color="#D86C6C" />
+
+        <Style x:Key="KinoSecondaryButtonStyle" TargetType="{x:Type Button}">
+            <Setter Property="Background" Value="{StaticResource KinoSurfaceBrush}" />
+            <Setter Property="Foreground" Value="{StaticResource KinoTextPrimaryBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource KinoBorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="14,6" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="{StaticResource KinoSurfaceHoverBrush}" />
+                    <Setter Property="BorderBrush" Value="{StaticResource KinoAccentBrush}" />
+                </Trigger>
+                <Trigger Property="IsPressed" Value="True">
+                    <Setter Property="Background" Value="{StaticResource KinoBorderBrush}" />
+                </Trigger>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter Property="Opacity" Value="0.45" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="KinoDangerButtonStyle" TargetType="{x:Type Button}" BasedOn="{StaticResource KinoSecondaryButtonStyle}">
+            <Setter Property="Background" Value="{StaticResource KinoDangerBrush}" />
+            <Setter Property="Foreground" Value="{StaticResource KinoTextPrimaryBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource KinoDangerBrush}" />
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#E7837F" />
+                    <Setter Property="BorderBrush" Value="#E7837F" />
+                </Trigger>
+                <Trigger Property="IsPressed" Value="True">
+                    <Setter Property="Background" Value="#B65255" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+    </Application.Resources>
 </Application>

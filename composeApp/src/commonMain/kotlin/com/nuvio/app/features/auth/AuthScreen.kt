@@ -110,11 +110,11 @@ import nuvio.composeapp.generated.resources.compose_auth_welcome_back
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 
-private val AuthTextPrimary = Color(0xFFF5F7F8)
-private val AuthTextSecondary = Color(0xFF969CA3)
-private val AuthTextMuted = Color(0xFF6E7178)
-private val AuthPrimaryButtonBackground = Color(0xFFF5F5F5)
-private val AuthPrimaryButtonText = Color(0xFF111111)
+private val AuthTextPrimary = Color(0xFFF1EDE6)
+private val AuthTextSecondary = Color(0xFFAFC0A1)
+private val AuthTextMuted = Color(0xFF788574)
+private val AuthPrimaryButtonBackground = Color(0xFFA5DC96)
+private val AuthPrimaryButtonText = Color(0xFF0C0C0C)
 private val AuthFieldBackground = Color.White.copy(alpha = 0.04f)
 private val AuthFieldBackgroundMobile = Color.White.copy(alpha = 0.035f)
 private val AuthFieldBorder = Color.White.copy(alpha = 0.08f)
@@ -1024,23 +1024,23 @@ private fun Modifier.authGradientBackground(largeScreen: Boolean): Modifier = dr
     )
     val colorStops = if (largeScreen) {
         arrayOf(
-            0f to Color(0xFF21113B),
-            0.14f to Color(0xFF21113B),
-            0.26f to Color(0xFF1A0E2F),
-            0.36f to Color(0xFF130A23),
-            0.48f to Color(0xFF0A060F),
-            0.60f to Color(0xFF050408),
+            0f to Color(0xFF2C4228),
+            0.14f to Color(0xFF2C4228),
+            0.26f to Color(0xFF20351F),
+            0.36f to Color(0xFF17261A),
+            0.48f to Color(0xFF0E180F),
+            0.60f to Color(0xFF071007),
             0.70f to Color.Black,
             1f to Color.Black,
         )
     } else {
         arrayOf(
-            0f to Color(0xFF21113B),
-            0.12f to Color(0xFF21113B),
-            0.24f to Color(0xFF1A0E2F),
-            0.34f to Color(0xFF130A23),
-            0.44f to Color(0xFF0A060F),
-            0.58f to Color(0xFF050408),
+            0f to Color(0xFF2C4228),
+            0.12f to Color(0xFF2C4228),
+            0.24f to Color(0xFF20351F),
+            0.34f to Color(0xFF17261A),
+            0.44f to Color(0xFF0E180F),
+            0.58f to Color(0xFF071007),
             0.64f to Color.Black,
             1f to Color.Black,
         )

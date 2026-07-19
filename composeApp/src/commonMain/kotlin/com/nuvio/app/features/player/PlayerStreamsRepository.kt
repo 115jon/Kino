@@ -227,6 +227,11 @@ object PlayerStreamsRepository {
             return
         }
 
+        log.i {
+            "Loading player streams type=$type id=$videoId season=$season episode=$episode " +
+                "addons=${streamAddons.size} pluginGroups=${pluginProviderGroups.size}"
+        }
+
         val installedAddonOrder = streamAddons.map { it.addonName }
         val initialGroups = StreamAutoPlaySelector.orderAddonStreams(streamAddons.map { addon ->
             AddonStreamGroup(
@@ -349,7 +354,7 @@ object PlayerStreamsRepository {
                             AddonStreamGroup(displayName, addon.addonId, streams, isLoading = false)
                         },
                         onFailure = { err ->
-                            log.w(err) { "Failed: ${displayName}" }
+                            log.w(err) { "Failed to fetch player streams from ${displayName}" }
                             AddonStreamGroup(displayName, addon.addonId, emptyList(), isLoading = false, error = err.message)
                         },
                     )

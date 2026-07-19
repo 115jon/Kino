@@ -11,4 +11,9 @@ class AppLayoutTest {
         assertEquals(AppNavigationMode.Tablet, appNavigationMode(1099f))
         assertEquals(AppNavigationMode.Desktop, appNavigationMode(1100f))
     }
+
+    @Test
+    fun `desktop platform uses desktop shell at tablet-sized window widths`() {
+        assertEquals(AppNavigationMode.Desktop, appNavigationMode(768f, desktopPlatform = true))
+    }
 }

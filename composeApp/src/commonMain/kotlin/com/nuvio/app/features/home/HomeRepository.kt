@@ -1,5 +1,6 @@
 package com.nuvio.app.features.home
 
+import co.touchlab.kermit.Logger
 import com.nuvio.app.features.addons.ManagedAddon
 import com.nuvio.app.features.addons.AddonRepository
 import com.nuvio.app.features.addons.enabledAddons
@@ -26,8 +27,10 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlin.math.absoluteValue
 import kotlin.random.Random
+import kotlinx.coroutines.withTimeoutOrNull
 
 object HomeRepository {
+    private val log = Logger.withTag("HomeRepository")
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val _uiState = MutableStateFlow(HomeUiState())
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
@@ -46,6 +49,14 @@ object HomeRepository {
     fun refresh(addons: List<ManagedAddon>, force: Boolean = false) {
         val activeAddons = addons.enabledAddons()
         val requests = buildHomeCatalogDefinitions(activeAddons)
+        val settings = HomeCatalogSettingsRepository.snapshot()
+        log.i {
+            "refresh(force=$force) addons=${addons.size} enabled=${activeAddons.size} " +
+                "loadedManifests=${activeAddons.count { it.manifest != null }} " +
+                "refreshing=${activeAddons.count { it.isRefreshing }} " +
+                "failed=${activeAddons.count { !it.errorMessage.isNullOrBlank() }} " +
+                "definitions=${requests.size} settings=${settings.preferences.size} hero=${settings.heroEnabled}"
+        }
         currentDefinitions = requests
         val requestCacheKeys = requests.mapTo(mutableSetOf(), HomeCatalogDefinition::cacheKey)
         cachedSections = cachedSections.filterKeys(requestCacheKeys::contains)
@@ -111,10 +122,34 @@ object HomeRepository {
             pendingRequests.chunked(HOME_CATALOG_FETCH_BATCH_SIZE).forEach { batch ->
                 if (activeRequestKey != requestKey) return@launch
                 val results = batch.map { request ->
-                    async { request to runCatching { request.toSection() } }
+                    async {
+                        request to runCatching {
+                            withTimeoutOrNull(HOME_CATALOG_REQUEST_TIMEOUT_MS) {
+                                request.toSection()
+                            } ?: error("Catalog request timed out")
+                        }
+                    }
                 }.awaitAll()
 
                 if (activeRequestKey != requestKey) return@launch
+
+                results.forEach { (request, result) ->
+                    result.fold(
+                        onSuccess = { section ->
+                            log.i {
+                                "catalog result key=${request.key} type=${request.type} " +
+                                    "catalog=${request.catalogId} items=${section.items.size} " +
+                                    "rawItems=${section.availableItemCount}"
+                            }
+                        },
+                        onFailure = { error ->
+                            log.w(error) {
+                                "catalog failed key=${request.key} type=${request.type} " +
+                                    "catalog=${request.catalogId}"
+                            }
+                        },
+                    )
+                }
 
                 results.mapNotNull { (request, result) ->
                     result.getOrNull()?.let { section -> request.cacheKey to section }
@@ -149,6 +184,11 @@ object HomeRepository {
                 isLoading = false,
                 requestKey = requestKey,
             )
+            log.i {
+                "refresh completed definitions=${currentDefinitions.size} cached=${cachedSections.size} " +
+                    "sections=${_uiState.value.sections.size} heroItems=${_uiState.value.heroItems.size} " +
+                    "error=${lastErrorMessage.orEmpty()}"
+            }
             ensureCollectionHeroFallback(
                 addons = activeAddons,
                 force = force,
@@ -214,11 +254,23 @@ object HomeRepository {
 
         val catalogHeroItems = if (snapshot.heroEnabled) {
             val heroRandom = Random((requestKey?.hashCode() ?: 0).absoluteValue + 1)
-            currentDefinitions
+            val fallbackSections = currentDefinitions
+                .mapNotNull { definition -> cachedSections[definition.cacheKey] }
+                .map { section -> section.withReleaseFilter() }
+            val selectedSections = currentDefinitions
                 .filter { definition -> preferences[definition.key]?.heroSourceEnabled != false }
                 .mapNotNull { definition -> cachedSections[definition.cacheKey] }
                 .map { section -> section.withReleaseFilter() }
-                .flatMap { section -> section.items }
+            val candidates = selectHeroCandidates(
+                selectedSections = selectedSections,
+                fallbackSections = fallbackSections,
+                todayIsoDate = todayIsoDate,
+            )
+            log.i {
+                "hero candidates selectedSections=${selectedSections.size} " +
+                    "fallbackSections=${fallbackSections.size} items=${candidates.size}"
+            }
+            candidates
                 .distinctBy { item -> "${item.type}:${item.id}" }
                 .shuffled(heroRandom)
                 .take(HOME_HERO_ITEM_LIMIT)
@@ -316,6 +368,7 @@ object HomeRepository {
 
         collectionHeroJob = scope.launch {
             val sources = collectionHeroSources(collections)
+            log.i { "collection hero fallback sources=${sources.size}" }
             val sourceResults = sources.map { source ->
                 async {
                     runCatching {
@@ -436,12 +489,28 @@ object HomeRepository {
         source.catalogRouteKey()
 }
 
+internal fun selectHeroCandidates(
+    selectedSections: List<HomeCatalogSection>,
+    fallbackSections: List<HomeCatalogSection>,
+    todayIsoDate: String?,
+): List<MetaPreview> {
+    fun releasedItems(sections: List<HomeCatalogSection>): List<MetaPreview> =
+        sections.flatMap { section ->
+            if (todayIsoDate == null) section.items else section.items.filterReleasedItems(todayIsoDate)
+        }
+
+    return releasedItems(selectedSections).ifEmpty {
+        releasedItems(fallbackSections)
+    }
+}
+
 private const val HOME_HERO_ITEM_LIMIT = 8
 private const val HOME_COLLECTION_HERO_SOURCE_LIMIT = 6
 private const val HOME_COLLECTION_HERO_SOURCE_ITEM_LIMIT = 8
 private const val HOME_CATALOG_FETCH_BATCH_SIZE = 4
 private const val HOME_CATALOG_PREVIEW_FETCH_LIMIT = 18
 private const val HOME_CATALOG_PUBLISH_INTERVAL = 2
+private const val HOME_CATALOG_REQUEST_TIMEOUT_MS = 20_000L
 
 private fun prioritizeDefinitions(
     definitions: List<HomeCatalogDefinition>,

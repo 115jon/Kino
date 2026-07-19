@@ -24,6 +24,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
@@ -43,12 +46,20 @@ fun NuvioDesktopNavigationRail(
     content: @Composable ColumnScope.() -> Unit,
     footer: @Composable ColumnScope.() -> Unit,
 ) {
+    val tokens = MaterialTheme.nuvio
     Surface(
         modifier = modifier
             .widthIn(min = 220.dp, max = 240.dp)
-            .fillMaxHeight(),
-        color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 1.dp,
+            .fillMaxHeight()
+            .drawBehind {
+                drawRect(
+                    color = tokens.colors.borderSubtle,
+                    topLeft = Offset(x = size.width - 1.dp.toPx(), y = 0f),
+                    size = Size(width = 1.dp.toPx(), height = size.height),
+                )
+            },
+        color = tokens.colors.background,
+        tonalElevation = 0.dp,
     ) {
         Column(
             modifier = Modifier
@@ -81,20 +92,30 @@ fun NuvioDesktopNavigationItem(
     modifier: Modifier = Modifier,
     icon: @Composable () -> Unit,
 ) {
+    val tokens = MaterialTheme.nuvio
+    val selectedBackground = tokens.colors.accent.copy(alpha = 0.10f)
     Row(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
             .background(
-                if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
+                if (selected) selectedBackground else tokens.colors.background,
             )
+            .drawBehind {
+                if (selected) {
+                    drawRect(
+                        color = tokens.colors.accent,
+                        size = Size(width = 2.dp.toPx(), height = size.height),
+                    )
+                }
+            }
             .selectable(
                 selected = selected,
                 enabled = true,
                 role = Role.Tab,
                 onClick = onClick,
             )
-            .padding(horizontal = 14.dp, vertical = 12.dp),
+            .padding(horizontal = 14.dp, vertical = 10.dp),
         horizontalArrangement = Arrangement.spacedBy(14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -103,9 +124,9 @@ fun NuvioDesktopNavigationItem(
             text = label,
             style = MaterialTheme.typography.labelLarge,
             color = if (selected) {
-                MaterialTheme.colorScheme.onPrimaryContainer
+                tokens.colors.textPrimary
             } else {
-                MaterialTheme.colorScheme.onSurfaceVariant
+                tokens.colors.textMuted
             },
         )
     }

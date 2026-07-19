@@ -55,7 +55,8 @@ final class NuvioMPVView: NSOpenGLView {
         guard mpv != nil else { return }
 
         checkError(mpv_request_log_messages(mpv, "warn"))
-        checkError(mpv_set_option_string(mpv, "input-media-keys", "yes"))
+        checkError(mpv_set_option_string(mpv, "input-media-keys", "no"))
+        checkError(mpv_set_option_string(mpv, "media-controls", "no"))
         checkError(mpv_set_option_string(mpv, "subs-match-os-language", "yes"))
         checkError(mpv_set_option_string(mpv, "subs-fallback", "yes"))
         checkError(mpv_set_option_string(mpv, "hwdec", "auto-safe"))
@@ -127,6 +128,11 @@ final class NuvioMPVView: NSOpenGLView {
     func pausePlayback() {
         guard mpv != nil else { return }
         setFlag("pause", true)
+    }
+
+    func togglePlayPause() {
+        guard mpv != nil else { return }
+        command("cycle", args: ["pause"])
     }
 
     func seekToMs(_ ms: Int64) {

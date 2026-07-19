@@ -1,0 +1,119 @@
+name: Platform Checks
+
+on:
+  pull_request:
+    paths:
+      - 'androidApp/**'
+      - 'composeApp/**'
+      - 'desktop/**'
+      - 'gradle/**'
+      - 'build.gradle.kts'
+      - 'settings.gradle.kts'
+      - 'gradle.properties'
+      - 'release/versions/**'
+      - 'scripts/**'
+      - '.github/workflows/**'
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      android: ${{ steps.filter.outputs.android }}
+      desktop: ${{ steps.filter.outputs.desktop }}
+      versioning: ${{ steps.filter.outputs.versioning }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Detect affected platforms
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          token: ${{ github.token }}
+          filters: |
+            android:
+              - 'androidApp/**'
+              - 'composeApp/src/androidMain/**'
+              - 'composeApp/src/androidFull/**'
+              - 'composeApp/src/androidPlaystore/**'
+              - 'composeApp/src/commonMain/**'
+              - 'composeApp/src/fullCommonMain/**'
+              - 'composeApp/build.gradle.kts'
+              - 'gradle/**'
+              - 'build.gradle.kts'
+              - 'settings.gradle.kts'
+              - 'gradle.properties'
+              - 'release/versions/android.properties'
+            desktop:
+              - 'composeApp/src/desktopMain/**'
+              - 'composeApp/src/commonMain/**'
+              - 'composeApp/build.gradle.kts'
+              - 'desktop/**'
+              - 'gradle/**'
+              - 'build.gradle.kts'
+              - 'settings.gradle.kts'
+              - 'gradle.properties'
+              - 'release/versions/desktop.properties'
+            versioning:
+              - 'scripts/**'
+              - 'release/versions/**'
+              - '.github/workflows/**'
+
+  android:
+    needs: changes
+    if: needs.changes.outputs.android == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Configure empty local properties
+        run: printf '' > local.properties
+
+      - name: Validate Android compilation
+        run: ./gradlew --no-daemon -Pkino.release.platform=android :androidApp:assembleFullDebug
+
+  desktop:
+    needs: changes
+    if: needs.changes.outputs.desktop == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Configure empty local properties
+        run: printf '' > local.properties
+
+      - name: Validate desktop compilation
+        run: ./gradlew --no-daemon -Pkino.release.platform=desktop :composeApp:compileKotlinDesktop
+
+  versioning:
+    needs: changes
+    if: needs.changes.outputs.versioning == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Validate release scripts
+        run: node --test scripts/versioning.test.mjs

@@ -32,6 +32,7 @@ desktop/installer/Assets/payload.zip
 desktop/installer/bin/
 desktop/installer/obj/
 desktop/installer/.vs/
+release-assets/
 composeApp/src/desktopMain/resources/win32-x86-64/*.dll
 asset
 scripts/scrape_android_compose_animation_docs.py

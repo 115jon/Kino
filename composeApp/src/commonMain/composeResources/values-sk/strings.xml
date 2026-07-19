@@ -1057,7 +1057,7 @@
     <string name="theme_ocean">Oceán</string>
     <string name="theme_rose">Ružová</string>
     <string name="theme_violet">Fialová</string>
-    <string name="theme_white">Biela</string>
+    <string name="theme_white">Kino</string>
     <string name="player_next_episode">Ďalšia epizóda</string>
     <string name="player_next_episode_finding_source">Hľadanie zdroja…</string>
     <string name="player_next_episode_playing_via_countdown">Prehráva sa cez %1$s za %2$d…</string>
@@ -1335,7 +1335,7 @@
     <string name="addon_already_installed">Tento doplnok je už nainštalovaný.</string>
     <string name="addon_invalid_url">Zadajte platnú URL doplnku</string>
     <string name="addon_load_manifest_failed">Nepodarilo sa načítať manifest</string>
-    <string name="app_brand_name">Nuvio</string>
+    <string name="app_brand_name">Kino</string>
     <string name="auth_account_deletion_failed">Odstránenie účtu zlyhalo</string>
     <string name="auth_sign_in_failed">Prihlásenie zlyhalo</string>
     <string name="auth_sign_out_failed">Odhlásenie zlyhalo</string>

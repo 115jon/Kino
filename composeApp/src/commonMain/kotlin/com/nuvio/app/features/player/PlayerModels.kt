@@ -211,13 +211,20 @@ fun IosHardwareDecoderMode.localizedLabel(): String = when (this) {
 
 data class PlayerPlaybackSnapshot(
     val isLoading: Boolean = true,
+    val isStartupStalled: Boolean = false,
+    val mediaLoaded: Boolean = false,
     val isPlaying: Boolean = false,
     val isEnded: Boolean = false,
     val durationMs: Long = 0L,
     val positionMs: Long = 0L,
     val bufferedPositionMs: Long = 0L,
     val playbackSpeed: Float = 1f,
+    val videoWidth: Int = 0,
+    val videoHeight: Int = 0,
 )
+
+internal fun PlayerPlaybackSnapshot.hasLoadedMedia(): Boolean =
+    mediaLoaded || (!isLoading && (durationMs > 0L || positionMs > 0L || isPlaying))
 
 data class PlayerNowPlayingInfo(
     val title: String,

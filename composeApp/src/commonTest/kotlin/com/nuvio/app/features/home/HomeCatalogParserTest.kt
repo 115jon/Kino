@@ -2,8 +2,40 @@ package com.nuvio.app.features.home
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import com.nuvio.app.features.catalog.CatalogTarget
 
 class HomeCatalogParserTest {
+
+    @Test
+    fun `hero candidates fall back to loaded catalog items when selected sources are empty`() {
+        val fallbackItem = MetaPreview(
+            id = "tt-fallback",
+            type = "movie",
+            name = "Fallback",
+            banner = "https://example.com/fallback.jpg",
+        )
+        val fallbackSection = HomeCatalogSection(
+            key = "fallback",
+            title = "Fallback",
+            subtitle = "Addon",
+            addonName = "Addon",
+            target = CatalogTarget.Addon(
+                manifestUrl = "https://example.com/manifest.json",
+                contentType = "movie",
+                catalogId = "catalog",
+            ),
+            items = listOf(fallbackItem),
+        )
+
+        assertEquals(
+            listOf(fallbackItem),
+            selectHeroCandidates(
+                selectedSections = emptyList(),
+                fallbackSections = listOf(fallbackSection),
+                todayIsoDate = null,
+            ),
+        )
+    }
 
     @Test
     fun `parse catalog response de-duplicates repeated metas but preserves raw count`() {

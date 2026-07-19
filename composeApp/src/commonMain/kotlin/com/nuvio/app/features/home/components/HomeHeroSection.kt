@@ -50,6 +50,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
+import co.touchlab.kermit.Logger
 import com.nuvio.app.core.format.formatReleaseDateForDisplay
 import com.nuvio.app.features.home.MetaPreview
 import kotlinx.coroutines.CoroutineScope
@@ -71,6 +72,7 @@ private const val MOBILE_HERO_VIEWPORT_RATIO = 0.82f
 private const val MOBILE_HERO_MIN_HEIGHT_DP = 360f
 private const val MOBILE_HERO_MAX_HEIGHT_DP = 760f
 private const val TABLET_HERO_VIEWPORT_RATIO = 0.62f
+private val homeHeroLog = Logger.withTag("HomeHero")
 
 internal data class HomeHeroLayout(
     val isTablet: Boolean,
@@ -170,9 +172,11 @@ fun HomeHeroSection(
                 modifier = Modifier.fillMaxSize(),
             ) {
                 visiblePages.forEach { layer ->
+                    val item = items[layer.page]
+                    val background = item.banner ?: item.poster
                     AsyncImage(
-                        model = items[layer.page].banner ?: items[layer.page].poster,
-                        contentDescription = items[layer.page].name,
+                        model = background,
+                        contentDescription = item.name,
                         modifier = Modifier
                             .fillMaxSize()
                             .graphicsLayer {
@@ -184,6 +188,9 @@ fun HomeHeroSection(
                             },
                         alignment = if (layout.isTablet) Alignment.TopCenter else Alignment.Center,
                         contentScale = ContentScale.Crop,
+                        onError = {
+                            homeHeroLog.w { "Hero artwork failed for ${item.type}:${item.id}" }
+                        },
                     )
                 }
 

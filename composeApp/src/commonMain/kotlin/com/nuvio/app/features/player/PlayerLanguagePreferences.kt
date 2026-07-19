@@ -447,11 +447,21 @@ fun languageMatchesPreference(trackLanguage: String?, targetLanguage: String): B
     return trackPrimary == targetPrimary
 }
 
-private fun languageLabelResForCode(code: String?): StringResource? {
+internal fun languagePreferenceCodeForDisplay(code: String?): String? {
     val normalized = normalizeLanguageCode(code) ?: return null
-    return AvailableLanguageOptions.firstOrNull {
+    val exact = AvailableLanguageOptions.firstOrNull {
         normalizeLanguageCode(it.code) == normalized
-    }?.labelRes
+    }
+    if (exact != null) return exact.code
+    val primary = normalized.substringBefore('-')
+    return AvailableLanguageOptions.firstOrNull {
+        normalizeLanguageCode(it.code) == primary
+    }?.code
+}
+
+private fun languageLabelResForCode(code: String?): StringResource? {
+    val displayCode = languagePreferenceCodeForDisplay(code) ?: return null
+    return AvailableLanguageOptions.firstOrNull { it.code == displayCode }?.labelRes
 }
 
 @Composable

@@ -121,6 +121,11 @@ public func nuvio_player_pause(_ ptr: UnsafeMutableRawPointer) {
     DispatchQueue.main.async { player(ptr).mpvView?.pausePlayback() }
 }
 
+@_cdecl("nuvio_player_toggle_play_pause")
+public func nuvio_player_toggle_play_pause(_ ptr: UnsafeMutableRawPointer) {
+    DispatchQueue.main.async { player(ptr).mpvView?.togglePlayPause() }
+}
+
 @_cdecl("nuvio_player_seek_to")
 public func nuvio_player_seek_to(_ ptr: UnsafeMutableRawPointer, _ positionMs: Int64) {
     DispatchQueue.main.async { player(ptr).mpvView?.seekToMs(positionMs) }

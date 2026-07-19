@@ -1109,7 +1109,7 @@
     <string name="theme_ocean">Oceaan</string>
     <string name="theme_rose">Roze</string>
     <string name="theme_violet">Violet</string>
-    <string name="theme_white">Wit</string>
+    <string name="theme_white">Kino</string>
     <string name="player_next_episode">Volgende aflevering</string>
     <string name="player_next_episode_finding_source">Bron zoeken…</string>
     <string name="player_next_episode_playing_via_countdown">Afspelen via %1$s over %2$d…</string>
@@ -1388,7 +1388,7 @@
     <string name="addon_already_installed">Die addon is al geïnstalleerd.</string>
     <string name="addon_invalid_url">Voer een geldige addon-URL in</string>
     <string name="addon_load_manifest_failed">Kan manifest niet laden</string>
-    <string name="app_brand_name">Nuvio</string>
+    <string name="app_brand_name">Kino</string>
     <string name="auth_account_deletion_failed">Verwijderen van account mislukt</string>
     <string name="auth_sign_in_failed">Inloggen mislukt</string>
     <string name="auth_sign_out_failed">Uitloggen mislukt</string>

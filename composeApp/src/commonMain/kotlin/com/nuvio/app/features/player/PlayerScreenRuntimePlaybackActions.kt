@@ -74,7 +74,7 @@ internal fun PlayerScreenRuntime.resetIdentityStateIfNeeded() {
 }
 
 internal fun PlayerScreenRuntime.currentPlaybackProgressPercent(
-    snapshot: PlayerPlaybackSnapshot = playbackSnapshot,
+    snapshot: PlayerPlaybackSnapshot = latestPlaybackSnapshot,
 ): Float {
     val duration = snapshot.durationMs.takeIf { it > 0L } ?: return 0f
     return ((snapshot.positionMs.toFloat() / duration.toFloat()) * 100f)
@@ -196,25 +196,25 @@ internal fun PlayerScreenRuntime.flushWatchProgress() {
     emitStopScrobbleForCurrentProgress()
     WatchProgressRepository.flushPlaybackProgress(
         session = playbackSession,
-        snapshot = playbackSnapshot,
+        snapshot = latestPlaybackSnapshot,
     )
 }
 
 internal fun PlayerScreenRuntime.scheduleProgressSyncAfterSeek() {
-    val shouldRestartScrobbleAfterSeek = shouldPlay || playbackSnapshot.isPlaying
+    val shouldRestartScrobbleAfterSeek = shouldPlay || latestPlaybackSnapshot.isPlaying
     seekProgressSyncJob?.cancel()
     seekProgressSyncJob = scope.launch {
         delay(PlayerSeekProgressSyncDebounceMs)
         WatchProgressRepository.upsertPlaybackProgress(
             session = playbackSession,
-            snapshot = playbackSnapshot,
+            snapshot = latestPlaybackSnapshot,
         )
 
         val progressPercent = currentPlaybackProgressPercent()
         if (progressPercent >= 1f && progressPercent < 80f) {
             emitTraktScrobbleStop(progressPercent)
             val shouldRestartScrobbleNow = shouldRestartScrobbleAfterSeek && shouldPlay
-            if (shouldRestartScrobbleNow && playbackSnapshot.isPlaying) {
+            if (shouldRestartScrobbleNow && latestPlaybackSnapshot.isPlaying) {
                 pendingScrobbleStartAfterSeek = false
                 emitTraktScrobbleStart()
             } else if (shouldRestartScrobbleNow) {
@@ -230,7 +230,7 @@ internal fun PlayerScreenRuntime.persistPlaybackProgressTick() {
     lastProgressPersistEpochMs = now
     WatchProgressRepository.upsertPlaybackProgress(
         session = playbackSession,
-        snapshot = playbackSnapshot,
+        snapshot = latestPlaybackSnapshot,
         syncRemote = false,
     )
 }

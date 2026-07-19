@@ -19,6 +19,11 @@ jobs:
           ref: desktop
           fetch-depth: 0
 
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
       - name: Fetch upstream
         run: |
           git remote add upstream https://github.com/NuvioMedia/NuvioMobile.git
@@ -34,6 +39,8 @@ jobs:
             exit 0
           fi
           git merge --no-edit upstream/cmp-rewrite
+          node scripts/verify-release-state.mjs --platform=android
+          node scripts/verify-release-state.mjs --platform=desktop
           git push origin "$branch"
           echo "branch=$branch" >> "$GITHUB_OUTPUT"
           echo "changed=true" >> "$GITHUB_OUTPUT"

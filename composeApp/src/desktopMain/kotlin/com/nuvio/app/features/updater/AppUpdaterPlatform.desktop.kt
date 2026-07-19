@@ -14,7 +14,7 @@ actual object AppUpdaterPlatform {
     private val preferences = Preferences.userNodeForPackage(AppUpdaterPlatform::class.java)
 
     actual val isSupported: Boolean = true
-    actual val isDesktop: Boolean = true
+    actual val platform: String = "desktop"
 
     actual fun getSupportedAbis(): List<String> = emptyList()
 
@@ -31,6 +31,7 @@ actual object AppUpdaterPlatform {
     actual suspend fun downloadApk(
         assetUrl: String,
         assetName: String,
+        expectedSha256: String,
         onProgress: (downloadedBytes: Long, totalBytes: Long?) -> Unit,
     ): Result<String> = runCatching {
         withContext(Dispatchers.IO) {
@@ -60,6 +61,19 @@ actual object AppUpdaterPlatform {
                             onProgress(downloadedBytes, totalBytes)
                         }
                     }
+                }
+                val digest = java.security.MessageDigest.getInstance("SHA-256")
+                output.inputStream().use { input ->
+                    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                    while (true) {
+                        val read = input.read(buffer)
+                        if (read < 0) break
+                        digest.update(buffer, 0, read)
+                    }
+                }
+                val actualSha256 = digest.digest().joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }
+                check(actualSha256.equals(expectedSha256, ignoreCase = true)) {
+                    "Downloaded update checksum does not match the release manifest."
                 }
                 output.absolutePath
             } finally {

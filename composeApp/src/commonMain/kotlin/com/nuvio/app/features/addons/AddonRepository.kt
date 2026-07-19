@@ -322,7 +322,9 @@ object AddonRepository {
     }
 
     fun refreshAll() {
-        _uiState.value.addons.filter { it.enabled }.distinctBy { it.manifestUrl }.forEach { addon ->
+        val enabledAddons = _uiState.value.addons.filter { it.enabled }.distinctBy { it.manifestUrl }
+        log.i { "refreshAll() — refreshing enabled addons count=${enabledAddons.size}" }
+        enabledAddons.forEach { addon ->
             refreshAddon(addon.manifestUrl)
         }
     }
@@ -349,16 +351,21 @@ object AddonRepository {
                             if (addon.manifestUrl != manifestUrl) {
                                 addon
                             } else {
-                                result.fold(
-                                    onSuccess = { manifest ->
-                                        addon.copy(
+                                    result.fold(
+                                        onSuccess = { manifest ->
+                                            log.i {
+                                                "refreshAddon() — loaded id=${manifest.id} name=${manifest.name} " +
+                                                    "catalogs=${manifest.catalogs.size} resources=${manifest.resources.size}"
+                                            }
+                                            addon.copy(
                                             manifest = manifest,
                                             isRefreshing = false,
                                             errorMessage = null,
                                         )
                                     },
-                                    onFailure = { error ->
-                                        addon.copy(
+                                        onFailure = { error ->
+                                            log.w(error) { "refreshAddon() — FAILED manifest" }
+                                            addon.copy(
                                             isRefreshing = false,
                                             errorMessage = error.message ?: getString(Res.string.addon_load_manifest_failed),
                                         )

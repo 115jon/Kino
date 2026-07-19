@@ -366,6 +366,7 @@
     <string name="compose_player_panel_sources">Sources</string>
     <string name="compose_player_panel_streams">Streams</string>
     <string name="compose_player_playback_error">Playback error</string>
+    <string name="compose_player_playback_stalled">Playback is taking longer than expected</string>
     <string name="compose_player_playing">Playing</string>
     <string name="compose_player_fetch_subtitles">Tap to fetch subtitles</string>
     <string name="compose_player_go_back">Go back</string>
@@ -1143,7 +1144,7 @@
     <string name="theme_ocean">Ocean</string>
     <string name="theme_rose">Rose</string>
     <string name="theme_violet">Violet</string>
-    <string name="theme_white">White</string>
+    <string name="theme_white">Kino</string>
     <string name="player_next_episode">Next Episode</string>
     <string name="player_next_episode_finding_source">Finding source…</string>
     <string name="player_next_episode_playing_via_countdown">Playing via %1$s in %2$d…</string>
@@ -1422,7 +1423,7 @@
     <string name="addon_already_installed">That addon is already installed.</string>
     <string name="addon_invalid_url">Enter a valid addon URL</string>
     <string name="addon_load_manifest_failed">Unable to load manifest</string>
-    <string name="app_brand_name">Nuvio</string>
+    <string name="app_brand_name">Kino</string>
     <string name="auth_account_deletion_failed">Account deletion failed</string>
     <string name="auth_sign_in_failed">Sign-in failed</string>
     <string name="auth_sign_out_failed">Sign-out failed</string>
@@ -1950,10 +1951,13 @@
     <string name="updates_github_api_error">GitHub releases API error: %1$d</string>
     <string name="updates_no_channel_release">No update has been published yet.</string>
     <string name="updates_release_missing_title">Release has no tag or name</string>
+    <string name="updates_release_missing_manifest">Release has no compatible manifest</string>
     <!-- Continue Watching air date display -->
     <string name="cw_airs_date">Airs %1$s</string>
     <string name="cw_airs_today">Airs today</string>
     <string name="cw_airs_tomorrow">Airs tomorrow</string>
+    <string name="cw_airs_in_days_format">Airs in %1$d days</string>
+    <string name="cw_airs_in_days_short_format">In %1$d days</string>
     <plurals name="cw_airs_in_days">
         <item quantity="one">Airs in %1$d day</item>
         <item quantity="other">Airs in %1$d days</item>
@@ -1996,6 +2000,8 @@
     <string name="entity_browse_type">Type</string>
     <string name="entity_browse_catalogue">Catalogue</string>
     <string name="entity_browse_about">About</string>
+    <string name="entity_browse_title_one_format">%1$d title</string>
+    <string name="entity_browse_title_other_format">%1$d titles</string>
     <string name="player_external_loading_subtitles">Loading subtitles from addons...</string>
     <string name="player_external_downloading_subtitles">Downloading subtitles...</string>
     <plurals name="entity_browse_title_count">

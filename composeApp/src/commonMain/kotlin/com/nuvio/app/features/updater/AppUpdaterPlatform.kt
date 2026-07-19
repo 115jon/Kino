@@ -3,7 +3,7 @@ package com.nuvio.app.features.updater
 expect object AppUpdaterPlatform {
     val isSupported: Boolean
 
-    val isDesktop: Boolean
+    val platform: String
 
     fun getSupportedAbis(): List<String>
 
@@ -14,6 +14,7 @@ expect object AppUpdaterPlatform {
     suspend fun downloadApk(
         assetUrl: String,
         assetName: String,
+        expectedSha256: String,
         onProgress: (downloadedBytes: Long, totalBytes: Long?) -> Unit,
     ): Result<String>
 

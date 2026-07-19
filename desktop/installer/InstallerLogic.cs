@@ -6,6 +6,7 @@ using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Win32;
@@ -20,6 +21,7 @@ namespace Installer
         private const string InstallLocationKeyPath = @"Software\Kino\Kino";
         private const string LauncherArguments = "--processStart Kino.exe";
         private const string UninstallerName = "Update.exe";
+        private const string AppUserModelId = "Kino.Kino";
 
         public const string ExecutableFileName = "Kino.exe";
 
@@ -264,6 +266,94 @@ namespace Installer
             shortcut.IconLocation = iconPath + ",0";
             shortcut.Description = DisplayName;
             shortcut.Save();
+            SetShortcutAppUserModelId(path);
+        }
+
+        private static void SetShortcutAppUserModelId(string shortcutPath)
+        {
+            Guid propertyStoreGuid = new Guid("886D8EEB-8CF2-4446-8D02-CDBA1DBDCF99");
+            IPropertyStore propertyStore = null;
+            try
+            {
+                int result = SHGetPropertyStoreFromParsingName(
+                    shortcutPath,
+                    IntPtr.Zero,
+                    GetPropertyStoreFlags.GPS_READWRITE,
+                    ref propertyStoreGuid,
+                    out propertyStore);
+                Marshal.ThrowExceptionForHR(result);
+
+                PropertyKey key = new PropertyKey
+                {
+                    FormatId = new Guid("9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3"),
+                    PropertyId = 5
+                };
+                PropVariant value = new PropVariant
+                {
+                    VariantType = (ushort)VarEnum.VT_LPWSTR,
+                    PointerValue = Marshal.StringToCoTaskMemUni(AppUserModelId)
+                };
+                try
+                {
+                    Marshal.ThrowExceptionForHR(propertyStore.SetValue(ref key, ref value));
+                    Marshal.ThrowExceptionForHR(propertyStore.Commit());
+                }
+                finally
+                {
+                    PropVariantClear(ref value);
+                }
+            }
+            catch (Exception exception)
+            {
+                InstallerLogger.Warn("Could not set shortcut AppUserModelID: " + exception.Message);
+            }
+            finally
+            {
+                if (propertyStore != null) Marshal.ReleaseComObject(propertyStore);
+            }
+        }
+
+        [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+        private static extern int SHGetPropertyStoreFromParsingName(
+            string path,
+            IntPtr bindingContext,
+            GetPropertyStoreFlags flags,
+            ref Guid interfaceId,
+            [MarshalAs(UnmanagedType.Interface)] out IPropertyStore propertyStore);
+
+        [DllImport("ole32.dll")]
+        private static extern int PropVariantClear(ref PropVariant value);
+
+        [Flags]
+        private enum GetPropertyStoreFlags : uint
+        {
+            GPS_READWRITE = 0x00000002
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct PropertyKey
+        {
+            public Guid FormatId;
+            public uint PropertyId;
+        }
+
+        [StructLayout(LayoutKind.Explicit)]
+        private struct PropVariant
+        {
+            [FieldOffset(0)] public ushort VariantType;
+            [FieldOffset(8)] public IntPtr PointerValue;
+        }
+
+        [ComImport]
+        [Guid("886D8EEB-8CF2-4446-8D02-CDBA1DBDCF99")]
+        [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+        private interface IPropertyStore
+        {
+            int GetCount(out uint count);
+            int GetAt(uint index, out PropertyKey key);
+            int GetValue(ref PropertyKey key, out PropVariant value);
+            int SetValue(ref PropertyKey key, ref PropVariant value);
+            int Commit();
         }
 
         private static void DeleteShortcuts()

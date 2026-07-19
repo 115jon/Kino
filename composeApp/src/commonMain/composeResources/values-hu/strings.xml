@@ -915,7 +915,7 @@
     <string name="theme_ocean">Óceán</string>
     <string name="theme_rose">Rózsa</string>
     <string name="theme_violet">Ibolya</string>
-    <string name="theme_white">Fehér</string>
+    <string name="theme_white">Kino</string>
     <string name="player_next_episode">Következő epizód</string>
     <string name="player_next_episode_finding_source">Forrás keresése…</string>
     <string name="player_next_episode_playing_via_countdown">Lejátszás a(z) %1$s segítségével %2$d másodperc múlva…</string>
@@ -1181,7 +1181,7 @@
     <string name="addon_already_installed">Ez a kiegészítő már telepítve van.</string>
     <string name="addon_invalid_url">Kérjük, érvényes kiegészítő URL-t adj meg</string>
     <string name="addon_load_manifest_failed">Nem sikerült betölteni a manifest fájlt</string>
-    <string name="app_brand_name">Nuvio</string>
+    <string name="app_brand_name">Kino</string>
     <string name="auth_account_deletion_failed">A fiók törlése sikertelen</string>
     <string name="auth_sign_in_failed">Bejelentkezés sikertelen</string>
     <string name="auth_sign_out_failed">Kijelentkezés sikertelen</string>

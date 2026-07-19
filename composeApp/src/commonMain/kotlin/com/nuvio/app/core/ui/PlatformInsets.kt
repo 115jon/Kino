@@ -10,6 +10,7 @@ import androidx.compose.ui.unit.dp
 internal expect val nuvioPlatformExtraTopPadding: Dp
 internal expect val nuvioPlatformExtraBottomPadding: Dp
 internal expect val nuvioBottomNavigationExtraVerticalPadding: Dp
+internal expect val isDesktopPlatform: Boolean
 @Composable
 internal expect fun nuvioBottomNavigationBarInsets(): WindowInsets
 

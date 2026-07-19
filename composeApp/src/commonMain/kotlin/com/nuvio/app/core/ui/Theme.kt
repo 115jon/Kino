@@ -32,7 +32,7 @@ val MaterialTheme.appTheme: AppTheme
     get() = LocalAppTheme.current
 
 private fun contentColorFor(background: Color): Color =
-    if (background.luminance() > 0.5f) Color(0xFF111111) else Color(0xFFF5F7F8)
+    if (background.luminance() > 0.5f) Color(0xFF0C0C0C) else Color(0xFFF1EDE6)
 
 private fun buildColorScheme(palette: ThemeColorPalette, amoled: Boolean = false) = darkColorScheme(
     primary = palette.secondary,
@@ -42,14 +42,14 @@ private fun buildColorScheme(palette: ThemeColorPalette, amoled: Boolean = false
     secondary = palette.secondaryVariant,
     onSecondary = palette.onSecondaryVariant,
     background = if (amoled) Color.Black else palette.background,
-    onBackground = Color(0xFFF5F7F8),
+    onBackground = Color(0xFFF1EDE6),
     surface = palette.backgroundElevated,
-    onSurface = Color(0xFFF5F7F8),
+    onSurface = Color(0xFFF1EDE6),
     surfaceVariant = palette.backgroundCard,
-    onSurfaceVariant = Color(0xFF969CA3),
-    outline = Color(0xFF252A2A),
-    error = Color(0xFFE36A8A),
-    onError = Color(0xFFFCE5EC),
+    onSurfaceVariant = Color(0xFFAFC0A1),
+    outline = Color(0xFF2B342B),
+    error = Color(0xFFD86C6C),
+    onError = Color(0xFFFFE4E0),
 )
 
 private val JetBrainsSans: FontFamily

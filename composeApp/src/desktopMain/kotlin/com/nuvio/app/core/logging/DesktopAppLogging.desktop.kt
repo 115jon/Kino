@@ -9,7 +9,7 @@ import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import kotlin.random.Random
 
-private const val desktopLogFileName = "nuvio.log"
+private const val desktopLogFileName = "kino.log"
 
 private val desktopTimestampFormatter: DateTimeFormatter =
     DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
@@ -149,14 +149,14 @@ private fun desktopLogsDirectory(): File {
         osName.contains("win") -> {
             val root = System.getenv("LOCALAPPDATA")?.takeIf { it.isNotBlank() }
                 ?: File(System.getProperty("user.home"), "AppData/Local").absolutePath
-            File(root).resolve("Nuvio").resolve("logs")
+            File(root).resolve("Kino").resolve("logs")
         }
 
         osName.contains("mac") -> {
             File(System.getProperty("user.home"))
                 .resolve("Library")
                 .resolve("Application Support")
-                .resolve("Nuvio")
+                .resolve("Kino")
                 .resolve("logs")
         }
 
@@ -164,7 +164,7 @@ private fun desktopLogsDirectory(): File {
             File(System.getProperty("user.home"))
                 .resolve(".local")
                 .resolve("share")
-                .resolve("Nuvio")
+                .resolve("Kino")
                 .resolve("logs")
         }
     }

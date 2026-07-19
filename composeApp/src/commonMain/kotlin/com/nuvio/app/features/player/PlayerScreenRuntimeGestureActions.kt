@@ -2,6 +2,7 @@ package com.nuvio.app.features.player
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -58,7 +59,6 @@ internal fun PlayerScreenRuntime.lockPlayerControls() {
     lockedOverlayVisible = false
     pausedOverlayVisible = false
     isScrubbingTimeline = false
-    scrubbingPositionMs = null
     gestureMessageJob?.cancel()
     gestureFeedback = null
     liveGestureFeedback = null
@@ -163,6 +163,16 @@ internal fun PlayerScreenRuntime.togglePlayback() {
     controlsVisible = true
 }
 
+internal fun PlayerScreenRuntime.setVolumeLevel(level: Float) {
+    val controller = playerController ?: return
+    controller.setVolumeLevel(level.coerceIn(0f, 1f))?.let { nextLevel ->
+        volumeLevel = nextLevel
+        if (!nextLevel.isMuted && nextLevel.fraction > 0f) {
+            lastUnmutedVolumeFraction = nextLevel.fraction
+        }
+    }
+}
+
 internal fun PlayerScreenRuntime.seekBy(offsetMs: Long) {
     playerController?.seekBy(offsetMs)
     scheduleProgressSyncAfterSeek()
@@ -174,7 +184,7 @@ internal fun PlayerScreenRuntime.seekBy(offsetMs: Long) {
 }
 
 internal fun PlayerScreenRuntime.handleDoubleTapSeek(direction: PlayerSeekDirection) {
-    val currentPositionMs = playbackSnapshot.positionMs.coerceAtLeast(0L)
+    val currentPositionMs = latestPlaybackSnapshot.positionMs.coerceAtLeast(0L)
     val currentSeekState = accumulatedSeekState
     val nextState = if (currentSeekState?.direction == direction) {
         currentSeekState.copy(amountMs = currentSeekState.amountMs + PlayerDoubleTapSeekStepMs)
@@ -266,6 +276,11 @@ internal fun PlayerScreenRuntime.rememberSurfaceGestureCallbacks(): PlayerSurfac
             revealLockedOverlay()
             return@rememberUpdatedState
         }
+        if (isDesktopLayout) {
+            controlsVisible = !controlsVisible
+            pausedOverlayVisible = false
+            return@rememberUpdatedState
+        }
         val centerStart = layoutSize.width * PlayerLeftGestureBoundary
         val centerEnd = layoutSize.width * PlayerRightGestureBoundary
         if (controlsVisible && offset.x in centerStart..centerEnd) {
@@ -277,6 +292,11 @@ internal fun PlayerScreenRuntime.rememberSurfaceGestureCallbacks(): PlayerSurfac
     val onSurfaceDoubleTap = rememberUpdatedState { offset: Offset ->
         if (playerControlsLocked) {
             revealLockedOverlay()
+            return@rememberUpdatedState
+        }
+        if (isDesktopLayout) {
+            controlsVisible = !controlsVisible
+            pausedOverlayVisible = false
             return@rememberUpdatedState
         }
         if (!playerSettingsUiState.touchGesturesEnabled) {
@@ -306,7 +326,12 @@ internal fun PlayerScreenRuntime.rememberSurfaceGestureCallbacks(): PlayerSurfac
         isHoldToSpeedGestureActive = rememberUpdatedState(isHoldToSpeedGestureActive),
         touchGesturesEnabled = rememberUpdatedState(playerSettingsUiState.touchGesturesEnabled),
         playerControlsLocked = rememberUpdatedState(playerControlsLocked),
-        currentPositionMs = rememberUpdatedState(playbackSnapshot.positionMs.coerceAtLeast(0L)),
+        currentPositionMs = remember {
+            object : androidx.compose.runtime.State<Long> {
+                override val value: Long
+                    get() = latestPlaybackSnapshot.positionMs.coerceAtLeast(0L)
+            }
+        },
         currentDurationMs = rememberUpdatedState(playbackSnapshot.durationMs),
         commitHorizontalSeek = rememberUpdatedState { targetPositionMs: Long ->
             playerController?.seekTo(targetPositionMs)
