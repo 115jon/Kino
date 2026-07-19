@@ -37,12 +37,24 @@ private fun configureComposeInterop() {
     )
 }
 
+private fun configureWindowsPresentationCompatibility() {
+    val osName = System.getProperty("os.name")?.lowercase().orEmpty()
+    if (!osName.contains("win")) return
+    if (System.getProperty("skiko.vsync.enabled") == null) {
+        System.setProperty("skiko.vsync.enabled", "true")
+    }
+    if (System.getProperty("skiko.rendering.windows.waitForFrameVsyncOnRedrawImmediately") == null) {
+        System.setProperty("skiko.rendering.windows.waitForFrameVsyncOnRedrawImmediately", "true")
+    }
+}
+
 fun main() {
     configureWindowsAppUserModelId()
     configureWindowsCaptureCompatibility()
     configureMacOsNativeAppearance()
     System.setProperty("java.net.preferIPv4Stack", "true")
     configureComposeInterop()
+    configureWindowsPresentationCompatibility()
     initializeDesktopAppLogging()
     application {
         val windowState = rememberWindowState(width = 1280.dp, height = 800.dp)
