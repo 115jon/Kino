@@ -509,6 +509,11 @@ object PlayerSettingsRepository {
         PlayerSettingsStorage.saveSubtitleShowOnlyPreferredLanguages(style.showOnlyPreferredLanguages)
     }
 
+    fun updateSubtitleStyle(update: (SubtitleStyleState) -> SubtitleStyleState) {
+        ensureLoaded()
+        setSubtitleStyle(update(subtitleStyle))
+    }
+
     fun setAddonSubtitleStartupMode(mode: AddonSubtitleStartupMode) {
         ensureLoaded()
         if (addonSubtitleStartupMode == mode) return

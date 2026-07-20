@@ -59,7 +59,7 @@ data class SubtitleStyleState(
     val outlineWidth: Int = 2,
     val bold: Boolean = false,
     val fontSizeSp: Int = 18,
-    val bottomOffset: Int = 20,
+    val bottomOffset: Int = 10,
     val useForcedSubtitles: Boolean = false,
     val showOnlyPreferredLanguages: Boolean = false,
 ) {

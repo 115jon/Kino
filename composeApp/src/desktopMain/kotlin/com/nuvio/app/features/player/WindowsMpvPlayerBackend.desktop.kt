@@ -2308,7 +2308,7 @@ internal class EmbeddedWindowsPlayerPanel(
                             }
                         }
                     }
-                    reapplyWindowsMpvSubtitleStyleLater(state, ptr, state.subtitleStyle)
+                    reapplyWindowsMpvSubtitleStyleLater(state, ptr)
                     requestFocusInWindow()
                     glPanel.requestFocusInWindow()
                     scheduleRender(force = true)
@@ -2329,7 +2329,7 @@ internal class EmbeddedWindowsPlayerPanel(
         val ptr = state.playerPtr ?: return
         WindowsMpvLibrary.INSTANCE.mpv_command(ptr, arrayOf("sub-add", url, "select", null))
         applyWindowsMpvSubtitleStyle(ptr, state.subtitleStyle)
-        reapplyWindowsMpvSubtitleStyleLater(state, ptr, state.subtitleStyle)
+        reapplyWindowsMpvSubtitleStyleLater(state, ptr)
         scheduleRender(force = true)
     }
 
@@ -3381,7 +3381,7 @@ internal class WindowsPlayerPanel(
                             }
                         }
                     }
-                    reapplyWindowsMpvSubtitleStyleLater(state, ptr, state.subtitleStyle)
+                    reapplyWindowsMpvSubtitleStyleLater(state, ptr)
                 }
                 committedGeneration?.let { onCommitted?.invoke(it) }
             }
@@ -3523,7 +3523,7 @@ internal class WindowsPlayerPanel(
         val ptr = state.playerPtr ?: return
         WindowsMpvLibrary.INSTANCE.mpv_command(ptr, arrayOf("sub-add", url, "select", null))
         applyWindowsMpvSubtitleStyle(ptr, state.subtitleStyle)
-        reapplyWindowsMpvSubtitleStyleLater(state, ptr, state.subtitleStyle)
+        reapplyWindowsMpvSubtitleStyleLater(state, ptr)
     }
 
     private fun selectAudio(idx: Int) {
@@ -3958,12 +3958,13 @@ private fun applyWindowsMpvSubtitleStyle(ptr: Pointer, style: SubtitleStyleState
 private fun reapplyWindowsMpvSubtitleStyleLater(
     state: WindowsPlayerWindowState,
     ptr: Pointer,
-    style: SubtitleStyleState,
 ) {
     val generation = state.sourceGeneration
     scheduleWindowsSwingAction(300) {
-        if (!state.isClosed && state.playerPtr == ptr && state.sourceGeneration == generation) {
-            applyWindowsMpvSubtitleStyle(ptr, style)
+        state.withMpv { currentPtr ->
+            if (currentPtr == ptr && state.sourceGeneration == generation) {
+                applyWindowsMpvSubtitleStyle(currentPtr, state.subtitleStyle)
+            }
         }
     }
 }

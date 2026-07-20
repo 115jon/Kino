@@ -11,11 +11,15 @@ $payloadZip = Join-Path $repoRoot "desktop\installer\Assets\payload.zip"
 $versionFile = Join-Path $repoRoot "release\versions\desktop.properties"
 $distributableRoot = Join-Path $repoRoot "composeApp\build\compose\binaries\main-release\app"
 $localEnvFile = Join-Path $repoRoot ".env.kino.local"
+$dotnetSdkPath = Join-Path $env:USERPROFILE "scoop\apps\dotnet-sdk\current"
 
 if (-not (Test-Path -LiteralPath $gradlePath)) { throw "Gradle wrapper not found: $gradlePath" }
 if (-not (Test-Path -LiteralPath $installerProject)) { throw "Installer project not found: $installerProject" }
 if (-not (Test-Path -LiteralPath $runtimeScript)) { throw "MPV runtime preparation script not found: $runtimeScript" }
 if (-not (Test-Path -LiteralPath $versionFile)) { throw "Version file not found: $versionFile" }
+if (Test-Path -LiteralPath (Join-Path $dotnetSdkPath "dotnet.exe")) {
+    $env:PATH = "$dotnetSdkPath;$env:PATH"
+}
 
 if (Test-Path -LiteralPath $localEnvFile) {
     $runtimeEnvMap = @{
