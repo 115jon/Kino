@@ -903,6 +903,10 @@ internal fun createWindowsOverlayPointerListener(onPointerExit: () -> Unit): Mou
             onPointerExit()
         }
     }
+internal fun isWindowsPlayerPointerInside(playerInside: Boolean, overlayInside: Boolean): Boolean =
+    playerInside || overlayInside
+
+internal fun shouldHideWindowsPlayerControls(pointerInside: Boolean): Boolean = !pointerInside
 
 internal enum class WindowsStartupStallKeyAction {
     Retry,
@@ -2676,7 +2680,6 @@ internal class WindowsPlayerPanel(
 
     private val controlPanel = JPanel()
     private val fullscreenState = FullscreenWindowState()
-    private var lastMouseMovedTime = System.currentTimeMillis()
     private var isSeeking = false
     private var mpvInitialized = false
     @Volatile
@@ -2694,10 +2697,7 @@ internal class WindowsPlayerPanel(
     private var pointerInside = false
     private val controlsTimer = javax.swing.Timer(250) {
         val isInside = updatePointerPresence()
-        if (!isInside) {
-            hideControls()
-        }
-        if (System.currentTimeMillis() - lastMouseMovedTime > 3000 && state.playerPtr != null && isPlaying) {
+        if (shouldHideWindowsPlayerControls(isInside)) {
             hideControls()
         }
     }
@@ -2747,9 +2747,13 @@ internal class WindowsPlayerPanel(
         val window = playerWindow ?: SwingUtilities.getWindowAncestor(this) ?: return null
         return Pointer.nativeValue(Native.getComponentPointer(window)).takeIf { it != 0L }
     }
+    private fun containsPlayerPointer(): Boolean = isWindowsPlayerPointerInside(
+        playerInside = containsCurrentPointer(),
+        overlayInside = overlayWindow?.containsCurrentPointer() == true,
+    )
 
     private fun updatePointerPresence(): Boolean {
-        val isInside = containsCurrentPointer()
+        val isInside = containsPlayerPointer()
         if (shouldNotifyPlayerSurfaceExit(pointerInside, isInside)) {
             onSurfaceExit()
         }
@@ -2789,14 +2793,12 @@ internal class WindowsPlayerPanel(
         }
         setupListeners()
 
-        if (showNativeControls) {
-            controlsTimer.start()
-        }
+        controlsTimer.start()
     }
 
     override fun addNotify() {
         super.addNotify()
-        pointerInside = containsCurrentPointer()
+        pointerInside = containsPlayerPointer()
         playerWindow = SwingUtilities.getWindowAncestor(this)?.also { window ->
             window.addWindowFocusListener(windowFocusListener)
             window.addComponentListener(windowBoundsListener)
@@ -2969,12 +2971,10 @@ internal class WindowsPlayerPanel(
         val interactionListener = object : MouseAdapter() {
             override fun mouseMoved(e: MouseEvent) {
                 pointerInside = true
-                lastMouseMovedTime = System.currentTimeMillis()
                 onSurfaceInteraction(false)
                 showControls()
             }
             override fun mouseClicked(e: MouseEvent) {
-                lastMouseMovedTime = System.currentTimeMillis()
                 onSurfaceInteraction(true)
                 showControls()
                 canvas.requestFocusInWindow()
@@ -3008,7 +3008,6 @@ internal class WindowsPlayerPanel(
                     }
                     return
                 }
-                lastMouseMovedTime = System.currentTimeMillis()
                 showControls()
                 when (e.keyCode) {
                     KeyEvent.VK_SPACE -> togglePlayPause()
@@ -3029,7 +3028,6 @@ internal class WindowsPlayerPanel(
 
         // Mouse Wheel volume control
         val wheelListener = MouseWheelListener { e ->
-            lastMouseMovedTime = System.currentTimeMillis()
             showControls()
             adjustVolume(-e.wheelRotation * 2.0)
         }

@@ -296,7 +296,9 @@ private fun PlayerScreenRuntime.BindPlayerUiVisibilityEffects() {
         playbackSnapshot.isLoading,
         showParentalGuide,
         errorMessage,
+        isDesktopLayout,
     ) {
+        if (isDesktopLayout) return@LaunchedEffect
         if (
             !controlsVisible ||
             isScrubbingTimeline ||
