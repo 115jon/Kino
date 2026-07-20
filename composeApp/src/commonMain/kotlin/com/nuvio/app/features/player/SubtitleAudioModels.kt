@@ -13,6 +13,11 @@ data class AudioTrack(
     val id: String,
     val label: String,
     val language: String? = null,
+    val codec: String? = null,
+    val sampleRate: Int? = null,
+    val channelCount: Int? = null,
+    val channelLayout: String? = null,
+    val bitrate: Long? = null,
     val isSelected: Boolean = false,
 )
 

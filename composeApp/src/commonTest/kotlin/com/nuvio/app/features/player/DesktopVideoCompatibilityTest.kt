@@ -258,6 +258,13 @@ class DesktopVideoCompatibilityTest {
                 previousPlaylistEntryId = 40L,
             ),
         )
+        assertTrue(
+            isWindowsPlaybackStartFileCurrent(
+                playlistEntryId = 43L,
+                expectedPlaylistEntryId = null,
+                previousPlaylistEntryId = 42L,
+            ),
+        )
     }
 
     @Test

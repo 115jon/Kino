@@ -121,12 +121,17 @@ internal data class WindowsPlaybackEndFile(
 internal fun selectWindowsPlaybackEndFileError(
     event: WindowsPlaybackEndFile,
     activePlaylistEntryId: Long?,
+    pendingPlaylistEntryId: Long? = null,
     activePlaylistEntryGeneration: Long?,
+    pendingPlaylistEntryGeneration: Long? = null,
     currentSourceGeneration: Long,
     hasLoadedMedia: Boolean,
 ): String? {
-    if (event.playlistEntryId != activePlaylistEntryId) return null
-    if (activePlaylistEntryGeneration != currentSourceGeneration) return null
+    val isActiveEntry = event.playlistEntryId == activePlaylistEntryId
+    val isPendingEntry = event.playlistEntryId == pendingPlaylistEntryId
+    if (!isActiveEntry && !isPendingEntry) return null
+    val entryGeneration = if (isActiveEntry) activePlaylistEntryGeneration else pendingPlaylistEntryGeneration
+    if (entryGeneration != currentSourceGeneration) return null
 
     return when (event.reason) {
         WindowsMpvEndFileReasonError -> event.errorMessage ?: "Failed to open stream"
