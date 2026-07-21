@@ -33,6 +33,7 @@ internal class PlayerScreenRuntime(
     val sourceAudioUrl: String? get() = args.sourceAudioUrl
     val sourceHeaders: Map<String, String> get() = args.sourceHeaders
     val sourceResponseHeaders: Map<String, String> get() = args.sourceResponseHeaders
+    val startupFallbackCandidates: List<StartupFallbackCandidate> get() = args.startupFallbackCandidates
     val streamType: String? get() = args.streamType
     val providerName: String get() = args.providerName
     val streamTitle: String get() = args.streamTitle
@@ -106,10 +107,12 @@ internal class PlayerScreenRuntime(
     var activeTorrentTrackers by mutableStateOf(torrentTrackers)
     var p2pResolvedSourceUrl by mutableStateOf<String?>(null)
     var activeSourceIdentityKey by mutableStateOf(
-        torrentInfoHash?.trim()?.lowercase()?.takeIf { it.isNotBlank() }?.let { hash ->
+        args.startupFallbackCandidates.firstOrNull { it.stream.playableDirectUrl == sourceUrl }?.identityKey
+            ?: torrentInfoHash?.trim()?.lowercase()?.takeIf { it.isNotBlank() }?.let { hash ->
             "torrent:$hash:${torrentFileIdx ?: -1}"
         } ?: sourceUrl.trim().takeIf { it.isNotBlank() }?.let { url -> "url:$url" },
     )
+    var activeSourceAttemptToken by mutableStateOf(1L)
     var activeStreamTitle by mutableStateOf(streamTitle)
     var activeStreamSubtitle by mutableStateOf(streamSubtitle)
     var activeProviderName by mutableStateOf(providerName)
@@ -129,9 +132,20 @@ internal class PlayerScreenRuntime(
     var playbackSnapshot by mutableStateOf(playbackStateBridge.semanticSnapshot)
     var playerController by mutableStateOf<PlayerEngineController?>(null)
     var playerControllerSourceUrl by mutableStateOf<String?>(null)
+    var playerControllerSourceIdentityKey by mutableStateOf<String?>(null)
+    var playerControllerSourceAttemptToken by mutableStateOf<Long?>(null)
     var volumeLevel by mutableStateOf(PlayerAudioLevel(fraction = 1f, isMuted = false))
     var lastUnmutedVolumeFraction by mutableStateOf(1f)
     var errorMessage by mutableStateOf<String?>(null)
+    var startupFallbackState by mutableStateOf(
+        StartupFallbackCoordinator.start(
+            sessionGeneration = 1L,
+            candidates = args.startupFallbackCandidates,
+            initialIdentityKey = args.startupFallbackCandidates
+                .firstOrNull { it.stream.playableDirectUrl == sourceUrl }
+                ?.identityKey,
+        ),
+    )
     var isScrubbingTimeline by mutableStateOf(false)
     var pausedOverlayVisible by mutableStateOf(false)
     var gestureFeedback by mutableStateOf<GestureFeedbackState?>(null)
@@ -202,3 +216,15 @@ internal class PlayerScreenRuntime(
     var lastResetPlaybackIdentity: String? = null
     var lastResetVideoIdentity: String? = null
 }
+
+internal fun isCurrentPlayerSurfaceAttempt(
+    currentSurfaceSourceUrl: String?,
+    surfaceSourceUrl: String,
+    currentSourceIdentityKey: String?,
+    surfaceSourceIdentityKey: String?,
+    currentAttemptToken: Long,
+    surfaceAttemptToken: Long,
+): Boolean =
+    currentSurfaceSourceUrl == surfaceSourceUrl &&
+        currentSourceIdentityKey == surfaceSourceIdentityKey &&
+        currentAttemptToken == surfaceAttemptToken

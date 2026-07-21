@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onSizeChanged
 import com.nuvio.app.features.p2p.P2pStreamingState
@@ -164,8 +165,11 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi() {
             .onSizeChanged { layoutSize = it }
     ) {
         val playerSurfaceSourceUrl = if (isP2pPlaybackActive) p2pResolvedSourceUrl else activeSourceUrl
+        val playerSurfaceSourceIdentityKey = activeSourceIdentityKey
+        val playerSurfaceAttemptToken = activeSourceAttemptToken
         if (playerSurfaceSourceUrl != null) {
-            PlatformPlayerSurface(
+            key(playerSurfaceAttemptToken) {
+                PlatformPlayerSurface(
                 sourceUrl = playerSurfaceSourceUrl,
                 sourceAudioUrl = activeSourceAudioUrl,
                 sourceHeaders = activeSourceHeaders,
@@ -176,9 +180,24 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi() {
                  playWhenReady = shouldPlay,
                  resizeMode = resizeMode,
                  overlayContent = overlayContent,
-                   onControllerReady = { controller ->
-                      playerController = controller
-                      playerControllerSourceUrl = playerSurfaceSourceUrl
+                    onControllerReady = { controller ->
+                        val currentSurfaceSourceUrl = if (activeTorrentInfoHash != null) {
+                            p2pResolvedSourceUrl
+                        } else {
+                            activeSourceUrl
+                        }
+                        if (!isCurrentPlayerSurfaceAttempt(
+                                currentSurfaceSourceUrl = currentSurfaceSourceUrl,
+                                surfaceSourceUrl = playerSurfaceSourceUrl,
+                                currentSourceIdentityKey = activeSourceIdentityKey,
+                                surfaceSourceIdentityKey = playerSurfaceSourceIdentityKey,
+                                currentAttemptToken = activeSourceAttemptToken,
+                                surfaceAttemptToken = playerSurfaceAttemptToken,
+                            )) return@PlatformPlayerSurface
+                        playerController = controller
+                        playerControllerSourceUrl = playerSurfaceSourceUrl
+                        playerControllerSourceIdentityKey = playerSurfaceSourceIdentityKey
+                        playerControllerSourceAttemptToken = playerSurfaceAttemptToken
                      controller.currentVolumeLevel()?.let { level ->
                          volumeLevel = level
                          if (!level.isMuted && level.fraction > 0f) {
@@ -186,14 +205,35 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi() {
                          }
                      }
                   },
-                   onSnapshot = { snapshot ->
-                      if (playerControllerSourceUrl != playerSurfaceSourceUrl) return@PlatformPlayerSurface
-                       publishPlaybackSnapshot(snapshot)
-                       if (snapshot.hasLoadedMedia()) initialLoadCompleted = true
-                       if (snapshot.hasLoadedMedia()) errorMessage = null
-                       if (snapshot.isStartupStalled) {
-                           controlsVisible = !playerControlsLocked
-                           pausedOverlayVisible = false
+                    onSnapshot = { snapshot ->
+                        val currentSurfaceSourceUrl = if (activeTorrentInfoHash != null) {
+                            p2pResolvedSourceUrl
+                        } else {
+                            activeSourceUrl
+                        }
+                        if (
+                            !isCurrentPlayerSurfaceAttempt(
+                                currentSurfaceSourceUrl = currentSurfaceSourceUrl,
+                                surfaceSourceUrl = playerSurfaceSourceUrl,
+                                currentSourceIdentityKey = activeSourceIdentityKey,
+                                surfaceSourceIdentityKey = playerSurfaceSourceIdentityKey,
+                                currentAttemptToken = activeSourceAttemptToken,
+                                surfaceAttemptToken = playerSurfaceAttemptToken,
+                            ) ||
+                            playerControllerSourceUrl != playerSurfaceSourceUrl ||
+                            playerControllerSourceIdentityKey != playerSurfaceSourceIdentityKey ||
+                            playerControllerSourceAttemptToken != playerSurfaceAttemptToken
+                        ) return@PlatformPlayerSurface
+                        publishPlaybackSnapshot(snapshot)
+                        if (snapshot.hasLoadedMedia()) {
+                            initialLoadCompleted = true
+                            markStartupFallbackMediaLoaded()
+                            errorMessage = null
+                        }
+                        if (snapshot.isStartupStalled) {
+                            if (handleStartupFallbackFailure()) return@PlatformPlayerSurface
+                            controlsVisible = !playerControlsLocked
+                            pausedOverlayVisible = false
                        }
                       if (snapshot.isEnded && snapshot.hasLoadedMedia()) {
                          shouldPlay = false
@@ -213,18 +253,41 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi() {
                       pausedOverlayVisible = false
                    },
                   onSurfaceExit = { onPlayerSurfaceExit() },
-                  onError = { message ->
-                     if (playerControllerSourceUrl != playerSurfaceSourceUrl) return@PlatformPlayerSurface
+                   onError = { message ->
+                       val currentSurfaceSourceUrl = if (activeTorrentInfoHash != null) {
+                           p2pResolvedSourceUrl
+                       } else {
+                           activeSourceUrl
+                       }
+                       if (
+                           !isCurrentPlayerSurfaceAttempt(
+                               currentSurfaceSourceUrl = currentSurfaceSourceUrl,
+                               surfaceSourceUrl = playerSurfaceSourceUrl,
+                               currentSourceIdentityKey = activeSourceIdentityKey,
+                               surfaceSourceIdentityKey = playerSurfaceSourceIdentityKey,
+                               currentAttemptToken = activeSourceAttemptToken,
+                               surfaceAttemptToken = playerSurfaceAttemptToken,
+                           ) ||
+                           playerControllerSourceUrl != playerSurfaceSourceUrl ||
+                           playerControllerSourceIdentityKey != playerSurfaceSourceIdentityKey ||
+                           playerControllerSourceAttemptToken != playerSurfaceAttemptToken
+                       ) return@PlatformPlayerSurface
                      if (message != null && tryRefreshCredentialedSourceAfterError(message)) {
-                        return@PlatformPlayerSurface
-                    }
-                    errorMessage = message
-                    if (message != null) {
-                        controlsVisible = !playerControlsLocked
-                        removeFailedStreamFromCache()
-                    }
+                         return@PlatformPlayerSurface
+                     }
+                     if (message != null) {
+                         removeFailedStreamFromCache()
+                     }
+                     if (message != null && handleStartupFallbackFailure()) {
+                         return@PlatformPlayerSurface
+                     }
+                     errorMessage = message
+                     if (message != null) {
+                         controlsVisible = !playerControlsLocked
+                     }
                 },
-            )
+                )
+            }
         }
 
         if (playerSurfaceSourceUrl == null || !platformPlayerSurfaceOwnsOverlay()) {
@@ -238,6 +301,10 @@ internal fun PlayerScreenRuntime.onPlayerSurfaceExit() {
         controlsVisible = false
     }
     pausedOverlayVisible = false
+}
+
+internal fun PlayerScreenRuntime.cancelStartupFallback() {
+    startupFallbackState = startupFallbackState.reduce(StartupFallbackEvent.Cancelled).state
 }
 
 @Composable
@@ -421,9 +488,12 @@ private fun BoxScope.RenderPlaybackOverlays(
              showNextEpisodeCard = false
              nextEpisodeAutoPlaySearching = false
              nextEpisodeAutoPlaySourceName = null
-             nextEpisodeAutoPlayCountdown = null
-         },
-         onRetryStartup = {
+              nextEpisodeAutoPlayCountdown = null
+          },
+         startupFallbackCandidate = pendingStartupFallbackCandidate,
+         onStartupFallbackApproved = { approveStartupFallback() },
+         onStartupFallbackDenied = { denyStartupFallback() },
+          onRetryStartup = {
              errorMessage = null
              playerController?.retry()
          },

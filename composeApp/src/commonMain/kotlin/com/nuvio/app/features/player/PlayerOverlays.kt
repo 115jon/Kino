@@ -78,6 +78,10 @@ import nuvio.composeapp.generated.resources.compose_player_episode_code_full
 import nuvio.composeapp.generated.resources.compose_player_go_back
 import nuvio.composeapp.generated.resources.compose_player_playback_error
 import nuvio.composeapp.generated.resources.compose_player_playback_stalled
+import nuvio.composeapp.generated.resources.compose_player_startup_fallback_keep_current
+import nuvio.composeapp.generated.resources.compose_player_startup_fallback_message
+import nuvio.composeapp.generated.resources.compose_player_startup_fallback_title
+import nuvio.composeapp.generated.resources.compose_player_startup_fallback_use_source
 import nuvio.composeapp.generated.resources.action_retry
 import nuvio.composeapp.generated.resources.compose_player_youre_watching
 import org.jetbrains.compose.resources.StringResource
@@ -627,6 +631,78 @@ internal fun StartupStalledOverlay(
                 ) {
                     Text(
                         text = stringResource(Res.string.compose_player_go_back),
+                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
+                        style = MaterialTheme.nuvioTypeScale.bodyLg.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+internal fun StartupFallbackConsentOverlay(
+    candidate: StartupFallbackCandidate,
+    onApprove: () -> Unit,
+    onDeny: () -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.82f)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Text(
+                text = stringResource(Res.string.compose_player_startup_fallback_title),
+                style = MaterialTheme.nuvioTypeScale.displaySm.copy(fontWeight = FontWeight.Bold),
+                color = Color.White,
+                textAlign = TextAlign.Center,
+            )
+            Text(
+                text = stringResource(
+                    Res.string.compose_player_startup_fallback_message,
+                    candidate.stream.streamLabel,
+                ),
+                style = MaterialTheme.nuvioTypeScale.bodyLg.copy(lineHeight = 24.sp),
+                color = Color.White.copy(alpha = 0.72f),
+                textAlign = TextAlign.Center,
+                maxLines = 4,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Surface(
+                    modifier = Modifier
+                        .widthIn(min = 140.dp, max = 220.dp)
+                        .clickable(onClick = onApprove),
+                    color = MaterialTheme.colorScheme.primary,
+                    shape = RoundedCornerShape(12.dp),
+                ) {
+                    Text(
+                        text = stringResource(Res.string.compose_player_startup_fallback_use_source),
+                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
+                        style = MaterialTheme.nuvioTypeScale.bodyLg.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.onPrimary,
+                        textAlign = TextAlign.Center,
+                    )
+                }
+                Surface(
+                    modifier = Modifier
+                        .widthIn(min = 140.dp, max = 220.dp)
+                        .clickable(onClick = onDeny),
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    shape = RoundedCornerShape(12.dp),
+                ) {
+                    Text(
+                        text = stringResource(Res.string.compose_player_startup_fallback_keep_current),
                         modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
                         style = MaterialTheme.nuvioTypeScale.bodyLg.copy(fontWeight = FontWeight.Bold),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,

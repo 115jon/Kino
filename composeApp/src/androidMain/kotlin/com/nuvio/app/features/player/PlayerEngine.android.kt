@@ -166,6 +166,8 @@ actual fun PlatformPlayerSurface(
 
 internal actual fun platformPlayerSurfaceOwnsOverlay(): Boolean = false
 
+internal actual val supportsValidatedStartupFallback: Boolean = false
+
 private enum class ResolvedAndroidPlaybackEngine {
     ExoPlayer,
     Libmpv,

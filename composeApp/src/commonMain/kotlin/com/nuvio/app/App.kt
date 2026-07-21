@@ -216,6 +216,7 @@ import com.nuvio.app.features.streams.StreamsRepository
 import com.nuvio.app.features.streams.StreamsScreen
 import com.nuvio.app.features.tmdb.TmdbService
 import com.nuvio.app.features.player.PlayerSettingsRepository
+import com.nuvio.app.features.player.startupFallbackCandidates
 import com.nuvio.app.features.trakt.TraktAuthRepository
 import com.nuvio.app.features.trakt.TraktListTab
 import com.nuvio.app.features.trakt.TraktScrobbleRepository
@@ -2593,6 +2594,9 @@ private fun MainAppContent(
                             sourceUrl = sourceUrl,
                             sourceHeaders = sanitizePlaybackHeaders(stream.behaviorHints.proxyHeaders?.request),
                             sourceResponseHeaders = sanitizePlaybackResponseHeaders(stream.behaviorHints.proxyHeaders?.response),
+                            startupFallbackCandidates = startupFallbackCandidates(
+                                listOf(stream) + streamsUiState.autoPlayCandidates,
+                            ),
                             externalSubtitles = stream.externalSubtitles,
                             streamType = stream.streamType,
                             logo = launch.logo,
@@ -2887,6 +2891,7 @@ private fun MainAppContent(
                         sourceAudioUrl = launch.sourceAudioUrl,
                         sourceHeaders = launch.sourceHeaders,
                         sourceResponseHeaders = launch.sourceResponseHeaders,
+                        startupFallbackCandidates = launch.startupFallbackCandidates,
                         externalSubtitles = launch.externalSubtitles,
                         streamType = launch.streamType,
                         logo = launch.logo,
