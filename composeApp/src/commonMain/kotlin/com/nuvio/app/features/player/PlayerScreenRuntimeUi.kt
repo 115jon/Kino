@@ -329,7 +329,10 @@ private fun PlayerScreenRuntime.RenderPlayerControls(isEpisode: Boolean) {
             metrics = metrics,
             resizeMode = resizeMode,
             isLocked = playerControlsLocked,
-            showPlaybackControls = controlsVisible,
+             showPlaybackControls = shouldRenderPlayerPlaybackControls(
+                 controlsVisible = controlsVisible,
+                 showParentalGuide = showParentalGuide,
+             ),
             onLockToggle = {
                 if (playerControlsLocked) unlockPlayerControls() else lockPlayerControls()
             },
