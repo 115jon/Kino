@@ -85,4 +85,4 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add release/versions/desktop.properties
           git commit -m "chore(release): sync desktop version code"
-          git -c http.extraheader="AUTHORIZATION: bearer $RELEASE_TOKEN" push origin "HEAD:$RELEASE_BRANCH"
+          git push origin "HEAD:$RELEASE_BRANCH"
