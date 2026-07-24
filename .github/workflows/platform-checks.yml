@@ -121,6 +121,10 @@ jobs:
         shell: pwsh
         run: '[System.IO.File]::WriteAllText("local.properties", "")'
 
+      - name: Initialize MSVC environment
+        shell: pwsh
+        run: .\desktop\scripts\initialize-msvc-environment.ps1
+
       - name: Validate Windows desktop compilation and tests
         shell: pwsh
         run: .\gradlew.bat --no-daemon '-Pkino.release.platform=desktop' :composeApp:compileKotlinDesktop :composeApp:desktopTest
