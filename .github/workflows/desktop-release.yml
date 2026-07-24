@@ -65,7 +65,7 @@ jobs:
 
       - name: Validate Windows desktop compilation and tests
         shell: pwsh
-        run: .\gradlew.bat --no-daemon -Pkino.release.platform=desktop :composeApp:compileKotlinDesktop :composeApp:desktopTest
+        run: .\gradlew.bat --no-daemon '-Pkino.release.platform=desktop' :composeApp:compileKotlinDesktop :composeApp:desktopTest
 
       - name: Build installer
         shell: pwsh
