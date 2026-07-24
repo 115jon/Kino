@@ -43,19 +43,22 @@ jobs:
 
       - name: Read release PR branch
         id: release-pr
-        if: steps.release.outputs.prs_created == 'true'
         env:
-          RELEASE_PR: ${{ steps.release.outputs.pr }}
-        run: node -e 'const pr = JSON.parse(process.env.RELEASE_PR); console.log(`branch=${pr.headBranchName}`)' >> "$GITHUB_OUTPUT"
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+        run: |
+          branch=$(gh pr list --repo "$GITHUB_REPOSITORY" --base desktop --head release-please--branches--desktop--components--desktop --state open --json headRefName --jq '.[0].headRefName')
+          if [ -n "$branch" ]; then
+            echo "branch=$branch" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Set up Node
-        if: steps.release.outputs.prs_created == 'true'
+        if: steps.release-pr.outputs.branch != ''
         uses: actions/setup-node@v4
         with:
           node-version: '22'
 
       - name: Check out the release PR branch
-        if: steps.release.outputs.prs_created == 'true'
+        if: steps.release-pr.outputs.branch != ''
         env:
           RELEASE_BRANCH: ${{ steps.release-pr.outputs.branch }}
           RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
@@ -66,11 +69,11 @@ jobs:
           git checkout -B "$RELEASE_BRANCH" "origin/$RELEASE_BRANCH"
 
       - name: Synchronize desktop version code
-        if: steps.release.outputs.prs_created == 'true'
+        if: steps.release-pr.outputs.branch != ''
         run: node "$RUNNER_TEMP/kino-release-tools/sync-release-version.mjs" --platform=desktop --base-ref=origin/desktop
 
       - name: Push synchronized version code
-        if: steps.release.outputs.prs_created == 'true'
+        if: steps.release-pr.outputs.branch != ''
         env:
           RELEASE_BRANCH: ${{ steps.release-pr.outputs.branch }}
           RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
