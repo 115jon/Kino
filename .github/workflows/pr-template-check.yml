@@ -9,6 +9,7 @@ permissions:
 
 jobs:
   validate_pr_body:
+    if: ${{ !startsWith(github.event.pull_request.head.ref, 'release-please--') }}
     runs-on: ubuntu-latest
     steps:
       - name: Validate required PR sections
