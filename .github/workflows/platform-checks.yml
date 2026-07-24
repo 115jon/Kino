@@ -110,6 +110,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -136,6 +138,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Node
         uses: actions/setup-node@v4
@@ -144,3 +148,11 @@ jobs:
 
       - name: Validate release scripts
         run: node --test scripts/versioning.test.mjs
+
+      - name: Validate monotonic release state
+        env:
+          BASELINE_REF: ${{ github.event.pull_request.base.sha }}
+        run: |
+          node scripts/verify-release-state.mjs --platform=android --baseline-ref="$BASELINE_REF"
+          node scripts/verify-release-state.mjs --platform=desktop --baseline-ref="$BASELINE_REF"
+          node scripts/verify-release-state.mjs --platform=ios --baseline-ref="$BASELINE_REF"

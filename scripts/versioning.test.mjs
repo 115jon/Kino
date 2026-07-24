@@ -6,6 +6,8 @@ import {
   determineBump,
   getPlatformTag,
   incrementVersion,
+  isReleaseStateAtLeast,
+  synchronizeReleaseState,
 } from "./versioning.mjs";
 import { createReleaseManifest } from "./release-manifest.mjs";
 
@@ -60,6 +62,25 @@ test("compares semantic versions including prereleases", () => {
   assert.equal(compareVersions("0.3.0", "0.2.99"), 1);
   assert.equal(compareVersions("0.3.0-beta.2", "0.3.0-beta.10"), -1);
   assert.equal(compareVersions("0.3.0", "0.3.0-rc.1"), 1);
+});
+
+test("keeps release versions monotonic across upstream synchronization", () => {
+  assert.equal(isReleaseStateAtLeast({ version: "0.2.24", build: 96 }, { version: "0.2.24", build: 96 }), true);
+  assert.equal(isReleaseStateAtLeast({ version: "0.2.24", build: 95 }, { version: "0.2.24", build: 96 }), false);
+  assert.equal(isReleaseStateAtLeast({ version: "0.2.25", build: 97 }, { version: "0.2.24", build: 96 }), true);
+  assert.equal(isReleaseStateAtLeast({ version: "0.2.25", build: 1 }, { version: "0.2.24", build: 96 }), false);
+  assert.equal(isReleaseStateAtLeast({ version: "0.2.23", build: 97 }, { version: "0.2.24", build: 96 }), false);
+});
+
+test("increments the build code when Release Please already updated the version name", () => {
+  assert.deepEqual(
+    synchronizeReleaseState(
+      { version: "0.2.25", build: 96 },
+      "0.2.25",
+      { version: "0.2.24", build: 96 },
+    ),
+    { version: "0.2.25", build: 97 },
+  );
 });
 
 test("creates a platform-specific release manifest", () => {

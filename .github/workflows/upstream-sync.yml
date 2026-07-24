@@ -18,11 +18,19 @@ jobs:
         with:
           ref: desktop
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
           node-version: '22'
+
+      - name: Preserve trusted release verifier
+        run: |
+          mkdir -p "$RUNNER_TEMP/kino-release-tools"
+          git show HEAD:scripts/versioning.mjs > "$RUNNER_TEMP/kino-release-tools/versioning.mjs"
+          git show HEAD:scripts/verify-release-state.mjs > "$RUNNER_TEMP/kino-release-tools/verify-release-state.mjs"
+          git rev-parse HEAD > "$RUNNER_TEMP/kino-release-tools/baseline-sha"
 
       - name: Fetch upstream
         run: |
@@ -39,11 +47,15 @@ jobs:
             exit 0
           fi
           git merge --no-edit upstream/cmp-rewrite
-          node scripts/verify-release-state.mjs --platform=android
-          node scripts/verify-release-state.mjs --platform=desktop
-          git push origin "$branch"
+          baseline_sha=$(cat "$RUNNER_TEMP/kino-release-tools/baseline-sha")
+          node "$RUNNER_TEMP/kino-release-tools/verify-release-state.mjs" --platform=android --baseline-ref="$baseline_sha"
+          node "$RUNNER_TEMP/kino-release-tools/verify-release-state.mjs" --platform=desktop --baseline-ref="$baseline_sha"
+          node "$RUNNER_TEMP/kino-release-tools/verify-release-state.mjs" --platform=ios --baseline-ref="$baseline_sha"
+          git -c http.extraheader="AUTHORIZATION: bearer $GH_TOKEN" push origin "$branch"
           echo "branch=$branch" >> "$GITHUB_OUTPUT"
           echo "changed=true" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ github.token }}
 
       - name: Open synchronization pull request
         if: steps.sync.outputs.changed == 'true'

@@ -1,0 +1,81 @@
+name: Release Please
+
+on:
+  push:
+    branches:
+      - desktop
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out trusted desktop release tools
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: desktop
+
+      - name: Preserve trusted release tools
+        run: |
+          mkdir -p "$RUNNER_TEMP/kino-release-tools"
+          git show HEAD:scripts/versioning.mjs > "$RUNNER_TEMP/kino-release-tools/versioning.mjs"
+          git show HEAD:scripts/sync-release-version.mjs > "$RUNNER_TEMP/kino-release-tools/sync-release-version.mjs"
+
+      - name: Require release token
+        env:
+          RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+        run: |
+          if [ -z "$RELEASE_TOKEN" ]; then
+            echo "RELEASE_TOKEN is required so release tags and PR checks trigger normally."
+            exit 1
+          fi
+
+      - name: Run Release Please
+        id: release
+        uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071
+        with:
+          token: ${{ secrets.RELEASE_TOKEN }}
+          target-branch: desktop
+          config-file: .github/release-please/desktop-config.json
+          manifest-file: .github/release-please/desktop-manifest.json
+
+      - name: Set up Node
+        if: steps.release.outputs.prs_created == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Check out the release PR branch
+        if: steps.release.outputs.prs_created == 'true'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ fromJSON(steps.release.outputs.pr).headBranchName }}
+          token: ${{ secrets.RELEASE_TOKEN }}
+          persist-credentials: false
+
+      - name: Synchronize desktop version code
+        if: steps.release.outputs.prs_created == 'true'
+        run: node "$RUNNER_TEMP/kino-release-tools/sync-release-version.mjs" --platform=desktop --base-ref=origin/desktop
+
+      - name: Push synchronized version code
+        if: steps.release.outputs.prs_created == 'true'
+        env:
+          RELEASE_BRANCH: ${{ fromJSON(steps.release.outputs.pr).headBranchName }}
+          RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+        run: |
+          if git diff --quiet -- release/versions/desktop.properties; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add release/versions/desktop.properties
+          git commit -m "chore(release): sync desktop version code"
+          git -c http.extraheader="AUTHORIZATION: bearer $RELEASE_TOKEN" push origin "HEAD:$RELEASE_BRANCH"
