@@ -13,6 +13,11 @@ data class AudioTrack(
     val id: String,
     val label: String,
     val language: String? = null,
+    val codec: String? = null,
+    val sampleRate: Int? = null,
+    val channelCount: Int? = null,
+    val channelLayout: String? = null,
+    val bitrate: Long? = null,
     val isSelected: Boolean = false,
 )
 
@@ -59,7 +64,7 @@ data class SubtitleStyleState(
     val outlineWidth: Int = 2,
     val bold: Boolean = false,
     val fontSizeSp: Int = 18,
-    val bottomOffset: Int = 20,
+    val bottomOffset: Int = 10,
     val useForcedSubtitles: Boolean = false,
     val showOnlyPreferredLanguages: Boolean = false,
 ) {

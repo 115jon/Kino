@@ -97,33 +97,57 @@ interface PlayerEngineController {
     fun switchSource(url: String, audioUrl: String?, headersJson: String?) {}
 }
 
-internal fun sanitizePlaybackHeaders(headers: Map<String, String>?): Map<String, String> {
+internal const val MaxPlaybackHeaderNameLength = 256
+internal const val MaxPlaybackHeaderValueLength = 8_192
+internal const val MaxPlaybackHeaderCount = 32
+internal const val MaxPlaybackHeaderAggregateLength = 16_384
+
+private fun hasPlaybackHeaderControlCharacter(value: String): Boolean = value.any { character ->
+    character.code < 0x20 || character.code in 0x7F..0x9F
+}
+
+private fun isPlaybackHeaderName(value: String): Boolean =
+    value.length <= MaxPlaybackHeaderNameLength &&
+        value.isNotEmpty() &&
+        value.all { character ->
+            character in 'a'..'z' ||
+                character in 'A'..'Z' ||
+                character in '0'..'9' ||
+                character in "!#$%&'*+-.^_`|~"
+        }
+
+private fun sanitizePlaybackHeaderMap(
+    headers: Map<String, String>?,
+    removeRange: Boolean,
+): Map<String, String> {
     val rawHeaders = headers ?: return emptyMap()
     if (rawHeaders.isEmpty()) return emptyMap()
 
-    val sanitized = LinkedHashMap<String, String>(rawHeaders.size)
+    val sanitized = LinkedHashMap<String, String>(minOf(rawHeaders.size, MaxPlaybackHeaderCount))
+    var aggregateLength = 0
     rawHeaders.forEach { (rawKey, rawValue) ->
+        if (hasPlaybackHeaderControlCharacter(rawKey) || hasPlaybackHeaderControlCharacter(rawValue)) {
+            return@forEach
+        }
         val key = rawKey.trim()
         val value = rawValue.trim()
         if (key.isEmpty() || value.isEmpty()) return@forEach
-        if (key.equals("Range", ignoreCase = true)) return@forEach
+        if (!isPlaybackHeaderName(key) || value.length > MaxPlaybackHeaderValueLength) return@forEach
+        if (removeRange && key.equals("Range", ignoreCase = true)) return@forEach
+        if (sanitized.size >= MaxPlaybackHeaderCount) return@forEach
+        val entryLength = key.length + value.length + 2
+        if (aggregateLength + entryLength > MaxPlaybackHeaderAggregateLength) return@forEach
         sanitized[key] = value
+        aggregateLength += entryLength
     }
     return sanitized
 }
 
-internal fun sanitizePlaybackResponseHeaders(headers: Map<String, String>?): Map<String, String> {
-    val rawHeaders = headers ?: return emptyMap()
-    if (rawHeaders.isEmpty()) return emptyMap()
+internal fun sanitizePlaybackHeaders(headers: Map<String, String>?): Map<String, String> =
+    sanitizePlaybackHeaderMap(headers, removeRange = true)
 
-    val sanitized = LinkedHashMap<String, String>(rawHeaders.size)
-    rawHeaders.forEach { (rawKey, rawValue) ->
-        val key = rawKey.trim()
-        val value = rawValue.trim()
-        if (key.isEmpty() || value.isEmpty()) return@forEach
-        sanitized[key] = value
-    }
-    return sanitized
+internal fun sanitizePlaybackResponseHeaders(headers: Map<String, String>?): Map<String, String> {
+    return sanitizePlaybackHeaderMap(headers, removeRange = false)
 }
 
 @Composable

@@ -9,6 +9,7 @@ internal data class PlayerScreenArgs(
     val sourceAudioUrl: String?,
     val sourceHeaders: Map<String, String>,
     val sourceResponseHeaders: Map<String, String>,
+    val startupFallbackCandidates: List<StartupFallbackCandidate> = emptyList(),
     val streamType: String?,
     val providerName: String,
     val streamTitle: String,

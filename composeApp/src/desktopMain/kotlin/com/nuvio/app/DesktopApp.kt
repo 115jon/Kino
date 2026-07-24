@@ -11,8 +11,12 @@ import nuvio.composeapp.generated.resources.Res
 import nuvio.composeapp.generated.resources.app_logo
 import org.jetbrains.compose.resources.painterResource
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.withContext
 import java.awt.Dimension
 import java.awt.Color as AwtColor
+import java.awt.EventQueue
 
 private val DesktopWindowBackground = AwtColor(0x0C, 0x0C, 0x0C)
 
@@ -33,11 +37,24 @@ private fun configureComposeInterop() {
     )
 }
 
+private fun configureWindowsPresentationCompatibility() {
+    val osName = System.getProperty("os.name")?.lowercase().orEmpty()
+    if (!osName.contains("win")) return
+    if (System.getProperty("skiko.vsync.enabled") == null) {
+        System.setProperty("skiko.vsync.enabled", "true")
+    }
+    if (System.getProperty("skiko.rendering.windows.waitForFrameVsyncOnRedrawImmediately") == null) {
+        System.setProperty("skiko.rendering.windows.waitForFrameVsyncOnRedrawImmediately", "true")
+    }
+}
+
 fun main() {
     configureWindowsAppUserModelId()
+    configureWindowsCaptureCompatibility()
     configureMacOsNativeAppearance()
     System.setProperty("java.net.preferIPv4Stack", "true")
     configureComposeInterop()
+    configureWindowsPresentationCompatibility()
     initializeDesktopAppLogging()
     application {
         val windowState = rememberWindowState(width = 1280.dp, height = 800.dp)
@@ -47,12 +64,33 @@ fun main() {
             title = "Kino",
             icon = painterResource(Res.drawable.app_logo),
         ) {
+            LaunchedEffect(window) {
+                if (!isWindowsPlatform()) return@LaunchedEffect
+                var subscription: AutoCloseable? = null
+                try {
+                    val initialDarkMode = withContext(Dispatchers.IO) { readWindowsDarkMode() }
+                    applyWindowsTitleBarTheme(window, initialDarkMode)
+                    subscription = subscribeToWindowsThemeChanges {
+                        val darkMode = readWindowsDarkMode()
+                        EventQueue.invokeLater {
+                            if (window.isDisplayable) {
+                                applyWindowsTitleBarTheme(window, darkMode)
+                            }
+                        }
+                    }
+                    awaitCancellation()
+                } finally {
+                    subscription?.close()
+                }
+            }
+
             DisposableEffect(window) {
+                val vrrCompatibility = installWindowsVrrCompatibility(window)
                 window.minimumSize = Dimension(960, 640)
                 window.background = DesktopWindowBackground
                 window.contentPane.background = DesktopWindowBackground
                 window.rootPane.background = DesktopWindowBackground
-                onDispose { }
+                onDispose { vrrCompatibility?.close() }
             }
 
             LaunchedEffect(Unit) {

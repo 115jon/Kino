@@ -49,6 +49,7 @@ jobs:
               - 'release/versions/android.properties'
             desktop:
               - 'composeApp/src/desktopMain/**'
+              - 'composeApp/src/desktopTest/**'
               - 'composeApp/src/commonMain/**'
               - 'composeApp/build.gradle.kts'
               - 'desktop/**'
@@ -101,6 +102,32 @@ jobs:
 
       - name: Validate desktop compilation
         run: ./gradlew --no-daemon -Pkino.release.platform=desktop :composeApp:compileKotlinDesktop
+
+  desktop-windows:
+    needs: changes
+    if: needs.changes.outputs.desktop == 'true'
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Configure empty local properties
+        shell: pwsh
+        run: '[System.IO.File]::WriteAllText("local.properties", "")'
+
+      - name: Initialize MSVC environment
+        shell: pwsh
+        run: .\desktop\scripts\initialize-msvc-environment.ps1
+
+      - name: Validate Windows desktop compilation and tests
+        shell: pwsh
+        run: .\gradlew.bat --no-daemon '-Pkino.release.platform=desktop' :composeApp:compileKotlinDesktop :composeApp:desktopTest
 
   versioning:
     needs: changes

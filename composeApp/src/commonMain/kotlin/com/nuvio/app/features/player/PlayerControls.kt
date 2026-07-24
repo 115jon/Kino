@@ -468,8 +468,8 @@ private fun SideControlButton(
     Box(
         modifier = Modifier
             .clip(CircleShape)
-            .clickable(onClick = onClick)
-            .padding(metrics.sideButtonPadding),
+            .padding(metrics.sideButtonPadding)
+            .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         Icon(
@@ -495,8 +495,8 @@ private fun PlayPauseControlButton(
     Box(
         modifier = Modifier
             .clip(CircleShape)
-            .clickable(onClick = onClick)
-            .padding(metrics.playButtonPadding),
+            .padding(metrics.playButtonPadding)
+            .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         if (isBuffering) {
@@ -842,8 +842,8 @@ private fun PlayerActionPillButton(
     Row(
         modifier = Modifier
             .clip(RoundedCornerShape(22.dp))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 12.dp),
+            .padding(horizontal = 12.dp, vertical = 12.dp)
+            .clickable(onClick = onClick),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

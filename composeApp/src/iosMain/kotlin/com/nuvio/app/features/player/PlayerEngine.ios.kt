@@ -406,6 +406,8 @@ actual fun PlatformPlayerSurface(
 
 internal actual fun platformPlayerSurfaceOwnsOverlay(): Boolean = false
 
+internal actual val supportsValidatedStartupFallback: Boolean = false
+
 private fun NuvioPlayerBridge.applyIosVideoOutputSettings(settings: PlayerSettingsUiState) {
     configureAudioOutput(audioOutput = settings.iosAudioOutputMode.mpvValue)
     configureVideoOutput(

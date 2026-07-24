@@ -11,6 +11,12 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
 
+internal const val MaxStreamMetadataListEntries = 64
+internal const val MaxStreamMetadataElementLength = 128
+internal const val MaxStreamEntries = 256
+internal const val MaxStreamIntegerListEntries = 64
+internal const val MaxStreamPayloadLength = 2 * 1024 * 1024
+
 object StreamParser {
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -20,9 +26,10 @@ object StreamParser {
         addonId: String,
         addonLogo: String? = null,
     ): List<StreamItem> {
-        val root = json.parseToJsonElement(payload).jsonObject
+        if (payload.length > MaxStreamPayloadLength) return emptyList()
+        val root = runCatching { json.parseToJsonElement(payload) as? JsonObject }.getOrNull() ?: return emptyList()
         val streamsArray = root["streams"] as? JsonArray ?: return emptyList()
-        return streamsArray.mapNotNull { element ->
+        return streamsArray.take(MaxStreamEntries).mapNotNull { element ->
             val obj = element as? JsonObject ?: return@mapNotNull null
             val url = obj.string("url")
             val infoHash = obj.string("infoHash")
@@ -63,32 +70,39 @@ object StreamParser {
     }
 
     private fun JsonObject.string(name: String): String? =
-        this[name]?.jsonPrimitive?.contentOrNull
+        (this[name] as? JsonPrimitive)?.contentOrNull
 
     private fun JsonObject.int(name: String): Int? =
-        this[name]?.jsonPrimitive?.let { primitive ->
+        (this[name] as? JsonPrimitive)?.let { primitive ->
             primitive.intOrNull ?: primitive.contentOrNull?.toIntOrNull()
         }
 
     private fun JsonObject.long(name: String): Long? =
-        this[name]?.jsonPrimitive?.let { primitive ->
+        (this[name] as? JsonPrimitive)?.let { primitive ->
             primitive.longOrNull ?: primitive.contentOrNull?.toLongOrNull()
         }
 
     private fun JsonObject.boolean(name: String): Boolean? =
-        this[name]?.jsonPrimitive?.booleanOrNull
+        (this[name] as? JsonPrimitive)?.booleanOrNull
 
     private fun JsonObject.objectValue(name: String): JsonObject? =
         this[name] as? JsonObject
 
     private fun JsonObject.stringList(name: String): List<String> =
         (this[name] as? JsonArray)
-            ?.mapNotNull { it.jsonPrimitive.contentOrNull?.takeIf(String::isNotBlank) }
+            ?.take(MaxStreamMetadataListEntries)
+            ?.mapNotNull {
+                (it as? JsonPrimitive)?.contentOrNull
+                    ?.trim()
+                    ?.take(MaxStreamMetadataElementLength)
+                    ?.takeIf(String::isNotBlank)
+            }
             .orEmpty()
 
     private fun JsonObject.intList(name: String): List<Int> =
         (this[name] as? JsonArray)
-            ?.mapNotNull { it.jsonPrimitive.intOrNull }
+            ?.take(MaxStreamIntegerListEntries)
+            ?.mapNotNull { (it as? JsonPrimitive)?.intOrNull }
             .orEmpty()
 
     private fun JsonObject.stringMap(): Map<String, String> =

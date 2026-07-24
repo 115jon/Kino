@@ -41,7 +41,7 @@ fun SubtitleStylePanel(
     selectedAddonSubtitle: AddonSubtitle?,
     subtitleAutoSyncState: SubtitleAutoSyncUiState,
     isCompact: Boolean,
-    onStyleChanged: (SubtitleStyleState) -> Unit,
+    onStyleChanged: ((SubtitleStyleState) -> SubtitleStyleState) -> Unit,
     onSubtitleDelayChanged: (Int) -> Unit,
     onSubtitleDelayReset: () -> Unit,
     onAutoSyncCapture: () -> Unit,
@@ -82,7 +82,7 @@ private fun StyleControlsCard(
     isCompact: Boolean,
     sectionPadding: androidx.compose.ui.unit.Dp,
     colorScheme: androidx.compose.material3.ColorScheme,
-    onStyleChanged: (SubtitleStyleState) -> Unit,
+    onStyleChanged: ((SubtitleStyleState) -> SubtitleStyleState) -> Unit,
     onSubtitleDelayChanged: (Int) -> Unit,
     onSubtitleDelayReset: () -> Unit,
     onAutoSyncCapture: () -> Unit,
@@ -163,10 +163,10 @@ private fun StyleControlsCard(
             StepperControl(
                 value = stringResource(Res.string.compose_player_font_size_value, style.fontSizeSp),
                 onMinus = {
-                    onStyleChanged(style.copy(fontSizeSp = (style.fontSizeSp - 2).coerceAtLeast(12)))
+                    onStyleChanged { current -> current.copy(fontSizeSp = (current.fontSizeSp - 2).coerceAtLeast(12)) }
                 },
                 onPlus = {
-                    onStyleChanged(style.copy(fontSizeSp = (style.fontSizeSp + 2).coerceAtMost(40)))
+                    onStyleChanged { current -> current.copy(fontSizeSp = (current.fontSizeSp + 2).coerceAtMost(40)) }
                 },
                 buttonSize = btnSize,
                 buttonRadius = btnRadius,
@@ -195,7 +195,7 @@ private fun StyleControlsCard(
                         else colorScheme.surface.copy(alpha = 0.8f)
                     )
                     .border(1.dp, colorScheme.outlineVariant.copy(alpha = 0.8f), RoundedCornerShape(10.dp))
-                    .clickable { onStyleChanged(style.copy(outlineEnabled = !style.outlineEnabled)) }
+                    .clickable { onStyleChanged { current -> current.copy(outlineEnabled = !current.outlineEnabled) } }
                     .padding(horizontal = 10.dp, vertical = 8.dp),
             ) {
                 Text(
@@ -211,7 +211,7 @@ private fun StyleControlsCard(
         ToggleRow(
             label = stringResource(Res.string.compose_player_bold),
             enabled = style.bold,
-            onToggle = { onStyleChanged(style.copy(bold = !style.bold)) },
+            onToggle = { onStyleChanged { current -> current.copy(bold = !current.bold) } },
         )
 
         Row(
@@ -227,8 +227,8 @@ private fun StyleControlsCard(
             )
             StepperControl(
                 value = style.bottomOffset.toString(),
-                onMinus = { onStyleChanged(style.copy(bottomOffset = (style.bottomOffset - 5).coerceAtLeast(0))) },
-                onPlus = { onStyleChanged(style.copy(bottomOffset = (style.bottomOffset + 5).coerceAtMost(200))) },
+                onMinus = { onStyleChanged { current -> current.copy(bottomOffset = (current.bottomOffset - 5).coerceAtLeast(0)) } },
+                onPlus = { onStyleChanged { current -> current.copy(bottomOffset = (current.bottomOffset + 5).coerceAtMost(200)) } },
                 buttonSize = btnSize,
                 buttonRadius = btnRadius,
                 minWidth = 46.dp,
@@ -241,7 +241,7 @@ private fun StyleControlsCard(
             label = stringResource(Res.string.compose_player_color),
             colors = SubtitleColorSwatches,
             selectedColor = style.textColor,
-            onColorSelected = { onStyleChanged(style.copy(textColor = it)) },
+            onColorSelected = { color -> onStyleChanged { current -> current.copy(textColor = color) } },
         )
 
         Row(
@@ -259,12 +259,18 @@ private fun StyleControlsCard(
             StepperControl(
                 value = "$currentAlphaPercent%",
                 onMinus = {
-                    val newAlpha = (currentAlphaPercent - 10).coerceAtLeast(0) / 100f
-                    onStyleChanged(style.copy(textColor = style.textColor.copy(alpha = newAlpha)))
+                    onStyleChanged { current ->
+                        val currentAlpha = (current.textColor.alpha * 100f).roundToInt().coerceIn(0, 100)
+                        val newAlpha = (currentAlpha - 10).coerceAtLeast(0) / 100f
+                        current.copy(textColor = current.textColor.copy(alpha = newAlpha))
+                    }
                 },
                 onPlus = {
-                    val newAlpha = (currentAlphaPercent + 10).coerceAtMost(100) / 100f
-                    onStyleChanged(style.copy(textColor = style.textColor.copy(alpha = newAlpha)))
+                    onStyleChanged { current ->
+                        val currentAlpha = (current.textColor.alpha * 100f).roundToInt().coerceIn(0, 100)
+                        val newAlpha = (currentAlpha + 10).coerceAtMost(100) / 100f
+                        current.copy(textColor = current.textColor.copy(alpha = newAlpha))
+                    }
                 },
                 buttonSize = btnSize,
                 buttonRadius = btnRadius,
@@ -276,7 +282,7 @@ private fun StyleControlsCard(
             label = stringResource(Res.string.compose_player_outline_color),
             colors = SubtitleColorSwatches,
             selectedColor = style.outlineColor,
-            onColorSelected = { onStyleChanged(style.copy(outlineColor = it)) },
+            onColorSelected = { color -> onStyleChanged { current -> current.copy(outlineColor = color) } },
         )
 
         Row(
@@ -288,7 +294,7 @@ private fun StyleControlsCard(
                     .clip(RoundedCornerShape(8.dp))
                     .background(colorScheme.surface.copy(alpha = 0.82f))
                     .border(1.dp, colorScheme.outlineVariant.copy(alpha = 0.8f), RoundedCornerShape(8.dp))
-                    .clickable { onStyleChanged(SubtitleStyleState.DEFAULT) }
+                    .clickable { onStyleChanged { SubtitleStyleState.DEFAULT } }
                     .padding(horizontal = if (isCompact) 8.dp else 12.dp, vertical = if (isCompact) 6.dp else 8.dp),
             ) {
                 Text(

@@ -245,4 +245,105 @@ class StreamParserTest {
 
         assertEquals(null, streams.single().streamType)
     }
+
+    @Test
+    fun `parse keeps structured audio metadata and drops empty values`() {
+        val streams = StreamParser.parse(
+            payload =
+                """
+                {
+                  "streams": [
+                    {
+                      "url": "https://example.com/video.mkv",
+                      "clientResolve": {
+                        "stream": {
+                          "raw": {
+                            "parsed": {
+                              "resolution": "2160p",
+                              "quality": "REMUX",
+                              "codec": "hevc",
+                              "audio": ["Atmos", ""],
+                              "channels": ["7.1", "   "]
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+                """.trimIndent(),
+            addonName = "Addon",
+            addonId = "addon.id",
+        )
+
+        val parsed = streams.single().clientResolve?.stream?.raw?.parsed
+        assertNotNull(parsed)
+        assertEquals("2160p", parsed.resolution)
+        assertEquals("REMUX", parsed.quality)
+        assertEquals("hevc", parsed.codec)
+        assertEquals(listOf("Atmos"), parsed.audio)
+        assertEquals(listOf("7.1"), parsed.channels)
+    }
+
+    @Test
+    fun `parse bounds structured audio metadata collections and values`() {
+        val oversizedValue = "x".repeat(MaxStreamMetadataElementLength + 32)
+        val audioValues = (0 until MaxStreamMetadataListEntries + 12)
+            .joinToString(",") { "\"$oversizedValue\"" }
+        val streams = StreamParser.parse(
+            payload =
+                """
+                {
+                  "streams": [
+                    {
+                      "url": "https://example.com/video.mkv",
+                      "clientResolve": {
+                        "stream": {
+                          "raw": {
+                            "parsed": {
+                              "audio": [$audioValues]
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+                """.trimIndent(),
+            addonName = "Addon",
+            addonId = "addon.id",
+        )
+
+        val audio = streams.single().clientResolve?.stream?.raw?.parsed?.audio.orEmpty()
+        assertEquals(MaxStreamMetadataListEntries, audio.size)
+        assertTrue(audio.all { it.length == MaxStreamMetadataElementLength })
+    }
+
+    @Test
+    fun `parse bounds stream and integer metadata collections`() {
+        val streamEntries = (0 until MaxStreamEntries + 12)
+            .joinToString(",") { "{\"url\":\"https://example.com/$it.mkv\"}" }
+        val episodeEntries = (0 until MaxStreamIntegerListEntries + 12).joinToString(",")
+        val streams = StreamParser.parse(
+            payload =
+                """
+                {
+                  "streams": [$streamEntries],
+                  "clientResolve": {
+                    "stream": {
+                      "raw": {
+                        "parsed": {
+                          "episodes": [$episodeEntries]
+                        }
+                      }
+                    }
+                  }
+                }
+                """.trimIndent(),
+            addonName = "Addon",
+            addonId = "addon.id",
+        )
+
+        assertEquals(MaxStreamEntries, streams.size)
+    }
 }

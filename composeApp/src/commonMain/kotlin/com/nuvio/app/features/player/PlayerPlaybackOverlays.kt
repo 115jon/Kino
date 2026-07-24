@@ -64,6 +64,9 @@ internal fun BoxScope.PlayerPlaybackOverlays(
     nextEpisodeAutoPlayCountdown: Int?,
     onPlayNextEpisode: () -> Unit,
     onDismissNextEpisode: () -> Unit,
+    startupFallbackCandidate: StartupFallbackCandidate?,
+    onStartupFallbackApproved: () -> Unit,
+    onStartupFallbackDenied: () -> Unit,
     onRetryStartup: () -> Unit,
     errorMessage: String?,
     onDismissError: () -> Unit,
@@ -99,10 +102,18 @@ internal fun BoxScope.PlayerPlaybackOverlays(
         )
     }
 
-    if (playbackSnapshot.isStartupStalled && errorMessage == null) {
+    if (playbackSnapshot.isStartupStalled && errorMessage == null && startupFallbackCandidate == null) {
         StartupStalledOverlay(
             onRetry = onRetryStartup,
             onBack = onBackWithProgress,
+        )
+    }
+
+    if (startupFallbackCandidate != null) {
+        StartupFallbackConsentOverlay(
+            candidate = startupFallbackCandidate,
+            onApprove = onStartupFallbackApproved,
+            onDeny = onStartupFallbackDenied,
         )
     }
 
@@ -166,7 +177,7 @@ internal fun BoxScope.PlayerPlaybackOverlays(
         )
     }
 
-    if (errorMessage != null) {
+    if (errorMessage != null && startupFallbackCandidate == null) {
         ErrorModal(
             message = errorMessage,
             onDismiss = onDismissError,

@@ -94,7 +94,18 @@ internal fun StreamItem.playerSourceIdentityKey(): String? {
     }
 
     playableDirectUrl?.trim()?.takeIf { it.isNotBlank() }?.let { url ->
-        return "url:$url"
+        val sourceParts = listOf(
+            addonId,
+            streamLabel,
+            streamSubtitle.orEmpty(),
+            sourceName.orEmpty(),
+            streamType.orEmpty(),
+            behaviorHints.filename.orEmpty(),
+            behaviorHints.videoSize?.toString().orEmpty(),
+            behaviorHints.proxyHeaders?.request.orEmpty().hashCode().toString(),
+            behaviorHints.proxyHeaders?.response.orEmpty().hashCode().toString(),
+        ).joinToString("|")
+        return "url:$url|$sourceParts"
     }
 
     val fallbackParts = listOf(
@@ -156,6 +167,7 @@ internal fun PlayerScreenRuntime.saveP2pStreamForReuse(
 }
 
 internal fun PlayerScreenRuntime.switchToP2pSourceStream(stream: StreamItem) {
+    invalidateStartupFallbackForManualSourceChange()
     val infoHash = stream.p2pInfoHash ?: return
     if (!P2pSettingsRepository.isVisible) return
     if (!P2pSettingsRepository.uiState.value.p2pEnabled) {
@@ -163,6 +175,7 @@ internal fun PlayerScreenRuntime.switchToP2pSourceStream(stream: StreamItem) {
         return
     }
     val currentPositionMs = latestPlaybackSnapshot.positionMs.coerceAtLeast(0L)
+    beginSourceAttempt()
     flushWatchProgress()
     stopActiveP2pStream()
     saveP2pStreamForReuse(
@@ -197,6 +210,7 @@ internal fun PlayerScreenRuntime.switchToP2pEpisodeStream(
     episode: MetaVideo,
     isAutoPlay: Boolean = false,
 ) {
+    invalidateStartupFallbackForManualSourceChange()
     val infoHash = stream.p2pInfoHash ?: return
     if (!P2pSettingsRepository.isVisible) return
     if (!P2pSettingsRepository.uiState.value.p2pEnabled) {
@@ -204,6 +218,7 @@ internal fun PlayerScreenRuntime.switchToP2pEpisodeStream(
         return
     }
     resetEpisodePanelAndNextEpisodeState()
+    beginSourceAttempt()
     flushWatchProgress()
     stopActiveP2pStream()
     val epVideoId = episode.id
@@ -226,7 +241,13 @@ internal fun PlayerScreenRuntime.switchToP2pEpisodeStream(
     applyEpisodeStreamMetadata(stream, episode, resume)
 }
 
-internal fun PlayerScreenRuntime.switchToSource(stream: StreamItem) {
+internal fun PlayerScreenRuntime.switchToSource(
+    stream: StreamItem,
+    isStartupFallback: Boolean = false,
+) {
+    if (!isStartupFallback) {
+        invalidateStartupFallbackForManualSourceChange()
+    }
     if (
         resolveDebridForPlayer(
             stream = stream,
@@ -254,11 +275,8 @@ internal fun PlayerScreenRuntime.switchToSource(stream: StreamItem) {
     if (openExternalSourceUrl(stream)) return
     val url = stream.playableDirectUrl ?: return
     val sourceIdentityKey = stream.playerSourceIdentityKey()
-    if (url == activeSourceUrl) {
-        activeSourceIdentityKey = sourceIdentityKey ?: activeSourceIdentityKey
-        return
-    }
     val currentPositionMs = latestPlaybackSnapshot.positionMs.coerceAtLeast(0L)
+    beginSourceAttempt()
     flushWatchProgress()
     stopActiveP2pStream()
     val currentVideoId = activeVideoId
@@ -283,6 +301,7 @@ internal fun PlayerScreenRuntime.switchToSource(stream: StreamItem) {
 }
 
 internal fun PlayerScreenRuntime.switchToEpisodeStream(stream: StreamItem, episode: MetaVideo) {
+    invalidateStartupFallbackForManualSourceChange()
     if (
         resolveDebridForPlayer(
             stream = stream,
@@ -306,6 +325,7 @@ internal fun PlayerScreenRuntime.switchToEpisodeStream(stream: StreamItem, episo
     }
     if (openExternalSourceUrl(stream)) return
     val url = stream.playableDirectUrl ?: return
+    beginSourceAttempt()
     resetEpisodePanelAndNextEpisodeState()
     flushWatchProgress()
     stopActiveP2pStream()
@@ -323,7 +343,9 @@ internal fun PlayerScreenRuntime.switchToEpisodeStream(stream: StreamItem, episo
 }
 
 internal fun PlayerScreenRuntime.switchToDownloadedEpisode(downloadItem: DownloadItem, episode: MetaVideo) {
+    invalidateStartupFallbackForManualSourceChange()
     val localFileUri = DownloadsRepository.playableLocalFileUri(downloadItem) ?: return
+    beginSourceAttempt()
     resetEpisodePanelAndNextEpisodeState()
     flushWatchProgress()
     stopActiveP2pStream()
@@ -368,6 +390,10 @@ internal fun PlayerScreenRuntime.switchToDownloadedEpisode(downloadItem: Downloa
     activeInitialPositionMs = epResumePositionMs
     activeInitialProgressFraction = epResumeFraction
     controlsVisible = true
+}
+
+internal fun PlayerScreenRuntime.beginSourceAttempt() {
+    activeSourceAttemptToken += 1L
 }
 
 internal fun PlayerScreenRuntime.playNextEpisode() {

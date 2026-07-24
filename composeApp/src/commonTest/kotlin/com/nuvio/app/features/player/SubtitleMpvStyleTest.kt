@@ -22,4 +22,19 @@ class SubtitleMpvStyleTest {
         assertEquals("80", style.toMpvPosition())
         assertEquals("3.0", style.toMpvOutlineSize())
     }
+
+    @Test
+    fun `desktop mpv style mapping preserves subtitle opacity`() {
+        assertEquals("#00000000", Color.Transparent.toMpvArgbColor())
+        assertEquals("#808000FF", Color(0x808000FF).toMpvArgbColor())
+        assertEquals("#FFFFFFFF", Color.White.toMpvArgbColor())
+    }
+
+    @Test
+    fun `desktop mpv subtitle position clamps offset and defaults lower`() {
+        assertEquals(10, SubtitleStyleState.DEFAULT.bottomOffset)
+        assertEquals("100", SubtitleStyleState(bottomOffset = -20).toMpvPosition())
+        assertEquals("90", SubtitleStyleState.DEFAULT.toMpvPosition())
+        assertEquals("0", SubtitleStyleState(bottomOffset = 140).toMpvPosition())
+    }
 }

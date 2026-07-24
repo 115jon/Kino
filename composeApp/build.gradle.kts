@@ -235,6 +235,7 @@ abstract class CompileWindowsMediaSessionTask : DefaultTask() {
                 "/EHsc",
                 "/std:c++17",
                 "/DWIN32_LEAN_AND_MEAN",
+                "/D_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS",
                 "/Fo${output.parentFile.resolve("kino-media-session.obj").absolutePath}",
                 "/I${sdkVersion.resolve("cppwinrt")}",
                 "/I${sdkVersion.resolve("shared")}",

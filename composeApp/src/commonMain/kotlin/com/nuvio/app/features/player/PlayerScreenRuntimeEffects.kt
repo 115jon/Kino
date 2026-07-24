@@ -52,10 +52,19 @@ internal fun PlayerScreenRuntime.BindPlayerRuntimeEffects() {
         }
     }
 
-    LaunchedEffect(activeSourceUrl, activeSourceAudioUrl, activeSourceHeaders, activeSourceResponseHeaders) {
+    LaunchedEffect(
+        activeSourceUrl,
+        activeSourceAudioUrl,
+        activeSourceHeaders,
+        activeSourceResponseHeaders,
+        activeSourceIdentityKey,
+        activeSourceAttemptToken,
+    ) {
         errorMessage = null
         playerController = null
         playerControllerSourceUrl = null
+        playerControllerSourceIdentityKey = null
+        playerControllerSourceAttemptToken = null
         resetPlaybackSnapshotState()
         isScrubbingTimeline = false
         liveGestureFeedback = null
@@ -82,6 +91,10 @@ internal fun PlayerScreenRuntime.BindPlayerRuntimeEffects() {
         PlayerStreamsRepository.clearEpisodeStreams()
         SubtitleRepository.clear()
         WatchProgressRepository.ensureLoaded()
+    }
+
+    DisposableEffect(Unit) {
+        onDispose { cancelStartupFallback() }
     }
 
     LaunchedEffect(
@@ -185,7 +198,11 @@ internal fun PlayerScreenRuntime.BindPlayerRuntimeEffects() {
         background,
     ) {
         val controller = playerController ?: return@LaunchedEffect
-        if (playerControllerSourceUrl != activeSourceUrl) return@LaunchedEffect
+        if (
+            playerControllerSourceUrl != activeSourceUrl ||
+            playerControllerSourceIdentityKey != activeSourceIdentityKey ||
+            playerControllerSourceAttemptToken != activeSourceAttemptToken
+        ) return@LaunchedEffect
         controller.updateNowPlayingMetadata(buildNowPlayingInfo())
     }
 
@@ -237,7 +254,11 @@ internal fun PlayerScreenRuntime.BindPlayerRuntimeEffects() {
         initialSeekApplied,
     ) {
         val controller = playerController ?: return@LaunchedEffect
-        if (playerControllerSourceUrl != activeSourceUrl) return@LaunchedEffect
+        if (
+            playerControllerSourceUrl != activeSourceUrl ||
+            playerControllerSourceIdentityKey != activeSourceIdentityKey ||
+            playerControllerSourceAttemptToken != activeSourceAttemptToken
+        ) return@LaunchedEffect
         if (initialSeekApplied || playbackSnapshot.isLoading) return@LaunchedEffect
 
         val progressFraction = activeInitialProgressFraction
@@ -296,7 +317,9 @@ private fun PlayerScreenRuntime.BindPlayerUiVisibilityEffects() {
         playbackSnapshot.isLoading,
         showParentalGuide,
         errorMessage,
+        isDesktopLayout,
     ) {
+        if (isDesktopLayout) return@LaunchedEffect
         if (
             !controlsVisible ||
             isScrubbingTimeline ||
