@@ -15,18 +15,13 @@ jobs:
   release-please:
     runs-on: ubuntu-latest
     steps:
-      - name: Check out trusted desktop release tools
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-          ref: desktop
-
       - name: Preserve trusted release tools
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
         run: |
           mkdir -p "$RUNNER_TEMP/kino-release-tools"
-          git show HEAD:scripts/versioning.mjs > "$RUNNER_TEMP/kino-release-tools/versioning.mjs"
-          git show HEAD:scripts/sync-release-version.mjs > "$RUNNER_TEMP/kino-release-tools/sync-release-version.mjs"
+          gh api "repos/$GITHUB_REPOSITORY/contents/scripts/versioning.mjs?ref=desktop" --jq .content | tr -d '\n' | base64 --decode > "$RUNNER_TEMP/kino-release-tools/versioning.mjs"
+          gh api "repos/$GITHUB_REPOSITORY/contents/scripts/sync-release-version.mjs?ref=desktop" --jq .content | tr -d '\n' | base64 --decode > "$RUNNER_TEMP/kino-release-tools/sync-release-version.mjs"
 
       - name: Require release token
         env:
@@ -46,6 +41,13 @@ jobs:
           config-file: .github/release-please/desktop-config.json
           manifest-file: .github/release-please/desktop-manifest.json
 
+      - name: Read release PR branch
+        id: release-pr
+        if: steps.release.outputs.prs_created == 'true'
+        env:
+          RELEASE_PR: ${{ steps.release.outputs.pr }}
+        run: node -e 'const pr = JSON.parse(process.env.RELEASE_PR); console.log(`branch=${pr.headBranchName}`)' >> "$GITHUB_OUTPUT"
+
       - name: Set up Node
         if: steps.release.outputs.prs_created == 'true'
         uses: actions/setup-node@v4
@@ -54,12 +56,14 @@ jobs:
 
       - name: Check out the release PR branch
         if: steps.release.outputs.prs_created == 'true'
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          ref: ${{ fromJSON(steps.release.outputs.pr).headBranchName }}
-          token: ${{ secrets.RELEASE_TOKEN }}
-          persist-credentials: false
+        env:
+          RELEASE_BRANCH: ${{ steps.release-pr.outputs.branch }}
+          RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+        run: |
+          git init
+          git remote add origin "https://github.com/$GITHUB_REPOSITORY.git"
+          git -c http.extraheader="AUTHORIZATION: bearer $RELEASE_TOKEN" fetch --no-tags origin "refs/heads/$RELEASE_BRANCH:refs/remotes/origin/$RELEASE_BRANCH" "refs/heads/desktop:refs/remotes/origin/desktop"
+          git checkout -B "$RELEASE_BRANCH" "origin/$RELEASE_BRANCH"
 
       - name: Synchronize desktop version code
         if: steps.release.outputs.prs_created == 'true'
@@ -68,7 +72,7 @@ jobs:
       - name: Push synchronized version code
         if: steps.release.outputs.prs_created == 'true'
         env:
-          RELEASE_BRANCH: ${{ fromJSON(steps.release.outputs.pr).headBranchName }}
+          RELEASE_BRANCH: ${{ steps.release-pr.outputs.branch }}
           RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
         run: |
           if git diff --quiet -- release/versions/desktop.properties; then
