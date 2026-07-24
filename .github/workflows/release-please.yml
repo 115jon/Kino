@@ -61,8 +61,8 @@ jobs:
           RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
         run: |
           git init
-          git remote add origin "https://github.com/$GITHUB_REPOSITORY.git"
-          git -c http.extraheader="AUTHORIZATION: bearer $RELEASE_TOKEN" fetch --no-tags origin "refs/heads/$RELEASE_BRANCH:refs/remotes/origin/$RELEASE_BRANCH" "refs/heads/desktop:refs/remotes/origin/desktop"
+          git remote add origin "https://x-access-token:$RELEASE_TOKEN@github.com/$GITHUB_REPOSITORY.git"
+          git fetch --no-tags origin "refs/heads/$RELEASE_BRANCH:refs/remotes/origin/$RELEASE_BRANCH" "refs/heads/desktop:refs/remotes/origin/desktop"
           git checkout -B "$RELEASE_BRANCH" "origin/$RELEASE_BRANCH"
 
       - name: Synchronize desktop version code
