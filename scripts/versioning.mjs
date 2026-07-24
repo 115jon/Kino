@@ -109,6 +109,23 @@ export function compareVersions(left, right) {
   return 0;
 }
 
+export function isReleaseStateAtLeast(current, baseline) {
+  const versionComparison = compareVersions(current.version, baseline.version);
+  return versionComparison >= 0 && current.build >= baseline.build;
+}
+
+export function synchronizeReleaseState(current, nextVersion, baseline = current) {
+  if (compareVersions(nextVersion, current.version) < 0) {
+    throw new Error(`Release version ${nextVersion} is lower than ${current.version}`);
+  }
+
+  const versionIncreased = compareVersions(nextVersion, baseline.version) > 0;
+  return {
+    version: nextVersion,
+    build: versionIncreased ? Math.max(current.build, baseline.build + 1) : current.build,
+  };
+}
+
 function parseVersion(version) {
   const match = version.match(/^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$/);
   if (!match) throw new Error(`Invalid semantic version: ${version}`);

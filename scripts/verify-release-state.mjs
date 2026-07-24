@@ -5,6 +5,7 @@ import {
   compareVersions,
   getPlatformTag,
   getPlatformTagPrefix,
+  isReleaseStateAtLeast,
 } from "./versioning.mjs";
 
 const platformFiles = {
@@ -15,6 +16,7 @@ const platformFiles = {
   },
   desktop: {
     file: "release/versions/desktop.properties",
+    canonicalFile: "release/versions/desktop.version",
     versionPattern: /^(versionName=)(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/m,
     buildPattern: /^(versionCode=)(\d+)$/m,
   },
@@ -40,10 +42,26 @@ function readVersion(platform) {
   const config = platformFiles[platform];
   if (!config) throw new Error(`Invalid release platform: ${platform}`);
   const content = fs.readFileSync(config.file, "utf8");
+  return readVersionContent(platform, content, config.file);
+}
+
+function readVersionContent(platform, content, file) {
+  const config = platformFiles[platform];
   const version = content.match(config.versionPattern)?.[2];
   const build = Number(content.match(config.buildPattern)?.[2]);
-  if (!version || !Number.isInteger(build)) throw new Error(`Invalid version file: ${config.file}`);
+  if (!version || !Number.isInteger(build)) throw new Error(`Invalid version file: ${file}`);
   return { version, build };
+}
+
+function readVersionAtRef(platform, ref, allowMissing) {
+  const config = platformFiles[platform];
+  try {
+    const content = runGit(["show", `${ref}:${config.file}`]);
+    return readVersionContent(platform, content, `${ref}:${config.file}`);
+  } catch {
+    if (!allowMissing) throw new Error(`Missing release file at ${ref}:${config.file}`);
+    return null;
+  }
 }
 
 function getLatestTaggedVersion(platform) {
@@ -68,10 +86,27 @@ function getLatestTaggedVersion(platform) {
 function verify() {
   const platform = getArgument("platform") ?? "android";
   const current = readVersion(platform);
+  const canonicalFile = platformFiles[platform].canonicalFile;
+  if (canonicalFile) {
+    if (!fs.existsSync(canonicalFile)) throw new Error(`Missing canonical version file: ${canonicalFile}`);
+    const canonicalVersion = fs.readFileSync(canonicalFile, "utf8").trim();
+    if (compareVersions(canonicalVersion, current.version) !== 0) {
+      throw new Error(`${canonicalFile} ${canonicalVersion} does not match ${current.version}`);
+    }
+  }
   const latestTaggedVersion = getLatestTaggedVersion(platform);
   if (latestTaggedVersion && compareVersions(current.version, latestTaggedVersion) < 0) {
     throw new Error(
       `${platform} version ${current.version} is lower than the latest tag ${getPlatformTag(platform, latestTaggedVersion)}`,
+    );
+  }
+
+  const baselineRef = getArgument("baseline-ref");
+  const allowMissingBaseline = process.argv.includes("--allow-missing-baseline");
+  const baseline = baselineRef ? readVersionAtRef(platform, baselineRef, allowMissingBaseline) : null;
+  if (baseline && !isReleaseStateAtLeast(current, baseline)) {
+    throw new Error(
+      `${platform} ${current.version} (build ${current.build}) is lower than ${baselineRef} ${baseline.version} (build ${baseline.build})`,
     );
   }
 
