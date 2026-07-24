@@ -66,17 +66,18 @@ fun main() {
         ) {
             LaunchedEffect(window) {
                 if (!isWindowsPlatform()) return@LaunchedEffect
-                val initialDarkMode = withContext(Dispatchers.IO) { readWindowsDarkMode() }
-                applyWindowsTitleBarTheme(window, initialDarkMode)
-                val subscription = subscribeToWindowsThemeChanges {
-                    val darkMode = readWindowsDarkMode()
-                    EventQueue.invokeLater {
-                        if (window.isDisplayable) {
-                            applyWindowsTitleBarTheme(window, darkMode)
+                var subscription: AutoCloseable? = null
+                try {
+                    val initialDarkMode = withContext(Dispatchers.IO) { readWindowsDarkMode() }
+                    applyWindowsTitleBarTheme(window, initialDarkMode)
+                    subscription = subscribeToWindowsThemeChanges {
+                        val darkMode = readWindowsDarkMode()
+                        EventQueue.invokeLater {
+                            if (window.isDisplayable) {
+                                applyWindowsTitleBarTheme(window, darkMode)
+                            }
                         }
                     }
-                }
-                try {
                     awaitCancellation()
                 } finally {
                     subscription?.close()
@@ -84,11 +85,12 @@ fun main() {
             }
 
             DisposableEffect(window) {
+                val vrrCompatibility = installWindowsVrrCompatibility(window)
                 window.minimumSize = Dimension(960, 640)
                 window.background = DesktopWindowBackground
                 window.contentPane.background = DesktopWindowBackground
                 window.rootPane.background = DesktopWindowBackground
-                onDispose { }
+                onDispose { vrrCompatibility?.close() }
             }
 
             LaunchedEffect(Unit) {
