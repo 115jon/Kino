@@ -59,12 +59,24 @@ internal fun PlayerScreenRuntime.BindPlayerRuntimeEffects() {
         activeSourceResponseHeaders,
         activeSourceIdentityKey,
         activeSourceAttemptToken,
+        p2pResolvedSourceUrl,
     ) {
         errorMessage = null
-        playerController = null
-        playerControllerSourceUrl = null
-        playerControllerSourceIdentityKey = null
-        playerControllerSourceAttemptToken = null
+        val currentSurfaceSourceUrl = if (activeTorrentInfoHash != null) {
+            p2pResolvedSourceUrl
+        } else {
+            activeSourceUrl
+        }
+        if (platformPlayerSurfaceOwnsOverlay() && playerController != null) {
+            playerControllerSourceUrl = currentSurfaceSourceUrl
+            playerControllerSourceIdentityKey = activeSourceIdentityKey
+            playerControllerSourceAttemptToken = activeSourceAttemptToken
+        } else {
+            playerController = null
+            playerControllerSourceUrl = null
+            playerControllerSourceIdentityKey = null
+            playerControllerSourceAttemptToken = null
+        }
         resetPlaybackSnapshotState()
         isScrubbingTimeline = false
         liveGestureFeedback = null
@@ -119,8 +131,6 @@ internal fun PlayerScreenRuntime.BindPlayerRuntimeEffects() {
         val requestedFilename = activeTorrentFilename
         val requestedTrackers = activeTorrentTrackers
         errorMessage = null
-        playerController = null
-        playerControllerSourceUrl = null
         resetPlaybackSnapshotState()
         initialLoadCompleted = false
 

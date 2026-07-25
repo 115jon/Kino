@@ -6,7 +6,9 @@ import com.nuvio.app.features.plugins.PluginRepositoryItem
 import com.nuvio.app.features.plugins.PluginRuntimeResult
 import com.nuvio.app.features.plugins.PluginScraper
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import nuvio.composeapp.generated.resources.Res
 import nuvio.composeapp.generated.resources.streams_plugin_repository_fallback
 import org.jetbrains.compose.resources.getString
@@ -76,6 +78,24 @@ internal fun List<AddonStreamGroup>.toEmptyStateReason(anyLoading: Boolean): Str
 internal suspend fun <T> runCatchingUnlessCancelled(block: suspend () -> T): Result<T> =
     try {
         Result.success(block())
+    } catch (error: CancellationException) {
+        throw error
+    } catch (error: Throwable) {
+        Result.failure(error)
+    }
+
+internal class StreamLoadTimeoutException(timeoutMs: Long) : Exception(
+    "Stream provider timed out after ${timeoutMs}ms",
+)
+
+internal suspend fun <T> runCatchingUnlessCancelledWithTimeout(
+    timeoutMs: Long,
+    block: suspend () -> T,
+): Result<T> =
+    try {
+        Result.success(withTimeout(timeoutMs) { block() })
+    } catch (error: TimeoutCancellationException) {
+        Result.failure(StreamLoadTimeoutException(timeoutMs))
     } catch (error: CancellationException) {
         throw error
     } catch (error: Throwable) {

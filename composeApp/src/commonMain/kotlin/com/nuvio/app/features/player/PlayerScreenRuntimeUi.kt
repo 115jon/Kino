@@ -168,7 +168,7 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi() {
         val playerSurfaceSourceIdentityKey = activeSourceIdentityKey
         val playerSurfaceAttemptToken = activeSourceAttemptToken
         if (playerSurfaceSourceUrl != null) {
-            key(playerSurfaceAttemptToken) {
+            key(if (platformPlayerSurfaceOwnsOverlay()) Unit else playerSurfaceAttemptToken) {
                 PlatformPlayerSurface(
                 sourceUrl = playerSurfaceSourceUrl,
                 sourceAudioUrl = activeSourceAudioUrl,
