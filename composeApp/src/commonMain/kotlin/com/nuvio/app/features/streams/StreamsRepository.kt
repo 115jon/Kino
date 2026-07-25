@@ -442,7 +442,7 @@ object StreamsRepository {
                      log.i { "Fetching streams from addon=${addon.addonId} type=$type id=$videoId" }
 
                     val displayName = addon.addonName
-                    val group = runCatchingUnlessCancelled {
+                    val group = runCatchingUnlessCancelledWithTimeout(STREAM_PROVIDER_TIMEOUT_MS) {
                         val payload = httpGetText(url)
                         StreamParser.parse(
                             payload = payload,
@@ -802,4 +802,6 @@ object StreamsRepository {
         _uiState.update { it.copy(showDirectAutoPlayOverlay = visible, overlayMessage = message) }
     }
 }
+
+private const val STREAM_PROVIDER_TIMEOUT_MS = 60_000L
 
