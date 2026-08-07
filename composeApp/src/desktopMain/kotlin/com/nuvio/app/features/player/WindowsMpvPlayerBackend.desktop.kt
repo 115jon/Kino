@@ -298,10 +298,28 @@ private enum class WindowsVideoSurface {
     Embedded,
 }
 
+internal fun shouldUseNativeWindowsVideoSurface(surface: String?): Boolean =
+    surface?.trim()?.lowercase() !in setOf("embedded", "gl", "opengl")
+
+internal fun windowsPlayerInteropBackgroundArgb(): Long = 0xFF0C0C0CL
+
+internal fun shouldUseTransparentWindowsPlayerOverlay(
+    videoOutputConfigured: String?,
+    videoWidth: Int,
+    videoHeight: Int,
+): Boolean = videoOutputConfigured?.trim()?.lowercase() == "yes" && videoWidth > 0 && videoHeight > 0
+
+internal fun shouldShowNativeWindowsVideoSurface(
+    videoOutputConfigured: String?,
+    videoWidth: Int,
+    videoHeight: Int,
+): Boolean = shouldUseTransparentWindowsPlayerOverlay(videoOutputConfigured, videoWidth, videoHeight)
+
 private fun windowsVideoSurface(): WindowsVideoSurface =
-    when (System.getProperty("kino.windows.video-surface")?.trim()?.lowercase()) {
-        "embedded", "gl", "opengl" -> WindowsVideoSurface.Embedded
-        else -> WindowsVideoSurface.Native
+    if (shouldUseNativeWindowsVideoSurface(System.getProperty("kino.windows.video-surface"))) {
+        WindowsVideoSurface.Native
+    } else {
+        WindowsVideoSurface.Embedded
     }
 
 private fun setWindowsMpvOption(
@@ -475,6 +493,7 @@ private data class WindowsPlaybackPollResult(
     val audioTracks: List<AudioTrack>,
     val subtitleTracks: List<SubtitleTrack>,
     val volumeLevel: PlayerAudioLevel,
+    val videoOutputReady: Boolean,
     val polledTracks: Boolean,
     val errorMessage: String?,
     val terminalPlaybackError: String?,
@@ -1294,7 +1313,7 @@ internal object WindowsMpvPlayerBackend : DesktopPlaybackBackend {
         }
 
         SwingPanel(
-            background = ComposeColor.Black,
+            background = ComposeColor(windowsPlayerInteropBackgroundArgb()),
             factory = {
                 desktopPlayerTrace(
                     "windows presentation surface=${if (useNativeVideoSurface) "native-d3d11" else "embedded-opengl"} " +
@@ -1302,6 +1321,7 @@ internal object WindowsMpvPlayerBackend : DesktopPlaybackBackend {
                         "nativeControls=false overlayWindow=true",
                 )
                 if (useNativeVideoSurface) {
+                    desktopPlayerTrace("native panel factory start")
                     WindowsPlayerPanel(
                         playerTheme = playerTheme,
                         overlayColorScheme = colorScheme,
@@ -1838,6 +1858,14 @@ internal object WindowsMpvPlayerBackend : DesktopPlaybackBackend {
                     val mediaTitle = getString("media-title")
                     val fileFormat = getString("file-format")
                     val error = getString("error")
+                    val videoOutputConfigured = getString("vo-configured")
+                    val videoWidth = getString("video-params/w")?.toIntOrNull() ?: 0
+                    val videoHeight = getString("video-params/h")?.toIntOrNull() ?: 0
+                    val videoOutputReady = shouldShowNativeWindowsVideoSurface(
+                        videoOutputConfigured = videoOutputConfigured,
+                        videoWidth = videoWidth,
+                        videoHeight = videoHeight,
+                    )
 
                     val durationMs = (durSec * 1000).toLong()
                     val positionMs = (posSec.coerceAtLeast(0.0) * 1000).toLong()
@@ -1853,9 +1881,9 @@ internal object WindowsMpvPlayerBackend : DesktopPlaybackBackend {
                     )
                     val videoOutputDiagnostics = if (path != null && (positionMs == 0L || isPlayerLoading)) {
                         listOf(
-                            "vo=${getString("vo-configured") ?: ""}",
+                            "vo=${videoOutputConfigured ?: ""}",
                             "hwdec=${getString("hwdec-current") ?: ""}",
-                            "video=${getString("video-params/w") ?: ""}x${getString("video-params/h") ?: ""}",
+                            "video=${videoWidth}x${videoHeight}",
                             "pixelformat=${getString("video-params/pixelformat") ?: ""}",
                         ).joinToString(" ")
                     } else {
@@ -2054,6 +2082,7 @@ internal object WindowsMpvPlayerBackend : DesktopPlaybackBackend {
                             audioTracks = audioTracksList,
                             subtitleTracks = subtitleTracksList,
                             volumeLevel = toPlayerAudioLevel(volumePercent),
+                            videoOutputReady = videoOutputReady,
                             polledTracks = shouldPollTracks,
                             errorMessage = if (pendingLoad) null else error?.takeIf { it.isNotBlank() },
                             terminalPlaybackError = windowState.terminalPlaybackError
@@ -2112,6 +2141,7 @@ internal object WindowsMpvPlayerBackend : DesktopPlaybackBackend {
                         isLoading = pollPayload.snapshot.isLoading,
                         speed = pollPayload.snapshot.playbackSpeed,
                         volumePercent = pollPayload.volumeLevel.fraction * 100f,
+                        videoOutputReady = pollPayload.videoOutputReady,
                     )
                 }
                 currentOnSnapshot.value(pollPayload.snapshot)
@@ -3142,6 +3172,7 @@ internal class WindowsPlayerPanel(
     private val fullscreenState = FullscreenWindowState()
     private var isSeeking = false
     private var mpvInitialized = false
+    private var videoSurfaceVisible = false
     @Volatile
     private var playerDisposed = false
     private val urlResolutionScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -3163,6 +3194,7 @@ internal class WindowsPlayerPanel(
     }
     private val videoLayer = JPanel()
     private val overlayPanel = ComposePanel(renderSettings = RenderSettings.SwingGraphics())
+    private var overlayWindowUsesTransparency = true
     private val scheduleOverlayWindowBoundsUpdate = createCoalescedSwingUpdate {
         updateOverlayWindowBounds()
     }
@@ -3274,7 +3306,9 @@ internal class WindowsPlayerPanel(
     }
 
     override fun addNotify() {
+        desktopPlayerTrace("native panel addNotify begin visible=$isVisible displayable=$isDisplayable")
         super.addNotify()
+        desktopPlayerTrace("native panel addNotify peerReady visible=$isVisible displayable=$isDisplayable")
         pointerInside = containsPlayerPointer()
         playerWindow = SwingUtilities.getWindowAncestor(this)?.also { window ->
             window.addWindowFocusListener(windowFocusListener)
@@ -3282,12 +3316,20 @@ internal class WindowsPlayerPanel(
             window.addComponentListener(windowBoundsListener)
             createOverlayWindow(window)
             SwingUtilities.invokeLater {
+                desktopPlayerTrace(
+                    "native panel visibility visible=$isVisible displayable=$isDisplayable " +
+                        "ownerShowing=${window.isShowing} overlayShowing=${overlayWindow?.isShowing}",
+                )
                 onWindowFocusChanged(window.isFocused, windowHandle())
             }
         }
     }
 
     override fun removeNotify() {
+        desktopPlayerTrace(
+            "native panel removeNotify start displayable=$isDisplayable " +
+                "overlayVisible=${overlayWindow?.isVisible} overlayShowing=${overlayWindow?.isShowing}",
+        )
         controlsTimer.stop()
         pointerInside = false
         onWindowFocusChanged(false, null)
@@ -3299,12 +3341,14 @@ internal class WindowsPlayerPanel(
         overlayWindow?.dispose()
         overlayWindow = null
         super.removeNotify()
+        desktopPlayerTrace("native panel removeNotify complete displayable=$isDisplayable")
     }
 
     private fun setupPanel() {
         background = playerTheme.panelBgColor
         isFocusable = true
         focusTraversalKeysEnabled = false
+        canvas.isVisible = false
         canvas.background = java.awt.Color.BLACK
         canvas.ignoreRepaint = true
         canvas.isFocusable = true
@@ -3343,11 +3387,32 @@ internal class WindowsPlayerPanel(
                 add(overlayPanel, BorderLayout.CENTER)
             }
         }
+        setOverlayWindowTransparency(false)
         scheduleOverlayWindowBoundsUpdate()
         overlayWindow?.isVisible = owner.isShowing
         SwingUtilities.invokeLater {
             desktopPlayerTrace("native overlay window renderApi=${overlayPanel.renderApi}")
         }
+    }
+
+    private fun setOverlayWindowTransparency(transparent: Boolean) {
+        val window = overlayWindow ?: return
+        val contentPane = window.contentPane as? JComponent ?: return
+        if (overlayWindowUsesTransparency == transparent) return
+        val fallbackBackground = java.awt.Color(12, 12, 12)
+        val transparentBackground = java.awt.Color(0, 0, 0, 0)
+        val background = if (transparent) transparentBackground else fallbackBackground
+        overlayPanel.isOpaque = !transparent
+        overlayPanel.background = background
+        contentPane.isOpaque = !transparent
+        contentPane.background = background
+        window.background = background
+        overlayWindowUsesTransparency = transparent
+        desktopPlayerTrace(
+            "native overlay window transparency=$transparent " +
+                "windowVisible=${window.isVisible} windowShowing=${window.isShowing} " +
+                "contentOpaque=${contentPane.isOpaque} panelOpaque=${overlayPanel.isOpaque}",
+        )
     }
 
     private fun updateOverlayWindowBounds() {
@@ -3792,6 +3857,7 @@ internal class WindowsPlayerPanel(
     ) {
         val ptr = state.playerPtr ?: return
         if (playerDisposed || state.isClosed || state.panelRef !== this) return
+        hideVideoSurfaceForLoad()
         val requestGeneration = state.loadRequestGate.allocate()
         state.mpvCallLock.withLock {
             state.sourceGeneration += 1L
@@ -3959,13 +4025,23 @@ internal class WindowsPlayerPanel(
         isLoading: Boolean,
         speed: Float,
         volumePercent: Float,
+        videoOutputReady: Boolean,
     ) {
         if (!SwingUtilities.isEventDispatchThread()) {
             SwingUtilities.invokeLater {
-                updatePlaybackState(positionMs, durationMs, isPlaying, isLoading, speed, volumePercent)
+                updatePlaybackState(
+                    positionMs = positionMs,
+                    durationMs = durationMs,
+                    isPlaying = isPlaying,
+                    isLoading = isLoading,
+                    speed = speed,
+                    volumePercent = volumePercent,
+                    videoOutputReady = videoOutputReady,
+                )
             }
             return
         }
+        setVideoSurfaceVisible(videoOutputReady)
         val nextState = WindowsPlaybackUiState(
             positionMs = positionMs,
             durationMs = durationMs,
@@ -3988,6 +4064,37 @@ internal class WindowsPlayerPanel(
         playPauseButton.text = if (isPlaying) "⏸" else "▶"
         speedButton.text = "${speed}x"
         volumeButton.text = "🔊 ${volumePercent.roundToInt()}%"
+    }
+
+    private fun setVideoSurfaceVisible(visible: Boolean) {
+        if (videoSurfaceVisible == visible && canvas.isVisible == visible) {
+            setOverlayWindowTransparency(transparent = visible)
+            return
+        }
+        videoSurfaceVisible = visible
+        if (visible) {
+            canvas.isVisible = true
+            setOverlayWindowTransparency(transparent = true)
+        } else {
+            setOverlayWindowTransparency(transparent = false)
+            canvas.isVisible = false
+        }
+        desktopPlayerTrace(
+            "native video canvas visible=$visible displayable=${canvas.isDisplayable} " +
+                "showing=${canvas.isShowing}",
+        )
+    }
+
+    fun hideVideoSurfaceForLoad() {
+        if (SwingUtilities.isEventDispatchThread()) {
+            setVideoSurfaceVisible(false)
+        } else {
+            SwingUtilities.invokeLater {
+                if (!playerDisposed) {
+                    setVideoSurfaceVisible(false)
+                }
+            }
+        }
     }
 
     private data class WindowsPlaybackUiState(
@@ -4212,6 +4319,10 @@ internal class WindowsPlayerPanel(
     override fun dispose() {
         if (playerDisposed) return
         playerDisposed = true
+        desktopPlayerTrace(
+            "native panel dispose start displayable=$isDisplayable " +
+                "overlayVisible=${overlayWindow?.isVisible} overlayShowing=${overlayWindow?.isShowing}",
+        )
         controlsTimer.stop()
         val ownsState = state.panelRef === this
         if (ownsState) {
@@ -4224,6 +4335,7 @@ internal class WindowsPlayerPanel(
         overlayWindow?.isVisible = false
         overlayWindow?.dispose()
         overlayWindow = null
+        desktopPlayerTrace("native panel overlay disposed")
         eventPump.closeAndAwait()
         onWindowFocusChanged(false, null)
         fullscreenState.exit(SwingUtilities.getWindowAncestor(this))
@@ -4243,6 +4355,7 @@ internal class WindowsPlayerPanel(
         if (w != null) {
             w.cursor = Cursor.getDefaultCursor()
         }
+        desktopPlayerTrace("native panel dispose complete")
     }
 
     private fun readEvents() {

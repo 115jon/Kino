@@ -44,4 +44,34 @@ class WindowsPlayerInteractionPolicyTest {
         assertEquals(true, shouldRenderPlayerPlaybackControls(controlsVisible = false, showParentalGuide = false))
         assertEquals(false, shouldRenderPlayerPlaybackControls(controlsVisible = false, showParentalGuide = true))
     }
+
+    @Test
+    fun `native DirectX surface is the default and embedded surface is explicit`() {
+        assertEquals(true, shouldUseNativeWindowsVideoSurface(null))
+        assertEquals(false, shouldUseNativeWindowsVideoSurface("embedded"))
+        assertEquals(false, shouldUseNativeWindowsVideoSurface("opengl"))
+        assertEquals(true, shouldUseNativeWindowsVideoSurface("native"))
+        assertEquals(true, shouldUseNativeWindowsVideoSurface("d3d11"))
+    }
+
+    @Test
+    fun `native player interop surface uses the desktop window clear color`() {
+        assertEquals(0xFF0C0C0CL, windowsPlayerInteropBackgroundArgb())
+    }
+
+    @Test
+    fun `native player canvas is shown only after video output is configured`() {
+        assertEquals(true, shouldShowNativeWindowsVideoSurface("yes", 1280, 720))
+        assertEquals(false, shouldShowNativeWindowsVideoSurface("no", 1280, 720))
+        assertEquals(false, shouldShowNativeWindowsVideoSurface("yes", 0, 720))
+        assertEquals(false, shouldShowNativeWindowsVideoSurface(null, 1280, 720))
+    }
+
+    @Test
+    fun `native player overlay stays opaque until video output is ready`() {
+        assertEquals(false, shouldUseTransparentWindowsPlayerOverlay("no", 1280, 720))
+        assertEquals(false, shouldUseTransparentWindowsPlayerOverlay("yes", 0, 720))
+        assertEquals(true, shouldUseTransparentWindowsPlayerOverlay("yes", 1280, 720))
+    }
+
 }
