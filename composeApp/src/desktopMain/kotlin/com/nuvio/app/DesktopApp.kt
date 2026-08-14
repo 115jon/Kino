@@ -2,6 +2,7 @@ package com.nuvio.app
 
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.awt.ComposeWindow
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
@@ -15,10 +16,27 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.withContext
 import java.awt.Dimension
+import java.awt.Frame
 import java.awt.Color as AwtColor
 import java.awt.EventQueue
 
 private val DesktopWindowBackground = AwtColor(0x0C, 0x0C, 0x0C)
+
+internal fun restoredDesktopWindowState(extendedState: Int): Int =
+    extendedState and Frame.ICONIFIED.inv()
+
+internal fun shouldStartDesktopApplication(instanceLaunch: DesktopInstanceLaunch?): Boolean =
+    instanceLaunch == null || instanceLaunch is DesktopInstanceLaunch.Primary
+
+private fun activateDesktopWindow(window: ComposeWindow) {
+    EventQueue.invokeLater {
+        if (!window.isDisplayable) return@invokeLater
+        if (!window.isVisible) window.isVisible = true
+        window.extendedState = restoredDesktopWindowState(window.extendedState)
+        window.toFront()
+        window.requestFocus()
+    }
+}
 
 private fun configureMacOsNativeAppearance() {
     val osName = System.getProperty("os.name")?.lowercase() ?: return
@@ -56,48 +74,78 @@ fun main() {
     configureComposeInterop()
     configureWindowsPresentationCompatibility()
     initializeDesktopAppLogging()
-    application {
-        val windowState = rememberWindowState(width = 1280.dp, height = 800.dp)
-        Window(
-            state = windowState,
-            onCloseRequest = ::exitApplication,
-            title = "Kino",
-            icon = painterResource(Res.drawable.app_logo),
-        ) {
-            LaunchedEffect(window) {
-                if (!isWindowsPlatform()) return@LaunchedEffect
-                var subscription: AutoCloseable? = null
-                try {
-                    val initialDarkMode = withContext(Dispatchers.IO) { readWindowsDarkMode() }
-                    applyWindowsTitleBarTheme(window, initialDarkMode)
-                    subscription = subscribeToWindowsThemeChanges {
-                        val darkMode = readWindowsDarkMode()
-                        EventQueue.invokeLater {
-                            if (window.isDisplayable) {
-                                applyWindowsTitleBarTheme(window, darkMode)
+    val activationRelay = DesktopActivationRelay()
+    val instanceLaunch = if (isWindowsPlatform()) {
+        DesktopSingleInstanceCoordinator.acquire(onActivation = activationRelay::requestActivation)
+    } else {
+        null
+    }
+    when (instanceLaunch) {
+        is DesktopInstanceLaunch.Secondary -> {
+            if (!instanceLaunch.activationDelivered) {
+                System.err.println("Kino is already running, but its window could not be activated.")
+            }
+        }
+        is DesktopInstanceLaunch.Unavailable -> {
+            System.err.println("Single-instance coordination is unavailable: ${instanceLaunch.reason}")
+        }
+        else -> Unit
+    }
+    if (!shouldStartDesktopApplication(instanceLaunch)) return
+    val instanceCoordinator = (instanceLaunch as? DesktopInstanceLaunch.Primary)?.coordinator
+
+    try {
+        application {
+            val windowState = rememberWindowState(width = 1280.dp, height = 800.dp)
+            Window(
+                state = windowState,
+                onCloseRequest = ::exitApplication,
+                title = "Kino",
+                icon = painterResource(Res.drawable.app_logo),
+            ) {
+                LaunchedEffect(window) {
+                    if (!isWindowsPlatform()) return@LaunchedEffect
+                    var subscription: AutoCloseable? = null
+                    try {
+                        val initialDarkMode = withContext(Dispatchers.IO) { readWindowsDarkMode() }
+                        applyWindowsTitleBarTheme(window, initialDarkMode)
+                        subscription = subscribeToWindowsThemeChanges {
+                            val darkMode = readWindowsDarkMode()
+                            EventQueue.invokeLater {
+                                if (window.isDisplayable) {
+                                    applyWindowsTitleBarTheme(window, darkMode)
+                                }
                             }
                         }
+                        awaitCancellation()
+                    } finally {
+                        subscription?.close()
                     }
-                    awaitCancellation()
-                } finally {
-                    subscription?.close()
                 }
-            }
 
-            DisposableEffect(window) {
-                val vrrCompatibility = installWindowsVrrCompatibility(window)
-                window.minimumSize = Dimension(960, 640)
-                window.background = DesktopWindowBackground
-                window.contentPane.background = DesktopWindowBackground
-                window.rootPane.background = DesktopWindowBackground
-                onDispose { vrrCompatibility?.close() }
-            }
+                DisposableEffect(window) {
+                    val activationSubscription = activationRelay.attach {
+                        activateDesktopWindow(window)
+                    }
+                    val vrrCompatibility = installWindowsVrrCompatibility(window)
+                    window.minimumSize = Dimension(960, 640)
+                    window.background = DesktopWindowBackground
+                    window.contentPane.background = DesktopWindowBackground
+                    window.rootPane.background = DesktopWindowBackground
+                    onDispose {
+                        activationSubscription.close()
+                        vrrCompatibility?.close()
+                    }
+                }
 
-            LaunchedEffect(Unit) {
-                prewarmDesktopPlaybackBackend()
-            }
+                LaunchedEffect(Unit) {
+                    prewarmDesktopPlaybackBackend()
+                }
 
-            App()
+                App()
+            }
         }
+    } finally {
+        instanceCoordinator?.close()
     }
 }
