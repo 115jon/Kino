@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.4.0](https://github.com/115jon/Kino/compare/desktop-v0.3.0...desktop-v0.4.0) (2026-08-30)
+
+
+### Features
+
+* **desktop:** ✨ enforce single-instance startup ([8404cce](https://github.com/115jon/Kino/commit/8404ccebeec4d641434d6fa061f625fd3cb67601))
+
+
+### Bug Fixes
+
+* **player:** 🐛 mask Windows native surface startup flash ([8566001](https://github.com/115jon/Kino/commit/85660014a80bba2e999d70f12f200b04c371e36d))
+* **player:** 🐛 preserve native surface during stream changes ([23183f2](https://github.com/115jon/Kino/commit/23183f2014236438463479f896d477fe57609b2b))
+
 ## [0.3.0](https://github.com/115jon/Kino/compare/desktop-v0.2.24...desktop-v0.3.0) (2026-07-24)
 
 
