@@ -74,4 +74,12 @@ class WindowsPlayerInteractionPolicyTest {
         assertEquals(true, shouldUseTransparentWindowsPlayerOverlay("yes", 1280, 720))
     }
 
+    @Test
+    fun `native player overlay is primed only after its window and renderer are ready`() {
+        assertEquals(false, shouldPrimeWindowsPlayerOverlay(false, true, "DIRECT3D"))
+        assertEquals(false, shouldPrimeWindowsPlayerOverlay(true, false, "DIRECT3D"))
+        assertEquals(false, shouldPrimeWindowsPlayerOverlay(true, true, "UNKNOWN"))
+        assertEquals(true, shouldPrimeWindowsPlayerOverlay(true, true, "DIRECT3D"))
+    }
+
 }

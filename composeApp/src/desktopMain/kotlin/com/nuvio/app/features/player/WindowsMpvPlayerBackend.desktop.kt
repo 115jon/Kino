@@ -309,6 +309,15 @@ internal fun shouldUseTransparentWindowsPlayerOverlay(
     videoHeight: Int,
 ): Boolean = videoOutputConfigured?.trim()?.lowercase() == "yes" && videoWidth > 0 && videoHeight > 0
 
+internal fun shouldPrimeWindowsPlayerOverlay(
+    windowShowing: Boolean,
+    overlayDisplayable: Boolean,
+    renderApi: String?,
+): Boolean {
+    val normalizedRenderApi = renderApi?.trim()?.lowercase()
+    return windowShowing && overlayDisplayable && !normalizedRenderApi.isNullOrEmpty() && normalizedRenderApi != "unknown"
+}
+
 internal fun shouldShowNativeWindowsVideoSurface(
     videoOutputConfigured: String?,
     videoWidth: Int,
@@ -3216,6 +3225,7 @@ internal class WindowsPlayerPanel(
             onWindowFocusChanged(true, windowHandle())
             scheduleOverlayWindowBoundsUpdate()
             overlayWindow?.isVisible = true
+            SwingUtilities.invokeLater { primeOverlayWindow() }
         }
 
         override fun windowLostFocus(e: WindowEvent) {
@@ -3392,7 +3402,28 @@ internal class WindowsPlayerPanel(
         overlayWindow?.isVisible = owner.isShowing
         SwingUtilities.invokeLater {
             desktopPlayerTrace("native overlay window renderApi=${overlayPanel.renderApi}")
+            primeOverlayWindow()
         }
+    }
+
+    private fun primeOverlayWindow() {
+        val window = overlayWindow ?: return
+        val renderApi = overlayPanel.renderApi.toString()
+        val shouldPrime = shouldPrimeWindowsPlayerOverlay(
+            windowShowing = window.isShowing,
+            overlayDisplayable = overlayPanel.isDisplayable,
+            renderApi = renderApi,
+        )
+        desktopPlayerTrace(
+            "native overlay window prime shouldPrime=$shouldPrime " +
+                "windowShowing=${window.isShowing} panelDisplayable=${overlayPanel.isDisplayable} " +
+                "renderApi=$renderApi",
+        )
+        if (!shouldPrime) return
+        overlayPanel.renderImmediately()
+        setOverlayWindowTransparency(transparent = true)
+        overlayPanel.renderImmediately()
+        desktopPlayerTrace("native overlay window prime complete transparent=$overlayWindowUsesTransparency")
     }
 
     private fun setOverlayWindowTransparency(transparent: Boolean) {
