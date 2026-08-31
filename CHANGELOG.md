@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.2](https://github.com/115jon/Kino/compare/desktop-v0.4.1...desktop-v0.4.2) (2026-08-31)
+
+
+### Bug Fixes
+
+* **player:** 🐛 prime Windows overlay after the renderer is ready ([f23a31e](https://github.com/115jon/Kino/commit/f23a31e9d05cb0cd38c6cf4de9c88360f3ac3c57))
+
 ## [0.4.1](https://github.com/115jon/Kino/compare/desktop-v0.4.0...desktop-v0.4.1) (2026-08-31)
 
 
