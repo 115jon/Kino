@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.1](https://github.com/115jon/Kino/compare/desktop-v0.4.0...desktop-v0.4.1) (2026-08-31)
+
+
+### Bug Fixes
+
+* **updater:** 🐛 detach Windows installer launch from the app ([2455a73](https://github.com/115jon/Kino/commit/2455a739792c0fcf39eaeafe9d6c9c4e3f01861f))
+
 ## [0.4.0](https://github.com/115jon/Kino/compare/desktop-v0.3.0...desktop-v0.4.0) (2026-08-30)
 
 
