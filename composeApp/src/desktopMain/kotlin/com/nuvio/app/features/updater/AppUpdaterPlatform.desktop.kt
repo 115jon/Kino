@@ -89,9 +89,22 @@ actual object AppUpdaterPlatform {
     actual fun installDownloadedApk(path: String): Result<Unit> = runCatching {
         val installer = File(path)
         require(installer.isFile) { "Downloaded installer was not found." }
-        ProcessBuilder(installer.absolutePath, "/S")
+        val command = if (shouldLaunchWindowsInstallerDetached(System.getProperty("os.name"))) {
+            windowsSilentInstallerLaunchCommand(installer.absolutePath)
+        } else {
+            listOf(installer.absolutePath)
+        }
+        ProcessBuilder(command)
             .directory(installer.parentFile)
+            .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+            .redirectError(ProcessBuilder.Redirect.DISCARD)
             .start()
         exitProcess(0)
     }
 }
+
+internal fun shouldLaunchWindowsInstallerDetached(osName: String?): Boolean =
+    osName.orEmpty().contains("win", ignoreCase = true)
+
+internal fun windowsSilentInstallerLaunchCommand(path: String): List<String> =
+    listOf("cmd.exe", "/c", "start", "", path, "/S")
