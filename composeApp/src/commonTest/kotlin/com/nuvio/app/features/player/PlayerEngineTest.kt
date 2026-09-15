@@ -57,4 +57,14 @@ class PlayerEngineTest {
         assertTrue(tooMany.size <= MaxPlaybackHeaderCount)
         assertTrue(tooLarge.isEmpty())
     }
+
+    @Test
+    fun androidLibmpvDefaultsToCompatibilityRenderer() {
+        val settings = PlayerSettingsUiState()
+        assertEquals(AndroidLibmpvVideoOutput.Gpu, settings.androidLibmpvVideoOutput)
+        assertEquals("gpu", settings.androidLibmpvVideoOutput.mpvValue)
+        assertEquals(false, settings.androidLibmpvYuv420pEnabled)
+        assertEquals("gpu", AndroidLibmpvVideoOutput.Gpu.mpvValue)
+        assertEquals("gpu-next", AndroidLibmpvVideoOutput.GpuNext.mpvValue)
+    }
 }

@@ -51,7 +51,7 @@ data class PlayerSettingsUiState(
     val streamReuseLastLinkEnabled: Boolean = false,
     val streamReuseLastLinkCacheHours: Int = 24,
     val androidPlaybackEngine: AndroidPlaybackEngine = AndroidPlaybackEngine.Auto,
-    val androidLibmpvVideoOutput: AndroidLibmpvVideoOutput = AndroidLibmpvVideoOutput.GpuNext,
+    val androidLibmpvVideoOutput: AndroidLibmpvVideoOutput = AndroidLibmpvVideoOutput.Gpu,
     val androidLibmpvHardwareDecodingEnabled: Boolean = true,
     val androidLibmpvYuv420pEnabled: Boolean = false,
     val decoderPriority: Int = 1,
@@ -117,7 +117,7 @@ object PlayerSettingsRepository {
     private var streamReuseLastLinkEnabled = false
     private var streamReuseLastLinkCacheHours = 24
     private var androidPlaybackEngine = AndroidPlaybackEngine.Auto
-    private var androidLibmpvVideoOutput = AndroidLibmpvVideoOutput.GpuNext
+    private var androidLibmpvVideoOutput = AndroidLibmpvVideoOutput.Gpu
     private var androidLibmpvHardwareDecodingEnabled = true
     private var androidLibmpvYuv420pEnabled = false
     private var decoderPriority = 1
@@ -188,7 +188,7 @@ object PlayerSettingsRepository {
         streamReuseLastLinkEnabled = false
         streamReuseLastLinkCacheHours = 24
         androidPlaybackEngine = AndroidPlaybackEngine.Auto
-        androidLibmpvVideoOutput = AndroidLibmpvVideoOutput.GpuNext
+        androidLibmpvVideoOutput = AndroidLibmpvVideoOutput.Gpu
         androidLibmpvHardwareDecodingEnabled = true
         androidLibmpvYuv420pEnabled = false
         decoderPriority = 1
@@ -286,9 +286,9 @@ object PlayerSettingsRepository {
         androidPlaybackEngine = PlayerSettingsStorage.loadAndroidPlaybackEngine()
             ?.let { runCatching { AndroidPlaybackEngine.valueOf(it) }.getOrNull() }
             ?: AndroidPlaybackEngine.Auto
-        androidLibmpvVideoOutput = PlayerSettingsStorage.loadAndroidLibmpvVideoOutput()
-            ?.let { runCatching { AndroidLibmpvVideoOutput.valueOf(it) }.getOrNull() }
-            ?: AndroidLibmpvVideoOutput.GpuNext
+        androidLibmpvVideoOutput = migrateAndroidLibmpvVideoOutput(
+            PlayerSettingsStorage.loadAndroidLibmpvVideoOutput(),
+        )
         androidLibmpvHardwareDecodingEnabled = PlayerSettingsStorage.loadAndroidLibmpvHardwareDecodingEnabled() ?: true
         androidLibmpvYuv420pEnabled = PlayerSettingsStorage.loadAndroidLibmpvYuv420pEnabled() ?: false
         decoderPriority = PlayerSettingsStorage.loadDecoderPriority() ?: 1
@@ -975,6 +975,15 @@ object PlayerSettingsRepository {
             iosSaturation = iosSaturation,
             iosGamma = iosGamma,
         )
+    }
+
+    private fun migrateAndroidLibmpvVideoOutput(stored: String?): AndroidLibmpvVideoOutput {
+        val parsed = stored?.let { runCatching { AndroidLibmpvVideoOutput.valueOf(it) }.getOrNull() }
+        if (parsed == AndroidLibmpvVideoOutput.GpuNext) {
+            PlayerSettingsStorage.saveAndroidLibmpvVideoOutput(AndroidLibmpvVideoOutput.Gpu.name)
+            return AndroidLibmpvVideoOutput.Gpu
+        }
+        return parsed ?: AndroidLibmpvVideoOutput.Gpu
     }
 
     private fun normalizeStreamAutoPlaySource(source: StreamAutoPlaySource): StreamAutoPlaySource {

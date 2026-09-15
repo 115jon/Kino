@@ -1070,7 +1070,7 @@ private class NuvioLibmpvView(
     override fun initOptions() {
         setVo(videoOutput.mpvValue)
         mpv.setOptionString("profile", "fast")
-        mpv.setOptionString("hwdec", if (hardwareDecodingEnabled) "auto" else "no")
+        mpv.setOptionString("hwdec", if (hardwareDecodingEnabled) "auto-safe" else "no")
         if (yuv420pEnabled) {
             mpv.setOptionString("vf", "format=yuv420p")
         }
