@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.3](https://github.com/115jon/Kino/compare/desktop-v0.4.2...desktop-v0.4.3) (2026-09-15)
+
+
+### Bug Fixes
+
+* **player:** 🐛 default Android libmpv off gpu-next ([f2156eb](https://github.com/115jon/Kino/commit/f2156ebb53023db4fd0a16119f85097efad364e6))
+
 ## [0.4.2](https://github.com/115jon/Kino/compare/desktop-v0.4.1...desktop-v0.4.2) (2026-08-31)
 
 
