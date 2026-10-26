@@ -1590,6 +1590,13 @@ internal object WindowsMpvPlayerBackend : DesktopPlaybackBackend {
 
                 override fun getSubtitleTracks(): List<SubtitleTrack> = windowState.subtitleTracks
 
+                override fun applyAudioLanguagePreferences(languages: List<String>) {
+                    windowState.withMpv { ptr ->
+                        WindowsMpvLibrary.INSTANCE.mpv_set_property_string(ptr, "alang", languages.joinToString(","))
+                        WindowsMpvLibrary.INSTANCE.mpv_set_property_string(ptr, "aid", "auto")
+                    }
+                }
+
                 override fun selectAudioTrack(index: Int) {
                     if (index in windowState.audioTracks.indices) {
                         val track = windowState.audioTracks[index]

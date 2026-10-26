@@ -59,6 +59,20 @@ internal actual object ThemeSettingsStorage {
         DesktopPreferences.putBoolean(preferencesName, ProfileScopedKey.of(liquidGlassNativeTabBarEnabledKey), enabled)
     }
 
+    actual fun loadCustomThemeColors(): String? =
+        DesktopPreferences.getString(preferencesName, ProfileScopedKey.of("custom_theme_colors"))
+
+    actual fun saveCustomThemeColors(colors: String) {
+        DesktopPreferences.putString(preferencesName, ProfileScopedKey.of("custom_theme_colors"), colors)
+    }
+
+    actual fun loadNavBarGlowEnabled(): Boolean? =
+        DesktopPreferences.getBoolean(preferencesName, ProfileScopedKey.of("nav_bar_glow_enabled"))
+
+    actual fun saveNavBarGlowEnabled(enabled: Boolean) {
+        DesktopPreferences.putBoolean(preferencesName, ProfileScopedKey.of("nav_bar_glow_enabled"), enabled)
+    }
+
     actual fun loadSelectedAppLanguage(): String? {
         val value = DesktopPreferences.getString(preferencesName, selectedAppLanguageKey)
         if (value != null) return value

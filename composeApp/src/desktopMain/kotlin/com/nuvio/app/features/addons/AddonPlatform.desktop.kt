@@ -104,6 +104,7 @@ private suspend fun executeRequest(
     headers: Map<String, String>,
     body: String,
     followRedirects: Boolean = true,
+    bodyBytes: ByteArray? = null,
 ) = withContext(Dispatchers.IO) {
     val builder = HttpRequest.newBuilder()
         .uri(URI.create(sanitizeUrl(url)))
@@ -114,7 +115,10 @@ private suspend fun executeRequest(
     }
 
     val request = if (requestAllowsBody(method)) {
-        builder.method(method.uppercase(), HttpRequest.BodyPublishers.ofString(body))
+        builder.method(
+            method.uppercase(),
+            bodyBytes?.let(HttpRequest.BodyPublishers::ofByteArray) ?: HttpRequest.BodyPublishers.ofString(body),
+        )
     } else {
         builder.method(method.uppercase(), HttpRequest.BodyPublishers.noBody())
     }.build()
@@ -190,8 +194,9 @@ actual suspend fun httpRequestRaw(
     body: String,
     followRedirects: Boolean,
     maxResponseBodyBytes: Int,
+    bodyBytes: ByteArray?,
 ): RawHttpResponse {
-    val response = executeRequest(method, url, headers, body, followRedirects)
+    val response = executeRequest(method, url, headers, body, followRedirects, bodyBytes)
     val payload = response.body()
     val bodyLimit = minOf(maxRawResponseBodyChars, maxResponseBodyBytes.coerceAtLeast(0))
     val limitedPayload = if (payload.length > bodyLimit) {

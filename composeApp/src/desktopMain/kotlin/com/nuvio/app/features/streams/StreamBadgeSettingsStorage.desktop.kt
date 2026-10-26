@@ -58,6 +58,24 @@ internal actual object StreamBadgeSettingsStorage {
         )
     }
 
+    actual fun loadShowInPlayer(): Boolean? = loadBoolean("show_in_player")
+
+    actual fun saveShowInPlayer(enabled: Boolean) {
+        saveBoolean("show_in_player", enabled)
+    }
+
+    actual fun loadPlayerBadgeSource(): String? = loadString("player_badge_source")
+
+    actual fun savePlayerBadgeSource(source: String) {
+        saveString("player_badge_source", source)
+    }
+
+    actual fun loadStreamBackgroundMode(): String? = loadString("stream_background_mode")
+
+    actual fun saveStreamBackgroundMode(mode: String) {
+        saveString("stream_background_mode", mode)
+    }
+
     actual fun exportToSyncPayload(): JsonObject = buildJsonObject {
         loadStreamBadgeRules()?.let { put(streamBadgeRulesKey, encodeSyncString(it)) }
         loadShowFileSizeBadges()?.let { put(showFileSizeBadgesKey, encodeSyncBoolean(it)) }

@@ -40,6 +40,13 @@ internal actual object MemberAssetStorage {
         return file.takeIf { it.isFile && it.length() > 0L }?.toURI()?.toString()
     }
 
+    actual fun loadProfileBackgroundCatalogPayload(): String? =
+        DesktopPreferences.getString(preferencesName, "profile_background_catalog_payload")
+
+    actual fun saveProfileBackgroundCatalogPayload(payload: String) {
+        DesktopPreferences.putString(preferencesName, "profile_background_catalog_payload", payload)
+    }
+
     actual fun clearAccess() {
         DesktopPreferences.remove(preferencesName, accessPayloadKey)
     }

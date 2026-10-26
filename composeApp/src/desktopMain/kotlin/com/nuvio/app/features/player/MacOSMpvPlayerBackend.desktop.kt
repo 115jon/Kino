@@ -148,6 +148,8 @@ internal object MacOSMpvPlayerBackend : DesktopPlaybackBackend {
                     }
                 }
 
+                override fun applyAudioLanguagePreferences(languages: List<String>) = Unit
+
                 override fun selectAudioTrack(index: Int) {
                     val count = bridge.nuvio_player_get_audio_track_count(playerPtr)
                     if (index in 0 until count) {

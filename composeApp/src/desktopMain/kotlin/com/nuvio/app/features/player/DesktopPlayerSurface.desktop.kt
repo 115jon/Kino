@@ -23,6 +23,7 @@ actual fun PlatformPlayerSurface(
     initialPositionMs: Long?,
     initialPositionRequestKey: String?,
     resizeMode: PlayerResizeMode,
+    playbackEngine: AndroidPlaybackEngine?,
     useNativeController: Boolean,
     overlayContent: @Composable () -> Unit,
     onInitialPositionHandled: (key: String, handled: Boolean) -> Unit,

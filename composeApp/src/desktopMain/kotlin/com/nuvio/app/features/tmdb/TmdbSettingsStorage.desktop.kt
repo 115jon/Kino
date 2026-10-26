@@ -87,9 +87,9 @@ internal actual object TmdbSettingsStorage {
         saveBoolean(useDetailsKey, enabled)
     }
 
-    actual fun loadUseReleaseDates(): Boolean? = loadBoolean(useReleaseDatesKey)
+    fun loadUseReleaseDates(): Boolean? = loadBoolean(useReleaseDatesKey)
 
-    actual fun saveUseReleaseDates(enabled: Boolean) {
+    fun saveUseReleaseDates(enabled: Boolean) {
         saveBoolean(useReleaseDatesKey, enabled)
     }
 

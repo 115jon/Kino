@@ -125,6 +125,8 @@ private class RecordingPlayerController : PlayerEngineController {
 
     override fun getSubtitleTracks(): List<SubtitleTrack> = emptyList()
 
+    override fun applyAudioLanguagePreferences(languages: List<String>) = Unit
+
     override fun selectAudioTrack(index: Int) = Unit
 
     override fun selectSubtitleTrack(index: Int) = Unit

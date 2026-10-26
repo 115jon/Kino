@@ -95,6 +95,12 @@ internal actual object MdbListSettingsStorage {
         saveBoolean(useMalKey, enabled)
     }
 
+    actual fun loadShowOnHero(): Boolean? = loadBoolean("show_on_hero")
+
+    actual fun saveShowOnHero(enabled: Boolean) {
+        saveBoolean("show_on_hero", enabled)
+    }
+
     actual fun exportToSyncPayload(): JsonObject = buildJsonObject {
         loadEnabled()?.let { put(enabledKey, encodeSyncBoolean(it)) }
         loadApiKey()?.let { put(apiKey, encodeSyncString(it)) }
