@@ -75,6 +75,10 @@ jobs:
         shell: pwsh
         run: powershell -ExecutionPolicy Bypass -File .\desktop\scripts\build-installer.ps1
 
+      - name: Verify release bytecode
+        shell: pwsh
+        run: java desktop/scripts/VerifyBytecode.java composeApp/build/compose/binaries/main-release/app/Kino/app
+
       - name: Prepare release assets
         id: release-assets
         shell: pwsh
