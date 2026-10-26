@@ -8,7 +8,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
-private const val PerfSampleIntervalMs = 5_000L
+private val PerfSampleIntervalMs =
+    System.getProperty("kino.player.perf-interval-ms")?.toLongOrNull()?.coerceAtLeast(250L) ?: 5_000L
 
 private val perfProperties = listOf(
     "current-vo",
@@ -37,7 +38,7 @@ private val perfProperties = listOf(
 
 @Composable
 internal fun WindowsMpvPerfSampler(state: WindowsPlayerWindowState, surface: String) {
-    if (System.getProperty("kino.player.perf-log") == "false") return
+    if (System.getProperty("kino.player.perf-log") != "true") return
     LaunchedEffect(state) {
         val osBean = ManagementFactory.getOperatingSystemMXBean() as? com.sun.management.OperatingSystemMXBean
         while (!state.isClosed) {
