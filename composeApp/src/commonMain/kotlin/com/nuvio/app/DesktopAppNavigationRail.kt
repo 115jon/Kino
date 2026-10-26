@@ -6,8 +6,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -58,52 +56,19 @@ internal fun DesktopAppNavigationRail(
                 selected = selectedTab == AppScreenTab.Home,
                 onClick = { onTabSelected(AppScreenTab.Home) },
                 label = stringResource(Res.string.compose_nav_home),
-                contentDescription = stringResource(Res.string.compose_nav_home),
-                icon = {
-                    Icon(
-                        imageVector = Icons.Filled.Home,
-                        contentDescription = null,
-                        tint = if (selectedTab == AppScreenTab.Home) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        },
-                    )
-                },
+                icon = Icons.Filled.Home,
             )
             NuvioDesktopNavigationItem(
                 selected = selectedTab == AppScreenTab.Search,
                 onClick = { onTabSelected(AppScreenTab.Search) },
                 label = stringResource(Res.string.compose_nav_search),
-                contentDescription = stringResource(Res.string.compose_nav_search),
-                icon = {
-                    Icon(
-                        painter = painterResource(Res.drawable.sidebar_search),
-                        contentDescription = null,
-                        tint = if (selectedTab == AppScreenTab.Search) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        },
-                    )
-                },
+                icon = painterResource(Res.drawable.sidebar_search),
             )
             NuvioDesktopNavigationItem(
                 selected = selectedTab == AppScreenTab.Library,
                 onClick = { onTabSelected(AppScreenTab.Library) },
                 label = stringResource(Res.string.compose_nav_library),
-                contentDescription = stringResource(Res.string.compose_nav_library),
-                icon = {
-                    Icon(
-                        painter = painterResource(Res.drawable.sidebar_library),
-                        contentDescription = null,
-                        tint = if (selectedTab == AppScreenTab.Library) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        },
-                    )
-                },
+                icon = painterResource(Res.drawable.sidebar_library),
             )
         },
         footer = {
@@ -113,17 +78,15 @@ internal fun DesktopAppNavigationRail(
                 label = profileState.activeProfile?.name
                     ?.takeIf { it.isNotBlank() }
                     ?: stringResource(Res.string.compose_nav_profile),
-                contentDescription = stringResource(Res.string.compose_nav_profile),
-                icon = {
-                    ProfileSwitcherTab(
-                        selected = selectedTab == AppScreenTab.Settings,
-                        onClick = { onTabSelected(AppScreenTab.Settings) },
-                        onProfileSelected = onProfileSelected,
-                        onAddProfileRequested = onAddProfileRequested,
-                        modifier = Modifier.size(28.dp),
-                    )
-                },
-            )
+            ) {
+                ProfileSwitcherTab(
+                    selected = selectedTab == AppScreenTab.Settings,
+                    onClick = { onTabSelected(AppScreenTab.Settings) },
+                    onProfileSelected = onProfileSelected,
+                    onAddProfileRequested = onAddProfileRequested,
+                    modifier = Modifier.size(28.dp),
+                )
+            }
         },
     )
 }
