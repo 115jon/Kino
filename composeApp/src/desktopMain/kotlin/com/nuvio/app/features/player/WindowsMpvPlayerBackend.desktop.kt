@@ -32,6 +32,9 @@ import com.nuvio.app.core.ui.nuvioTypeScale
 import com.nuvio.app.features.details.MetaVideo
 import com.nuvio.app.features.streams.AddonStreamGroup
 import com.nuvio.app.features.streams.StreamItem
+import com.nuvio.app.features.player.compose.WindowsComposeVideoSurface
+import com.nuvio.app.features.player.compose.WindowsMpvPerfSampler
+import com.nuvio.app.features.player.compose.isComposeWindowsVideoSurfaceSelected
 import com.jogamp.opengl.GL
 import com.jogamp.opengl.GLAutoDrawable
 import com.jogamp.opengl.GLCapabilities
@@ -288,10 +291,10 @@ private const val WindowsPlayerTrackPollIntervalMs = 1_000L
 private const val WindowsPlayerStartupTimeoutMs = 30_000L
 private const val WindowsPlayerInitialSeekTimeoutMs = 8_000L
 private const val WindowsPlayerFallbackPollIntervalMs = 500L
-private const val WindowsPlayerMaxCacheBytes = "536870912"
-private const val WindowsPlayerMaxBackCacheBytes = "268435456"
-private const val WindowsPlayerReadAheadSeconds = "30"
-private const val WindowsPlayerCachePauseWaitSeconds = "5"
+internal const val WindowsPlayerMaxCacheBytes = "536870912"
+internal const val WindowsPlayerMaxBackCacheBytes = "268435456"
+internal const val WindowsPlayerReadAheadSeconds = "30"
+internal const val WindowsPlayerCachePauseWaitSeconds = "5"
 
 private enum class WindowsVideoSurface {
     Native,
@@ -354,7 +357,7 @@ private fun requireWindowsMpvOption(
     }
 }
 
-private class MpvEventPump(
+internal class MpvEventPump(
     private val drain: () -> Unit,
 ) {
     private val executor: ExecutorService = Executors.newSingleThreadExecutor { runnable ->
@@ -406,7 +409,7 @@ private class MpvEventPump(
     }
 }
 
-private class SwingStateNotifier(
+internal class SwingStateNotifier(
     private val callback: () -> Unit,
 ) {
     private val scheduled = AtomicBoolean(false)
@@ -456,7 +459,7 @@ private fun scheduleLatestWindowsVolumeUpdate(
     }
 }
 
-private fun scheduleWindowsSwingAction(delayMs: Int, action: () -> Unit) {
+internal fun scheduleWindowsSwingAction(delayMs: Int, action: () -> Unit) {
     SwingUtilities.invokeLater {
         javax.swing.Timer(delayMs) { action() }.apply {
             isRepeats = false
@@ -566,7 +569,7 @@ private data class MpvVideoDiagnostics(
     )
 }
 
-private fun readMpvPropertyString(
+internal fun readMpvPropertyString(
     lib: WindowsMpvLibrary,
     ptr: Pointer,
     name: String,
@@ -655,7 +658,7 @@ private fun readMpvAudioDiagnostics(
     )
 }
 
-private fun configureWindowsVideoPipeline(
+internal fun configureWindowsVideoPipeline(
     state: WindowsPlayerWindowState,
     ptr: Pointer,
     trigger: String,
@@ -682,7 +685,7 @@ private fun configureWindowsVideoPipeline(
     return logMessage
 }
 
-private fun resetWindowsVideoPipeline(state: WindowsPlayerWindowState) {
+internal fun resetWindowsVideoPipeline(state: WindowsPlayerWindowState) {
     state.lastVideoDiagnosticsSignature = null
     state.videoPipelineMode = DesktopVideoPipelineMode.Standard
     desktopPlayerTrace("video pipeline reset")
@@ -737,14 +740,14 @@ private interface WindowsFullscreenLibrary : Library {
     }
 }
 
-private data class WindowedPresentationState(
+internal data class WindowedPresentationState(
     val bounds: Rectangle,
     val extendedState: Int?,
     val background: Color,
     val style: Long?,
 )
 
-private class FullscreenWindowState {
+internal class FullscreenWindowState {
     var activeDevice: GraphicsDevice? = null
     var windowedState: WindowedPresentationState? = null
     private var activeWindow: Window? = null
@@ -957,7 +960,7 @@ internal class MpvEventPropertyChange(pointer: Pointer? = null) : Structure(poin
     var data: Pointer? = null
 }
 
-private fun traceMpvLogMessage(data: Pointer?) {
+internal fun traceMpvLogMessage(data: Pointer?) {
     try {
         val message = data?.let { MpvLogMessage(it).apply { read() } }
         desktopPlayerTrace(
@@ -973,13 +976,13 @@ private fun traceMpvLogMessage(data: Pointer?) {
     }
 }
 
-private fun recordWindowsAudioUnderrun(state: WindowsPlayerWindowState, data: Pointer?) {
+internal fun recordWindowsAudioUnderrun(state: WindowsPlayerWindowState, data: Pointer?) {
     val message = runCatching { data?.let { MpvLogMessage(it).apply { read() } } }.getOrNull()
     val text = mpvLogText(message?.text)
     state.audioUnderrunTracker.record(isWindowsAudioUnderrunLog(text))
 }
 
-private fun markWindowsAudioDiagnosticsRequested(state: WindowsPlayerWindowState, data: Pointer?) {
+internal fun markWindowsAudioDiagnosticsRequested(state: WindowsPlayerWindowState, data: Pointer?) {
     val property = data?.let { pointer -> runCatching { MpvEventPropertyChange(pointer).apply { read() } }.getOrNull() }
     val name = property?.name?.getString(0).orEmpty()
     if (name == "aid" || name == "track-list/count" || name.startsWith("audio-")) {
@@ -998,7 +1001,7 @@ private fun readMpvStartFile(data: Pointer?): MpvEventStartFile? =
 private fun readMpvEndFile(data: Pointer?): MpvEventEndFile? =
     data?.let { pointer -> runCatching { MpvEventEndFile(pointer).apply { read() } }.getOrNull() }
 
-private fun handleWindowsMpvStartFileEvent(
+internal fun handleWindowsMpvStartFileEvent(
     state: WindowsPlayerWindowState,
     data: Pointer?,
 ): String {
@@ -1026,7 +1029,7 @@ private fun handleWindowsMpvStartFileEvent(
     return "mpv event id=$MPV_EVENT_START_FILE playlistEntryId=${startFile.playlist_entry_id} generation=${state.sourceGeneration}"
 }
 
-private fun discardPendingWindowsMpvEvents(lib: WindowsMpvLibrary, ptr: Pointer): Int {
+internal fun discardPendingWindowsMpvEvents(lib: WindowsMpvLibrary, ptr: Pointer): Int {
     var discarded = 0
     while (true) {
         val eventPtr = lib.mpv_wait_event(ptr, 0.0) ?: break
@@ -1037,7 +1040,7 @@ private fun discardPendingWindowsMpvEvents(lib: WindowsMpvLibrary, ptr: Pointer)
     return discarded
 }
 
-private fun handleWindowsMpvEndFileEvent(
+internal fun handleWindowsMpvEndFileEvent(
     state: WindowsPlayerWindowState,
     lib: WindowsMpvLibrary,
     data: Pointer?,
@@ -1098,7 +1101,7 @@ internal fun redactMpvLogText(value: String): String =
         playbackUrlForLog(match.value)
     }.take(MaxWindowsMpvLogMessageLength)
 
-private fun createRenderParams(vararg values: Pair<Int, Pointer?>): Array<MpvRenderParam> {
+internal fun createRenderParams(vararg values: Pair<Int, Pointer?>): Array<MpvRenderParam> {
     @Suppress("UNCHECKED_CAST")
     val params = MpvRenderParam().toArray(values.size + 1) as Array<MpvRenderParam>
     values.forEachIndexed { index, (type, data) ->
@@ -1112,7 +1115,7 @@ private fun createRenderParams(vararg values: Pair<Int, Pointer?>): Array<MpvRen
     return params
 }
 
-private fun cStringMemory(value: String): Memory {
+internal fun cStringMemory(value: String): Memory {
     val bytes = value.toByteArray(Charsets.UTF_8)
     return Memory((bytes.size + 1).toLong()).apply {
         write(0, bytes, 0, bytes.size)
@@ -1131,7 +1134,7 @@ private fun longMemory(value: Long): Memory =
         setLong(0L, value)
     }
 
-private fun intMemory(value: Int): Memory =
+internal fun intMemory(value: Int): Memory =
     Memory(4L).apply {
         setInt(0L, value)
     }
@@ -1154,7 +1157,7 @@ private interface Kernel32Library : Library {
     fun GetProcAddress(module: Pointer, name: String): Pointer?
 }
 
-private fun resolveOpenGlProcAddress(name: String): Pointer? {
+internal fun resolveOpenGlProcAddress(name: String): Pointer? {
     val wglAddress = WglLibrary.INSTANCE.wglGetProcAddress(name)
     val nativeAddress = wglAddress?.let(Pointer::nativeValue) ?: 0L
     if (nativeAddress != 0L && nativeAddress != 1L && nativeAddress != 2L && nativeAddress != 3L && nativeAddress != -1L) {
@@ -1321,7 +1324,20 @@ internal object WindowsMpvPlayerBackend : DesktopPlaybackBackend {
             )
         }
 
-        SwingPanel(
+        WindowsMpvPerfSampler(windowState, System.getProperty("kino.windows.video-surface") ?: "native")
+        if (isComposeWindowsVideoSurfaceSelected()) {
+            WindowsComposeVideoSurface(
+                state = windowState,
+                modifier = modifier,
+                overlayContent = { currentOverlayContent.value() },
+                onInitializationError = { message -> currentOnError.value(message) },
+                onPlayerStateChanged = { playerStateSignals.tryEmit(Unit) },
+                onSurfaceInteraction = onSurfaceInteraction,
+                onSurfaceExit = onSurfaceExit,
+                onWindowFocusChanged = onWindowFocusChanged,
+                perfCollector = backendPerfStats,
+            )
+        } else SwingPanel(
             background = ComposeColor(windowsPlayerInteropBackgroundArgb()),
             factory = {
                 desktopPlayerTrace(
@@ -2292,7 +2308,7 @@ internal class WindowsPlayerWindowState {
     var currentEpisodeStreamUrl: String? = null
 }
 
-private fun WindowsPlayerWindowState.withMpv(block: (Pointer) -> Unit) {
+internal fun WindowsPlayerWindowState.withMpv(block: (Pointer) -> Unit) {
     mpvCallLock.withLock {
         val ptr = playerPtr ?: return@withLock
         if (isClosed) return@withLock
@@ -4657,7 +4673,7 @@ private class ModernSliderUI(
     }
 }
 
-private fun applyWindowsMpvSubtitleStyle(ptr: Pointer, style: SubtitleStyleState) {
+internal fun applyWindowsMpvSubtitleStyle(ptr: Pointer, style: SubtitleStyleState) {
     val lib = WindowsMpvLibrary.INSTANCE
     val properties = listOf(
         "sub-ass-override" to style.toMpvOverrideMode(),
@@ -4686,7 +4702,7 @@ private fun applyWindowsMpvSubtitleStyle(ptr: Pointer, style: SubtitleStyleState
 
 }
 
-private fun reapplyWindowsMpvSubtitleStyleLater(
+internal fun reapplyWindowsMpvSubtitleStyleLater(
     state: WindowsPlayerWindowState,
     ptr: Pointer,
 ) {
