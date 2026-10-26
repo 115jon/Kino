@@ -9,6 +9,9 @@ import com.nuvio.app.core.sync.decodeSyncString
 import com.nuvio.app.core.sync.encodeSyncBoolean
 import com.nuvio.app.core.sync.encodeSyncString
 import com.nuvio.app.desktop.DesktopPreferences
+import com.nuvio.app.features.simkl.SimklBrandAsset
+import com.nuvio.app.features.simkl.simklBrandPainter
+
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -26,10 +29,12 @@ internal actual object ThemeSettingsStorage {
     private const val amoledEnabledKey = "amoled_enabled"
     private const val liquidGlassNativeTabBarEnabledKey = "liquid_glass_native_tab_bar_enabled"
     private const val selectedAppLanguageKey = "selected_app_language"
+    private const val navBarStyleKey = "nav_bar_style"
     private val profileScopedSyncKeys = listOf(
         selectedThemeKey,
         amoledEnabledKey,
         liquidGlassNativeTabBarEnabledKey,
+        navBarStyleKey,
     )
     private val globalSyncKeys = listOf(selectedAppLanguageKey)
 
@@ -74,11 +79,19 @@ internal actual object ThemeSettingsStorage {
         Locale.setDefault(Locale.forLanguageTag(normalizedCode))
     }
 
+    actual fun loadNavBarStyle(): String? =
+        DesktopPreferences.getString(preferencesName, ProfileScopedKey.of(navBarStyleKey))
+
+    actual fun saveNavBarStyle(styleKey: String) {
+        DesktopPreferences.putString(preferencesName, ProfileScopedKey.of(navBarStyleKey), styleKey)
+    }
+
     actual fun exportToSyncPayload(): JsonObject = buildJsonObject {
         loadSelectedTheme()?.let { put(selectedThemeKey, encodeSyncString(it)) }
         loadAmoledEnabled()?.let { put(amoledEnabledKey, encodeSyncBoolean(it)) }
         loadLiquidGlassNativeTabBarEnabled()?.let { put(liquidGlassNativeTabBarEnabledKey, encodeSyncBoolean(it)) }
         loadSelectedAppLanguage()?.let { put(selectedAppLanguageKey, encodeSyncString(it)) }
+        loadNavBarStyle()?.let { put(navBarStyleKey, encodeSyncString(it)) }
     }
 
     actual fun replaceFromSyncPayload(payload: JsonObject) {
@@ -91,6 +104,7 @@ internal actual object ThemeSettingsStorage {
         payload.decodeSyncBoolean(amoledEnabledKey)?.let(::saveAmoledEnabled)
         payload.decodeSyncBoolean(liquidGlassNativeTabBarEnabledKey)?.let(::saveLiquidGlassNativeTabBarEnabled)
         payload.decodeSyncString(selectedAppLanguageKey)?.let(::saveSelectedAppLanguage)
+        payload.decodeSyncString(navBarStyleKey)?.let(::saveNavBarStyle)
         applySelectedAppLanguage(loadSelectedAppLanguage() ?: AppLanguage.ENGLISH.code)
     }
 }
@@ -102,6 +116,8 @@ internal actual fun integrationLogoPainter(logo: IntegrationLogo): Painter =
     when (logo) {
         IntegrationLogo.Tmdb -> painterResource(Res.drawable.rating_tmdb)
         IntegrationLogo.Trakt -> painterResource(Res.drawable.trakt_tv_favicon)
+        IntegrationLogo.Simkl -> simklBrandPainter(SimklBrandAsset.Glyph)
+
         IntegrationLogo.MdbList -> painterResource(Res.drawable.mdblist_logo)
         IntegrationLogo.IntroDb -> painterResource(Res.drawable.introdb_favicon)
     }

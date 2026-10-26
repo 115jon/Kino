@@ -19,13 +19,18 @@ internal actual object TraktAuthStorage {
     private const val preferencesName = "nuvio_trakt_auth"
     private const val payloadKey = "trakt_auth_payload"
 
-    actual fun loadPayload(): String? =
-        DesktopPreferences.getString(preferencesName, ProfileScopedKey.of(payloadKey))
+    actual fun loadPayload(profileId: Int): String? =
+        DesktopPreferences.getString(preferencesName, ProfileScopedKey.of(payloadKey, profileId))
 
-    actual fun savePayload(payload: String) {
-        DesktopPreferences.putString(preferencesName, ProfileScopedKey.of(payloadKey), payload)
+    actual fun savePayload(profileId: Int, payload: String) {
+        DesktopPreferences.putString(preferencesName, ProfileScopedKey.of(payloadKey, profileId), payload)
+    }
+
+    actual fun removeProfile(profileId: Int) {
+        DesktopPreferences.remove(preferencesName, ProfileScopedKey.of(payloadKey, profileId))
     }
 }
+
 
 internal actual object TraktCommentsStorage {
     private const val preferencesName = "nuvio_trakt_comments"
