@@ -93,7 +93,7 @@ class OriginalAudioPreferenceTest {
     @Test
     fun threeLetterMpvTracksReceiveCanonicalTmdbPreference() {
         val tracks = listOf(
-            AudioTrack(0, "1", "English dub", "eng", true),
+            AudioTrack(0, "1", "English dub", "eng", isSelected = true),
             AudioTrack(1, "2", "Japanese", "jpn"),
         )
         val controller = RecordingController(tracks)
@@ -229,7 +229,7 @@ class OriginalAudioPreferenceTest {
     @Test
     fun sameLanguageTrackChosenByEngineIsPreserved() {
         val controller = RecordingController(audioTracks().map { it.copy(isSelected = false) } +
-            AudioTrack(2, "3", "Original surround default", originalLanguage, true))
+            AudioTrack(2, "3", "Original surround default", originalLanguage, isSelected = true))
         val runtime = runtime(controller, contentLanguage = originalLanguage)
 
         runtime.refreshTracks()
@@ -244,7 +244,7 @@ class OriginalAudioPreferenceTest {
     fun unmatchedLanguageLeavesFallbackSelectionToEngine() {
         val controller = RecordingController(listOf(
             AudioTrack(0, "1", "First track", "fr"),
-            AudioTrack(1, "2", "Container default", "de", true),
+            AudioTrack(1, "2", "Container default", "de", isSelected = true),
         ))
         val runtime = runtime(controller, contentLanguage = "ja")
         runtime.playerSettingsUiState = runtime.playerSettingsUiState.copy(secondaryPreferredAudioLanguage = "en")
@@ -379,7 +379,7 @@ class OriginalAudioPreferenceTest {
     private val originalLanguage = if (deviceLanguage.substringBefore('-') == "ja") "ko" else "ja"
 
     private fun audioTracks() = listOf(
-        AudioTrack(0, "1", "Dub", deviceLanguage, true),
+        AudioTrack(0, "1", "Dub", deviceLanguage, isSelected = true),
         AudioTrack(1, "2", "Original", originalLanguage),
     )
 
