@@ -3,6 +3,7 @@ package com.nuvio.app.features.updater
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import co.touchlab.kermit.Logger
 import com.nuvio.app.core.build.AppFeaturePolicy
 import com.nuvio.app.core.build.AppVersionConfig
 import com.nuvio.app.core.i18n.localizedByteUnit
@@ -20,6 +21,8 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import nuvio.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.getString
+
+private val updaterLogger = Logger.withTag("AppUpdater")
 
 data class AppUpdate(
     val tag: String,
@@ -131,6 +134,9 @@ class AppUpdaterController internal constructor(
 
             result.onSuccess { update ->
                 val remoteNewer = update.isNewerThanCurrent()
+                updaterLogger.i {
+                    "Update check channel=${channel.storedValue} current=${AppVersionConfig.VERSION_NAME} latest=${update.version} asset=${update.assetName} newer=$remoteNewer"
+                }
                 val ignored = ignoredTag != null && ignoredTag == update.tag
                 val shouldShowDialog = remoteNewer && (force || update.mandatory || !ignored)
 
@@ -154,6 +160,11 @@ class AppUpdaterController internal constructor(
                     NuvioToastController.show(noUpdateMessage(channel))
                 }
             }.onFailure { error ->
+                if (error is NoChannelReleaseException) {
+                    updaterLogger.i { "No ${channel.storedValue} release is available for ${AppUpdaterPlatform.platform}" }
+                } else {
+                    updaterLogger.w(error) { "Update check failed" }
+                }
                 _uiState.update { state ->
                     state.copy(
                         isChecking = false,
@@ -260,6 +271,7 @@ class AppUpdaterController internal constructor(
                 }
                 installDownloadedUpdate()
             }.onFailure { error ->
+                updaterLogger.w(error) { "Update download failed for ${update.assetName}" }
                 _uiState.update {
                     it.downloadFailed(error.message ?: getString(Res.string.updates_download_failed))
                 }
@@ -277,6 +289,7 @@ class AppUpdaterController internal constructor(
         AppUpdaterPlatform.installDownloadedApk(apkPath).onSuccess {
             _uiState.update { state -> state.copy(showUnknownSourcesDialog = false) }
         }.onFailure { error ->
+            updaterLogger.w(error) { "Update installer launch failed" }
             scope.launch {
                 val fallbackMessage = error.message ?: getString(Res.string.updates_install_failed)
                 _uiState.update { state ->

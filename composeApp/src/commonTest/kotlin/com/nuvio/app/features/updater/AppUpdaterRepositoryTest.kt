@@ -101,6 +101,50 @@ class AppUpdaterRepositoryTest {
         assertNull(AppUpdaterRepository.resolveUpdate(release, manifest, "android", listOf("arm64-v8a"), currentVersionCode = 1))
     }
 
+    @Test
+    fun publishedDesktopReleaseResolvesToTheManifestInstaller() {
+        val response = """[
+            {"tag_name": "desktop-v0.4.2", "name": "Kino Desktop v0.4.2", "assets": [
+                {"name": "Kino-Desktop-0.4.2.exe", "browser_download_url": "https://example.com/Kino-Desktop-0.4.2.exe", "size": 178531328},
+                $manifestAsset]},
+            {"tag_name": "desktop-v0.4.1", "assets": [$manifestAsset]},
+            {"tag_name": "v0.2.24", "assets": [$manifestAsset]},
+            {"tag_name": "mpv-runtime-windows-amd64", "assets": [
+                {"name": "mpv.zip", "browser_download_url": "https://example.com/mpv.zip"}]}
+        ]"""
+        val release = AppUpdaterRepository.selectRelease(response, UpdateChannel.STABLE, "desktop")
+        val manifest = ReleaseManifest(
+            platform = "desktop",
+            version = "0.4.2",
+            versionCode = 100,
+            assets = listOf(ReleaseManifestAsset("Kino-Desktop-0.4.2.exe", 178531328L, "e462b4e8")),
+        )
+
+        val update = AppUpdaterRepository.resolveUpdate(release!!, manifest, "desktop", emptyList(), currentVersionCode = 100)
+
+        assertEquals("desktop-v0.4.2", update?.tag)
+        assertEquals("Kino-Desktop-0.4.2.exe", update?.assetName)
+        assertEquals("https://example.com/Kino-Desktop-0.4.2.exe", update?.assetUrl)
+        assertEquals("e462b4e8", update?.assetSha256)
+        assertTrue(manifest.isNewerThan(currentVersion = "0.4.1", currentVersionCode = 100))
+        assertFalse(manifest.isNewerThan(currentVersion = "0.4.2", currentVersionCode = 100))
+    }
+
+    @Test
+    fun localInstallerNameIsNotOfferedWhenTheReleaseUsesThePublishedName() {
+        val release = GitHubReleaseDto(
+            tagName = "desktop-v0.4.2",
+            assets = listOf(GitHubAssetDto("Kino-Desktop-0.4.2.exe", "https://example.com/Kino-Desktop-0.4.2.exe")),
+        )
+        val manifest = ReleaseManifest(
+            platform = "desktop",
+            version = "0.4.2",
+            assets = listOf(ReleaseManifestAsset("KinoSetup-0.4.2.exe", 1L, "sha")),
+        )
+
+        assertNull(AppUpdaterRepository.resolveUpdate(release, manifest, "desktop", emptyList(), currentVersionCode = 100))
+    }
+
     private val manifestAsset =
         """{"name": "release-manifest.json", "browser_download_url": "https://example.com/release-manifest.json"}"""
 }

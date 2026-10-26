@@ -8,17 +8,17 @@ import kotlin.test.assertTrue
 
 class DesktopUpdateInstallerLaunchTest {
     @Test
-    fun `windows silent installer is launched detached from the current process`() {
+    fun `windows installer is launched detached with its progress window`() {
         val installer = File("C:\\Users\\kino\\AppData\\Local\\Temp\\kino-update\\Kino-Desktop-0.4.0.exe")
 
-        val command = windowsSilentInstallerLaunchCommand(installer.absolutePath)
+        val command = windowsInstallerLaunchCommand(installer.absolutePath)
 
         assertEquals("cmd.exe", command[0])
         assertEquals("/c", command[1])
         assertEquals("start", command[2])
         assertEquals("", command[3])
         assertEquals(installer.absolutePath, command[4])
-        assertEquals("/S", command[5])
+        assertEquals(5, command.size)
         assertFalse(command[0].equals(installer.absolutePath, ignoreCase = true))
     }
 
