@@ -252,6 +252,7 @@ fun DetailActions(
     isSaved: Boolean,
     isWatched: Boolean,
     isTablet: Boolean,
+    isDesktop: Boolean = false,
     shuffleEnabled: Boolean,
     onPlayClick: () -> Unit,
     onPlayLongClick: (() -> Unit)?,
@@ -293,6 +294,7 @@ fun DetailActions(
             )
         },
         isTablet = isTablet,
+        isDesktop = isDesktop,
         onPlayClick = onPlayClick,
         onPlayLongClick = onPlayLongClick,
     )
