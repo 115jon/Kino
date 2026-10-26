@@ -365,30 +365,43 @@ internal fun PlayerControlsShell(
                             onScrubFinished(it)
                         },
                     )
-                    PlayerControlActions(
-                        playbackSnapshot = playbackSnapshot,
-                        displayedPositionMs = displayedPositionMs,
-                        showRemainingTime = showRemainingTime,
-                        onRuntimeClick = onRuntimeClick,
-                        metrics = metrics,
-                        resizeMode = resizeMode,
-                        onSubtitleClick = onSubtitleClick,
-                        onAudioClick = onAudioClick,
-                        onSourcesClick = onSourcesClick,
-                        onEpisodesClick = onEpisodesClick,
-                        onNextEpisodeClick = onNextEpisodeClick,
-                        onSpeedClick = onSpeedClick,
-                        onResizeModeClick = onResizeModeClick,
-                        onVideoSettingsClick = onVideoSettingsClick,
-                        onOpenInExternalPlayer = onOpenInExternalPlayer,
-                        onStreamInfoClick = onStreamInfoClick,
-                        onSubmitIntroClick = onSubmitIntroClick,
-                        onInteraction = onInteraction,
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(modifier = Modifier.weight(1f)) {
+                            PlayerControlActions(
+                                playbackSnapshot = playbackSnapshot,
+                                displayedPositionMs = displayedPositionMs,
+                                showRemainingTime = showRemainingTime,
+                                onRuntimeClick = onRuntimeClick,
+                                metrics = metrics,
+                                resizeMode = resizeMode,
+                                onSubtitleClick = onSubtitleClick,
+                                onAudioClick = onAudioClick,
+                                onSourcesClick = onSourcesClick,
+                                onEpisodesClick = onEpisodesClick,
+                                onNextEpisodeClick = onNextEpisodeClick,
+                                onSpeedClick = onSpeedClick,
+                                onResizeModeClick = onResizeModeClick,
+                                onVideoSettingsClick = onVideoSettingsClick,
+                                onOpenInExternalPlayer = onOpenInExternalPlayer,
+                                onStreamInfoClick = onStreamInfoClick,
+                                onSubmitIntroClick = onSubmitIntroClick,
+                                onInteraction = onInteraction,
+                            )
+                        }
+                        if (desktopLayout) {
+                            DesktopPlayerToolCluster(
+                                volumeLevel = volumeLevel,
+                                showVolumeControl = showVolumeControl,
+                                onVolumeChanged = onVolumeChanged,
+                                showFullscreenControl = showFullscreenControl,
+                                onFullscreenClick = onFullscreenClick,
+                            )
+                        }
+                    }
                 }
             }
 
-            if (desktopLayout) {
+            if (desktopLayout && useLegacyLayout) {
                 DesktopPlayerToolCluster(
                     volumeLevel = volumeLevel,
                     showVolumeControl = showVolumeControl,

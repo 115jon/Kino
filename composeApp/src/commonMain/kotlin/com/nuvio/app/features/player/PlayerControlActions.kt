@@ -203,7 +203,7 @@ internal fun PlayerControlActions(
 }
 
 @Composable
-private fun PlayerAction(
+internal fun PlayerAction(
     description: String,
     onClick: () -> Unit,
     icon: ImageVector? = null,
