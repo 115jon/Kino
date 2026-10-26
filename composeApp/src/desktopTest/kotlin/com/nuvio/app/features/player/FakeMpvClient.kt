@@ -97,3 +97,21 @@ internal class ManualMpvDispatcher(
         actions.forEach { it.second() }
     }
 }
+
+internal class CountingMpvDispatcher : MpvEngineDispatcher {
+    var posts = 0
+    var shutdowns = 0
+
+    override fun post(action: () -> Unit) {
+        posts += 1
+        action()
+    }
+
+    override fun postDelayed(delayMs: Long, action: () -> Unit) {
+        posts += 1
+    }
+
+    override fun shutdown() {
+        shutdowns += 1
+    }
+}

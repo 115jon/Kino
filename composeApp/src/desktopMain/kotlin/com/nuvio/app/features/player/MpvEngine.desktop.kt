@@ -90,6 +90,7 @@ internal class MpvEngine(
             eventPump = null
             runCatching { output.detach(created) }
             created.terminateDestroy()
+            dispatcher.shutdown()
             throw error
         }
     }
@@ -120,6 +121,7 @@ internal class MpvEngine(
         loadRequestGate.invalidate()
         isClosed = true
         loader.cancel()
+        dispatcher.shutdown()
     }
 
     fun notifyStateChanged() {
@@ -135,6 +137,7 @@ internal class MpvEngine(
     }
 
     fun postCommand(block: (MpvClient) -> Unit) {
+        if (client == null) return
         dispatcher.post { withClient(block) }
     }
 

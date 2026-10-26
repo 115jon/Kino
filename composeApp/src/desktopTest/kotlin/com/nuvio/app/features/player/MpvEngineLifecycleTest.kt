@@ -181,4 +181,41 @@ class MpvEngineLifecycleTest {
         assertEquals(level, queuedEngine.playback.volumeLevel)
         queuedEngine.shutdown()
     }
+
+    @Test
+    fun `commands before start do not touch the command thread`() {
+        val counting = CountingMpvDispatcher()
+        val idle = MpvEngine(tracePrefix = "test panel", clientFactory = { FakeMpvClient() }, dispatcher = counting)
+
+        idle.seekTo(1_000L)
+        idle.seekToKeyframe(1_000L)
+        idle.seekBy(1_000L)
+        idle.setPaused(true)
+        idle.setVolumeLevel(0.5f)
+
+        assertEquals(0, counting.posts)
+    }
+
+    @Test
+    fun `failed start shuts the command thread down`() {
+        val counting = CountingMpvDispatcher()
+        val failing = FakeMpvClient().apply { initializeResult = -1 }
+        val broken = MpvEngine(tracePrefix = "test panel", clientFactory = { failing }, dispatcher = counting)
+
+        assertFailsWith<RuntimeException> { broken.start(WidOutput(1L)) }
+
+        assertEquals(1, counting.shutdowns)
+    }
+
+    @Test
+    fun `close shuts the command thread down`() {
+        val counting = CountingMpvDispatcher()
+        val closing = MpvEngine(tracePrefix = "test panel", clientFactory = { FakeMpvClient() }, dispatcher = counting)
+        closing.start(WidOutput(1L))
+
+        closing.close()
+
+        assertEquals(1, counting.shutdowns)
+        closing.shutdown()
+    }
 }
