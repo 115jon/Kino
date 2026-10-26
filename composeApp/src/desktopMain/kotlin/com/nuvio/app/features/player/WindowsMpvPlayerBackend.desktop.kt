@@ -61,7 +61,6 @@ internal object WindowsMpvPlayerBackend : DesktopPlaybackBackend {
         val currentOverlayContent = rememberUpdatedState(overlayContent)
         val currentInitialPosition = rememberUpdatedState(initialPositionRequestKey to initialPositionMs)
         val currentOnInitialPositionHandled = rememberUpdatedState(onInitialPositionHandled)
-        val startedInitialPositionKeys = remember { HashSet<String>() }
         val backendPerfStats = remember { DesktopBackendPerfCollector() }
         val playerStateSignals = remember {
             MutableSharedFlow<Unit>(
@@ -187,9 +186,7 @@ internal object WindowsMpvPlayerBackend : DesktopPlaybackBackend {
                 windowState.playback.currentHeaders = playbackHeaders
                 windowState.playback.lastTrackPollEpochMs = 0L
                 val (startKey, startPositionMs) = currentInitialPosition.value
-                val startRequestKey = startKey?.takeIf {
-                    startPositionMs != null && startPositionMs > 0L && startedInitialPositionKeys.add(it)
-                }
+                val startRequestKey = startKey?.takeIf { startPositionMs != null && startPositionMs > 0L }
                 windowState.panelRef?.loadFile(
                     url = sourceUrl,
                     audioUrl = sourceAudioUrl,
