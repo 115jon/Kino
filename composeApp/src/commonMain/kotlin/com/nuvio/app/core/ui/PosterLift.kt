@@ -91,6 +91,18 @@ internal fun Modifier.posterCardClickable(
         }
         .then(this)
     if (onClick == null && onLongClick == null) return posterModifier
+    val invokeLongClick = onLongClick?.let { longClick ->
+        {
+            source.bounds?.let { cardBounds ->
+                PosterZoomAnchorHolder.stash(
+                    PosterZoomAnchor(cardBounds, zoomImageUrl, zoomCornerRadius).also {
+                        it.source = source
+                    },
+                )
+            }
+            longClick()
+        }
+    }
     return posterModifier
         .combinedClickable(
             interactionSource = null,
@@ -105,19 +117,9 @@ internal fun Modifier.posterCardClickable(
                     onClick()
                 }
             },
-            onLongClick = onLongClick?.let { longClick ->
-                {
-                    source.bounds?.let { cardBounds ->
-                        PosterZoomAnchorHolder.stash(
-                            PosterZoomAnchor(cardBounds, zoomImageUrl, zoomCornerRadius).also {
-                                it.source = source
-                            },
-                        )
-                    }
-                    longClick()
-                }
-            },
+            onLongClick = invokeLongClick,
         )
+        .nuvioSecondaryClick(invokeLongClick)
 }
 
 internal fun DrawScope.drawLiftedPoster(source: PosterLiftSource) {
