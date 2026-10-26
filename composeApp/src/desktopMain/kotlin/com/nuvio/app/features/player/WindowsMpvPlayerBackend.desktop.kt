@@ -3148,23 +3148,29 @@ internal class WindowsPlayerPanel(
 
         override fun addNotify() {
             super.addNotify()
-            SwingUtilities.invokeLater {
-                if (!mpvInitialized) {
-                    try {
-                        initializeMpv()
-                        mpvInitialized = true
-                    } catch (error: Throwable) {
-                        state.isClosed = true
-                        state.loadRequestGate.invalidate()
-                        state.panelRef = null
-                        urlResolutionScope.cancel()
-                        urlResolutionJob = null
-                        eventPump.closeAndAwait()
-                        onInitializationError(error.message ?: "Native video initialization failed")
-                    }
-                }
-                stateChangedNotifier.request()
+            urlResolutionScope.launch {
+                runCatching { WindowsMpvLibrary.INSTANCE }
+                SwingUtilities.invokeLater { initializeMpvWhenDisplayable() }
             }
+        }
+
+        private fun initializeMpvWhenDisplayable() {
+            if (playerDisposed || !isDisplayable) return
+            if (!mpvInitialized) {
+                try {
+                    initializeMpv()
+                    mpvInitialized = true
+                } catch (error: Throwable) {
+                    state.isClosed = true
+                    state.loadRequestGate.invalidate()
+                    state.panelRef = null
+                    urlResolutionScope.cancel()
+                    urlResolutionJob = null
+                    eventPump.closeAndAwait()
+                    onInitializationError(error.message ?: "Native video initialization failed")
+                }
+            }
+            stateChangedNotifier.request()
         }
 
         override fun removeNotify() {
