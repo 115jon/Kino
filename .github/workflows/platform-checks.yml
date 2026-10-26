@@ -24,6 +24,7 @@ jobs:
       android: ${{ steps.filter.outputs.android }}
       desktop: ${{ steps.filter.outputs.desktop }}
       versioning: ${{ steps.filter.outputs.versioning }}
+      branding: ${{ steps.filter.outputs.branding }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -62,6 +63,10 @@ jobs:
               - 'scripts/**'
               - 'release/versions/**'
               - '.github/workflows/**'
+            branding:
+              - 'composeApp/src/**/values*/**'
+              - 'androidApp/src/**/values*/**'
+              - 'scripts/kino/**'
 
   android:
     needs: changes
@@ -156,3 +161,22 @@ jobs:
           node scripts/verify-release-state.mjs --platform=android --baseline-ref="$BASELINE_REF"
           node scripts/verify-release-state.mjs --platform=desktop --baseline-ref="$BASELINE_REF"
           node scripts/verify-release-state.mjs --platform=ios --baseline-ref="$BASELINE_REF"
+
+  branding:
+    needs: changes
+    if: needs.changes.outputs.branding == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Test the rebrand script
+        run: node --test scripts/kino/rebrand.test.mjs
+
+      - name: Check user-visible strings say Kino
+        run: node scripts/kino/rebrand.mjs --check
