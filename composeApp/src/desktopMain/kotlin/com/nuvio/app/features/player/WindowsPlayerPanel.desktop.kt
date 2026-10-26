@@ -417,11 +417,12 @@ internal class WindowsPlayerPanel(
         headers: Map<String, String>,
         onCommitted: ((Long) -> Unit)?,
         forceResolve: Boolean,
+        startPositionMs: Long?,
     ) {
         if (!engine.isReady) return
         if (playerDisposed || state.isClosed || state.panelRef !== this) return
         hideVideoSurfaceForLoad()
-        engine.load(url, audioUrl, headers, onCommitted, forceResolve)
+        engine.load(url, audioUrl, headers, onCommitted, forceResolve, startPositionMs)
     }
 
     fun updateVideoOutputReady(videoOutputReady: Boolean) {

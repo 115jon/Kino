@@ -22,6 +22,7 @@ internal interface WindowsPlaybackPanel {
         headers: Map<String, String>,
         onCommitted: ((Long) -> Unit)? = null,
         forceResolve: Boolean = false,
+        startPositionMs: Long? = null,
     )
     fun loadSubtitleUrl(url: String)
     fun applyResizeMode(resizeMode: PlayerResizeMode)

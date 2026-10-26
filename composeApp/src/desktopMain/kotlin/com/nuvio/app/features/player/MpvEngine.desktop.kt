@@ -158,8 +158,9 @@ internal class MpvEngine(
         headers: Map<String, String>,
         onCommitted: ((Long) -> Unit)? = null,
         forceResolve: Boolean = false,
+        startPositionMs: Long? = null,
     ) {
-        loader.load(url, audioUrl, headers, onCommitted, forceResolve)
+        loader.load(url, audioUrl, headers, onCommitted, forceResolve, startPositionMs)
     }
 
     fun currentPositionSeconds(): Double {

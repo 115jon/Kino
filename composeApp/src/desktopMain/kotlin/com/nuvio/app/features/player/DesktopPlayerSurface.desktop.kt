@@ -54,6 +54,9 @@ actual fun PlatformPlayerSurface(
         playWhenReady = playWhenReady,
         resizeMode = resizeMode,
         useNativeController = useNativeController,
+        initialPositionMs = initialPositionMs,
+        initialPositionRequestKey = initialPositionRequestKey,
+        onInitialPositionHandled = onInitialPositionHandled,
         overlayContent = overlayContent,
         onControllerReady = { controller ->
             onControllerReady(mediaKeySession.bind(controller))
@@ -92,6 +95,9 @@ internal interface DesktopPlaybackBackend {
         playWhenReady: Boolean,
         resizeMode: PlayerResizeMode,
         useNativeController: Boolean,
+        initialPositionMs: Long?,
+        initialPositionRequestKey: String?,
+        onInitialPositionHandled: (key: String, handled: Boolean) -> Unit,
         overlayContent: @Composable () -> Unit,
         onControllerReady: (PlayerEngineController) -> Unit,
         onSnapshot: (PlayerPlaybackSnapshot) -> Unit,
@@ -129,6 +135,9 @@ private class UnsupportedDesktopPlaybackBackend(
         playWhenReady: Boolean,
         resizeMode: PlayerResizeMode,
         useNativeController: Boolean,
+        initialPositionMs: Long?,
+        initialPositionRequestKey: String?,
+        onInitialPositionHandled: (key: String, handled: Boolean) -> Unit,
         overlayContent: @Composable () -> Unit,
         onControllerReady: (PlayerEngineController) -> Unit,
         onSnapshot: (PlayerPlaybackSnapshot) -> Unit,
@@ -138,6 +147,9 @@ private class UnsupportedDesktopPlaybackBackend(
         onWindowFocusChanged: (Boolean, Long?) -> Unit,
     ) {
         overlayContent
+        initialPositionMs
+        initialPositionRequestKey
+        onInitialPositionHandled
         onSurfaceInteraction
         onSurfaceExit
         onWindowFocusChanged

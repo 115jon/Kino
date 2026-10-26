@@ -37,6 +37,9 @@ internal object WindowsMpvPlayerBackend : DesktopPlaybackBackend {
         playWhenReady: Boolean,
         resizeMode: PlayerResizeMode,
         useNativeController: Boolean,
+        initialPositionMs: Long?,
+        initialPositionRequestKey: String?,
+        onInitialPositionHandled: (key: String, handled: Boolean) -> Unit,
         overlayContent: @Composable () -> Unit,
         onControllerReady: (PlayerEngineController) -> Unit,
         onSnapshot: (PlayerPlaybackSnapshot) -> Unit,
@@ -56,6 +59,9 @@ internal object WindowsMpvPlayerBackend : DesktopPlaybackBackend {
         val currentOnSnapshot = rememberUpdatedState(onSnapshot)
         val currentOnError = rememberUpdatedState(onError)
         val currentOverlayContent = rememberUpdatedState(overlayContent)
+        val currentInitialPosition = rememberUpdatedState(initialPositionRequestKey to initialPositionMs)
+        val currentOnInitialPositionHandled = rememberUpdatedState(onInitialPositionHandled)
+        val startedInitialPositionKeys = remember { HashSet<String>() }
         val backendPerfStats = remember { DesktopBackendPerfCollector() }
         val playerStateSignals = remember {
             MutableSharedFlow<Unit>(
@@ -180,7 +186,19 @@ internal object WindowsMpvPlayerBackend : DesktopPlaybackBackend {
                 windowState.playback.currentSourceAudioUrl = sourceAudioUrl
                 windowState.playback.currentHeaders = playbackHeaders
                 windowState.playback.lastTrackPollEpochMs = 0L
-                windowState.panelRef?.loadFile(sourceUrl, sourceAudioUrl, playbackHeaders)
+                val (startKey, startPositionMs) = currentInitialPosition.value
+                val startRequestKey = startKey?.takeIf {
+                    startPositionMs != null && startPositionMs > 0L && startedInitialPositionKeys.add(it)
+                }
+                windowState.panelRef?.loadFile(
+                    url = sourceUrl,
+                    audioUrl = sourceAudioUrl,
+                    headers = playbackHeaders,
+                    onCommitted = startRequestKey?.let { key ->
+                        { _: Long -> SwingUtilities.invokeLater { currentOnInitialPositionHandled.value(key, true) } }
+                    },
+                    startPositionMs = startPositionMs.takeIf { startRequestKey != null },
+                )
                 backendPerfStats.recordSourceLoadSignal()
                 playerStateSignals.tryEmit(Unit)
             }

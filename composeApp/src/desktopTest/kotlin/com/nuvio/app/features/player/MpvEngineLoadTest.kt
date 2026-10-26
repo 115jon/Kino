@@ -66,6 +66,24 @@ class MpvEngineLoadTest {
     }
 
     @Test
+    fun `load with a start position opens the file at that position`() {
+        startEngine()
+
+        engine.load("https://addon.example/play", null, emptyMap(), startPositionMs = 211_461L)
+
+        assertEquals(
+            "command loadfile https://cdn.example/video.mkv replace -1 start=211.461",
+            client.snapshotCalls().last(),
+        )
+    }
+
+    @Test
+    fun `non positive start positions load from the beginning`() {
+        assertEquals(listOf("loadfile", "u", "replace"), mpvLoadFileArgs("u", 0L).toList())
+        assertEquals(listOf("loadfile", "u", "replace"), mpvLoadFileArgs("u", null).toList())
+    }
+
+    @Test
     fun `separate audio is added later with audio headers then video headers restored`() {
         startEngine()
         resolved = resolved.copy(

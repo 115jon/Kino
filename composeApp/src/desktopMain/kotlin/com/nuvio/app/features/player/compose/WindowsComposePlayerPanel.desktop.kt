@@ -95,11 +95,12 @@ internal class WindowsComposePlayerPanel(
         headers: Map<String, String>,
         onCommitted: ((Long) -> Unit)?,
         forceResolve: Boolean,
+        startPositionMs: Long?,
     ) {
         if (!engine.isReady) return
         if (disposed || state.isClosed || state.panelRef !== this) return
         presenter.hide()
-        engine.load(url, audioUrl, headers, onCommitted, forceResolve)
+        engine.load(url, audioUrl, headers, onCommitted, forceResolve, startPositionMs)
     }
 
     override fun loadSubtitleUrl(url: String) {

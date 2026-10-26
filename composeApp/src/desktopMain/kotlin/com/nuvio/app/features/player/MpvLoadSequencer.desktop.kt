@@ -26,6 +26,7 @@ internal class MpvLoadSequencer(
         headers: Map<String, String>,
         onCommitted: ((Long) -> Unit)?,
         forceResolve: Boolean,
+        startPositionMs: Long?,
     ) {
         val client = engine.activeClient ?: return
         if (engine.isClosed) return
@@ -40,7 +41,7 @@ internal class MpvLoadSequencer(
             }
             if (!isActive) return@launch
             dispatcher.post {
-                commit(url, audioUrl, resolved, requestGeneration, client, onCommitted)
+                commit(url, audioUrl, resolved, requestGeneration, client, onCommitted, startPositionMs)
             }
         }
     }
@@ -62,6 +63,7 @@ internal class MpvLoadSequencer(
         requestGeneration: Long,
         client: MpvClient,
         onCommitted: ((Long) -> Unit)?,
+        startPositionMs: Long?,
     ) {
         if (!canCommit(requestGeneration, client)) return
         var committedGeneration: Long? = null
@@ -93,7 +95,7 @@ internal class MpvLoadSequencer(
                     "effectiveAudioHost=${playbackUrlForLog(resolved.audioUrl)} " +
                     "videoHeaderKeys=${resolved.videoHeaders.keys.joinToString()} " +
                     "audioHeaderKeys=${resolved.audioHeaders.keys.joinToString()} " +
-                    "videoHeaderBlobLength=${videoHeadersStr.length}"
+                    "videoHeaderBlobLength=${videoHeadersStr.length} startMs=${startPositionMs ?: 0L}"
             )
             applyWindowsMpvSubtitleStyle(client, playback.subtitleStyle)
             val discardedEvents = discardPendingWindowsMpvEvents(client, engine.properties)
@@ -101,7 +103,7 @@ internal class MpvLoadSequencer(
                 desktopPlayerTrace("$tracePrefix discarded pending mpv events count=$discardedEvents")
             }
             val loadResult = runCatching {
-                client.command("loadfile", resolved.url, "replace")
+                client.command(*mpvLoadFileArgs(resolved.url, startPositionMs))
             }.getOrDefault(-1)
             if (loadResult >= 0) {
                 committedGeneration = loadGeneration
@@ -174,4 +176,9 @@ internal class MpvLoadSequencer(
             desktopPlayerTrace("$tracePrefix audio-add failed generation=$loadGeneration")
         }
     }
+}
+
+internal fun mpvLoadFileArgs(url: String, startPositionMs: Long?): Array<String> {
+    val startMs = startPositionMs?.takeIf { it > 0L } ?: return arrayOf("loadfile", url, "replace")
+    return arrayOf("loadfile", url, "replace", "-1", "start=" + String.format(java.util.Locale.ROOT, "%.3f", startMs / 1000.0))
 }
