@@ -1,6 +1,7 @@
 package com.nuvio.app.features.player
 
 internal const val WindowsHdrCompatibilityFilter = "libplacebo=apply_filmgrain=1:peak_detect=1:tonemapping=auto"
+internal const val WindowsFilterCopyHwdec = "auto-copy-safe"
 internal const val WindowsDolbyVisionCompatibilityFilter = "libplacebo=apply_dolbyvision=1:apply_filmgrain=1:peak_detect=1:tonemapping=auto"
 
 internal data class WindowsVideoPipelinePlan(
@@ -37,6 +38,12 @@ internal fun configureWindowsVideoPipeline(
 ): String? {
     val diagnostics = readMpvVideoDiagnostics(client)
     val plan = planWindowsVideoPipeline(diagnostics, state) ?: return null
+    val forceCopy = shouldForceWindowsCopyHwdec(plan.filterSpec, diagnostics.hardwarePixelFormat, state.hwdecCopyForced)
+    if (forceCopy) {
+        state.hwdecCopyForced = true
+        val hwdecResult = client.setProperty("hwdec", WindowsFilterCopyHwdec)
+        desktopPlayerTrace("video pipeline hwdec=$WindowsFilterCopyHwdec reason=filter-needs-system-frames result=$hwdecResult")
+    }
     val result = client.setProperty("vf", plan.filterSpec)
     state.lastVideoDiagnosticsSignature = plan.signature
     state.videoPipelineMode = plan.decision.mode
@@ -47,7 +54,17 @@ internal fun configureWindowsVideoPipeline(
     return logMessage
 }
 
-internal fun resetWindowsVideoPipeline(state: MpvPlaybackState) {
+internal fun shouldForceWindowsCopyHwdec(
+    filterSpec: String,
+    hardwarePixelFormat: String?,
+    alreadyForced: Boolean,
+): Boolean = !alreadyForced && filterSpec.isNotBlank() && !hardwarePixelFormat.isNullOrBlank()
+
+internal fun resetWindowsVideoPipeline(client: MpvClient, state: MpvPlaybackState) {
+    if (state.hwdecCopyForced) {
+        state.hwdecCopyForced = false
+        state.configuredHwdec?.let { hwdec -> client.setProperty("hwdec", hwdec) }
+    }
     state.lastVideoDiagnosticsSignature = null
     state.videoPipelineMode = DesktopVideoPipelineMode.Standard
     desktopPlayerTrace("video pipeline reset")

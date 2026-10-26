@@ -101,9 +101,40 @@ class MpvEngineStateTest {
 
         assertEquals(listOf("set vf=$WindowsHdrCompatibilityFilter"), client.snapshotCalls())
         assertEquals(DesktopVideoPipelineMode.HdrCompatibility, state.videoPipelineMode)
-        resetWindowsVideoPipeline(state)
+        resetWindowsVideoPipeline(client, state)
         assertNull(state.lastVideoDiagnosticsSignature)
         assertEquals(DesktopVideoPipelineMode.Standard, state.videoPipelineMode)
+    }
+
+    @Test
+    fun `a filter on gpu surfaces switches to copy decoding until the next load`() {
+        val client = FakeMpvClient()
+        client.properties["video-params/pixelformat"] = "cuda"
+        client.properties["video-params/hw-pixelformat"] = "p010"
+        client.properties["video-params/primaries"] = "bt.2020"
+        client.properties["video-params/gamma"] = "pq"
+        val state = MpvPlaybackState().apply { configuredHwdec = "nvdec,d3d11va-copy" }
+
+        configureWindowsVideoPipeline(client, state, "test")
+        resetWindowsVideoPipeline(client, state)
+
+        assertEquals(
+            listOf(
+                "set hwdec=$WindowsFilterCopyHwdec",
+                "set vf=$WindowsHdrCompatibilityFilter",
+                "set hwdec=nvdec,d3d11va-copy",
+            ),
+            client.snapshotCalls(),
+        )
+        assertFalse(state.hwdecCopyForced)
+    }
+
+    @Test
+    fun `filters on system frames keep the configured decoder`() {
+        assertFalse(shouldForceWindowsCopyHwdec(WindowsHdrCompatibilityFilter, null, alreadyForced = false))
+        assertFalse(shouldForceWindowsCopyHwdec("", "p010", alreadyForced = false))
+        assertFalse(shouldForceWindowsCopyHwdec(WindowsHdrCompatibilityFilter, "p010", alreadyForced = true))
+        assertTrue(shouldForceWindowsCopyHwdec(WindowsHdrCompatibilityFilter, "p010", alreadyForced = false))
     }
 
     @Test
