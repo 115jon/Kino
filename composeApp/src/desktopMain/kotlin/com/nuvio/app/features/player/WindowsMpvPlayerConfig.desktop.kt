@@ -1,7 +1,5 @@
 package com.nuvio.app.features.player
 
-import com.sun.jna.Native
-
 internal const val WindowsPlayerTrackPollIntervalMs = 1_000L
 internal const val WindowsPlayerStartupTimeoutMs = 30_000L
 internal const val WindowsPlayerInitialSeekTimeoutMs = 8_000L

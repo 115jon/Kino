@@ -1,7 +1,6 @@
 package com.nuvio.app.features.player
 
 import co.touchlab.kermit.Logger
-import com.sun.jna.Pointer
 import java.net.URI
 
 private val desktopPlayerLog = Logger.withTag("DesktopPlayerTrace")
@@ -80,20 +79,18 @@ internal fun redactMpvLogText(value: String): String =
         playbackUrlForLog(match.value)
     }.take(MaxWindowsMpvLogMessageLength)
 
-internal fun traceMpvLogMessage(data: Pointer?) {
-    try {
-        val message = data?.let { MpvLogMessage(it).apply { read() } }
+internal fun traceMpvLogMessage(message: MpvClientEvent.LogMessage) {
+    val error = message.decodeError
+    if (error == null) {
         desktopPlayerTrace(
-            "mpv log level=${playbackMetadataForLog(mpvLogText(message?.level))} " +
-                "prefix=${playbackMetadataForLog(mpvLogText(message?.prefix))} " +
-                "text=${playbackMetadataForLog(mpvLogText(message?.text))}",
+            "mpv log level=${playbackMetadataForLog(message.level)} " +
+                "prefix=${playbackMetadataForLog(message.prefix)} " +
+                "text=${playbackMetadataForLog(message.text)}",
         )
-    } catch (error: Throwable) {
+    } else {
         desktopPlayerTrace(
             "mpv log decode failed type=${playbackMetadataForLog(error::class.simpleName)} " +
                 "message=${playbackMetadataForLog(error.message)}",
         )
     }
 }
-
-internal fun mpvLogText(pointer: Pointer?): String = pointer?.getString(0).orEmpty()

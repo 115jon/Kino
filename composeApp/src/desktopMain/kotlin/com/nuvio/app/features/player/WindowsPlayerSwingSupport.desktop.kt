@@ -1,12 +1,9 @@
 package com.nuvio.app.features.player
 
-import com.sun.jna.Pointer
 import java.awt.*
 import java.awt.event.*
 import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicReference
 import javax.swing.*
-import kotlin.concurrent.withLock
 import kotlin.math.roundToInt
 
 internal class SwingStateNotifier(
@@ -19,42 +16,6 @@ internal class SwingStateNotifier(
         SwingUtilities.invokeLater {
             scheduled.set(false)
             callback()
-        }
-    }
-}
-
-internal fun scheduleLatestWindowsVolumeUpdate(
-    state: WindowsPlayerWindowState,
-    playerPtr: Pointer,
-    pendingVolumePercent: AtomicReference<Int?>,
-    volumeUpdateScheduled: AtomicBoolean,
-) {
-    if (!volumeUpdateScheduled.compareAndSet(false, true)) return
-
-    SwingUtilities.invokeLater {
-        try {
-            val volumePercent = pendingVolumePercent.getAndSet(null)
-            if (volumePercent != null && state.playerPtr == playerPtr && !state.isClosed) {
-                state.mpvCallLock.withLock {
-                    if (state.playerPtr == playerPtr && !state.isClosed) {
-                        WindowsMpvLibrary.INSTANCE.mpv_set_property_string(
-                            playerPtr,
-                            "volume",
-                            volumePercent.toString(),
-                        )
-                    }
-                }
-            }
-        } finally {
-            volumeUpdateScheduled.set(false)
-            if (pendingVolumePercent.get() != null && state.playerPtr == playerPtr && !state.isClosed) {
-                scheduleLatestWindowsVolumeUpdate(
-                    state = state,
-                    playerPtr = playerPtr,
-                    pendingVolumePercent = pendingVolumePercent,
-                    volumeUpdateScheduled = volumeUpdateScheduled,
-                )
-            }
         }
     }
 }

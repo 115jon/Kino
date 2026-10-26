@@ -1,57 +1,54 @@
 package com.nuvio.app.features.player
 
-import com.sun.jna.Pointer
-
 internal fun handleWindowsMpvStartFileEvent(
-    state: WindowsPlayerWindowState,
-    data: Pointer?,
+    state: MpvPlaybackState,
+    playlistEntryId: Long?,
 ): String {
-    val startFile = readMpvStartFile(data)
-    if (startFile == null) {
+    if (playlistEntryId == null) {
         return "mpv event id=$MPV_EVENT_START_FILE data=unavailable"
     }
     val previousEntryId = state.lastObservedPlaylistEntryId
     if (state.pendingLoadRequestGeneration != null) {
-        return "mpv event id=$MPV_EVENT_START_FILE playlistEntryId=${startFile.playlist_entry_id} stale=true pendingLoad=true"
+        return "mpv event id=$MPV_EVENT_START_FILE playlistEntryId=${playlistEntryId} stale=true pendingLoad=true"
     }
     if (!isWindowsPlaybackStartFileCurrent(
-            playlistEntryId = startFile.playlist_entry_id,
+            playlistEntryId = playlistEntryId,
             expectedPlaylistEntryId = state.pendingPlaylistEntryId,
             previousPlaylistEntryId = previousEntryId,
         )
     ) {
-        return "mpv event id=$MPV_EVENT_START_FILE playlistEntryId=${startFile.playlist_entry_id} stale=true"
+        return "mpv event id=$MPV_EVENT_START_FILE playlistEntryId=${playlistEntryId} stale=true"
     }
-    state.lastObservedPlaylistEntryId = startFile.playlist_entry_id
+    state.lastObservedPlaylistEntryId = playlistEntryId
     state.pendingPlaylistEntryId = null
     state.pendingPlaylistEntryGeneration = null
-    state.activePlaylistEntryId = startFile.playlist_entry_id
+    state.activePlaylistEntryId = playlistEntryId
     state.activePlaylistEntryGeneration = state.sourceGeneration
-    return "mpv event id=$MPV_EVENT_START_FILE playlistEntryId=${startFile.playlist_entry_id} generation=${state.sourceGeneration}"
+    return "mpv event id=$MPV_EVENT_START_FILE playlistEntryId=${playlistEntryId} generation=${state.sourceGeneration}"
 }
 
-internal fun discardPendingWindowsMpvEvents(lib: WindowsMpvLibrary, ptr: Pointer): Int {
+internal fun discardPendingWindowsMpvEvents(client: MpvClient, properties: MpvPropertyCache): Int {
     var discarded = 0
     while (true) {
-        val eventPtr = lib.mpv_wait_event(ptr, 0.0) ?: break
-        val event = MpvEvent(eventPtr).apply { read() }
-        if (event.event_id == MPV_EVENT_NONE) break
+        val event = client.waitEvent(0.0) ?: break
+        if (event is MpvClientEvent.PropertyChange) {
+            properties.update(event.name, event.value)
+        }
         discarded += 1
     }
     return discarded
 }
 
 internal fun handleWindowsMpvEndFileEvent(
-    state: WindowsPlayerWindowState,
-    lib: WindowsMpvLibrary,
-    data: Pointer?,
+    state: MpvPlaybackState,
+    endFile: MpvEndFileData?,
+    errorString: (Int) -> String?,
 ): String {
-    val endFile = readMpvEndFile(data)
     if (endFile == null) {
         return "mpv event id=$MPV_EVENT_END_FILE data=unavailable"
     }
     val errorMessage = if (endFile.reason == WindowsMpvEndFileReasonError) {
-        readMpvErrorString(lib, endFile.error)
+        errorString(endFile.error)
     } else {
         null
     }
@@ -59,7 +56,7 @@ internal fun handleWindowsMpvEndFileEvent(
         event = WindowsPlaybackEndFile(
             reason = endFile.reason,
             errorMessage = errorMessage,
-            playlistEntryId = endFile.playlist_entry_id,
+            playlistEntryId = endFile.playlistEntryId,
         ),
         activePlaylistEntryId = state.activePlaylistEntryId,
         pendingPlaylistEntryId = state.pendingPlaylistEntryId,
@@ -73,7 +70,7 @@ internal fun handleWindowsMpvEndFileEvent(
         state.terminalPlaybackErrorGeneration = state.sourceGeneration
     }
     val isCurrent = isCurrentWindowsMpvEndFile(
-        playlistEntryId = endFile.playlist_entry_id,
+        playlistEntryId = endFile.playlistEntryId,
         activePlaylistEntryId = state.activePlaylistEntryId,
         pendingPlaylistEntryId = state.pendingPlaylistEntryId,
         activePlaylistEntryGeneration = state.activePlaylistEntryGeneration,
@@ -81,7 +78,7 @@ internal fun handleWindowsMpvEndFileEvent(
         sourceGeneration = state.sourceGeneration,
     )
     if (isCurrent && endFile.reason == WindowsMpvEndFileReasonRedirect) {
-        state.lastObservedPlaylistEntryId = endFile.playlist_entry_id
+        state.lastObservedPlaylistEntryId = endFile.playlistEntryId
         state.pendingPlaylistEntryId = null
         state.pendingPlaylistEntryGeneration = null
     }
@@ -91,7 +88,7 @@ internal fun handleWindowsMpvEndFileEvent(
         }
     }
     return "mpv event id=$MPV_EVENT_END_FILE reason=${endFile.reason} error=${endFile.error} " +
-        "playlistEntryId=${endFile.playlist_entry_id} activePlaylistEntryId=${state.activePlaylistEntryId} " +
+        "playlistEntryId=${endFile.playlistEntryId} activePlaylistEntryId=${state.activePlaylistEntryId} " +
         "generation=${state.sourceGeneration} terminal=${playbackError != null}"
 }
 

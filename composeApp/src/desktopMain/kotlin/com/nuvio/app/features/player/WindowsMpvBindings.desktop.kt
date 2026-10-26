@@ -51,6 +51,7 @@ internal const val MPV_EVENT_PROPERTY_CHANGE = 22
 internal const val MPV_EVENT_START_FILE = 6
 internal const val MPV_EVENT_END_FILE = 7
 internal const val MPV_EVENT_FILE_LOADED = 8
+internal const val MPV_FORMAT_STRING = 1
 internal const val MPV_FORMAT_FLAG = 3
 internal const val MPV_FORMAT_INT64 = 4
 internal const val MPV_FORMAT_DOUBLE = 5
@@ -160,21 +161,6 @@ internal class MpvEventPropertyChange(pointer: Pointer? = null) : Structure(poin
     var data: Pointer? = null
 }
 
-internal fun readMpvPropertyString(
-    lib: WindowsMpvLibrary,
-    ptr: Pointer,
-    name: String,
-): String? {
-    val property = runCatching { lib.mpv_get_property_string(ptr, name) }.getOrNull() ?: return null
-    return try {
-        property.getString(0).takeIf { it.isNotBlank() }
-    } catch (_: Throwable) {
-        null
-    } finally {
-        runCatching { lib.mpv_free(property) }
-    }
-}
-
 internal fun readMpvErrorString(lib: WindowsMpvLibrary, error: Int): String? =
     lib.mpv_error_string(error)?.getString(0)?.takeIf { it.isNotBlank() && it != "success" }
 
@@ -183,29 +169,6 @@ internal fun readMpvStartFile(data: Pointer?): MpvEventStartFile? =
 
 internal fun readMpvEndFile(data: Pointer?): MpvEventEndFile? =
     data?.let { pointer -> runCatching { MpvEventEndFile(pointer).apply { read() } }.getOrNull() }
-
-internal fun setWindowsMpvOption(
-    lib: WindowsMpvLibrary,
-    ptr: Pointer,
-    name: String,
-    value: String,
-): Int {
-    val result = lib.mpv_set_option_string(ptr, name, value)
-    desktopPlayerTrace("mpv option name=$name value=$value result=$result")
-    return result
-}
-
-internal fun requireWindowsMpvOption(
-    lib: WindowsMpvLibrary,
-    ptr: Pointer,
-    name: String,
-    value: String,
-) {
-    val result = setWindowsMpvOption(lib, ptr, name, value)
-    if (result < 0) {
-        throw RuntimeException("Unsupported libmpv option $name=$value (error $result)")
-    }
-}
 
 internal fun createRenderParams(vararg values: Pair<Int, Pointer?>): Array<MpvRenderParam> {
     @Suppress("UNCHECKED_CAST")

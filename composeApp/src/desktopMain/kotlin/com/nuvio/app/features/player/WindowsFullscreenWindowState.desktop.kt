@@ -3,7 +3,6 @@ package com.nuvio.app.features.player
 import com.sun.jna.Library
 import com.sun.jna.Native
 import com.sun.jna.Pointer
-import kotlinx.coroutines.isActive
 import java.awt.*
 
 private const val WindowsGwlStyle = -16

@@ -1,8 +1,5 @@
 package com.nuvio.app.features.player
 
-import com.sun.jna.Pointer
-import kotlinx.coroutines.delay
-
 internal data class MpvVideoDiagnostics(
     val codec: String?,
     val decoder: String?,
@@ -45,7 +42,7 @@ internal data class MpvVideoDiagnostics(
                 "dolbyVision=${playbackMetadataForLog(dolbyVision)}"
             ).let(::boundWindowsMpvLogMessage)
 
-    fun toMetadata(state: WindowsPlayerWindowState): DesktopVideoMetadata = DesktopVideoMetadata(
+    fun toMetadata(state: MpvPlaybackState): DesktopVideoMetadata = DesktopVideoMetadata(
         codec = codec ?: format,
         pixelFormat = pixelFormat,
         hardwarePixelFormat = hardwarePixelFormat,
@@ -60,29 +57,27 @@ internal data class MpvVideoDiagnostics(
 }
 
 internal fun readMpvVideoDiagnostics(
-    lib: WindowsMpvLibrary,
-    ptr: Pointer,
+    client: MpvClient,
 ): MpvVideoDiagnostics = MpvVideoDiagnostics(
-    codec = readMpvPropertyString(lib, ptr, "video-codec"),
-    decoder = readMpvPropertyString(lib, ptr, "video-decoder"),
-    hardwareDecoder = readMpvPropertyString(lib, ptr, "hwdec-current"),
-    format = readMpvPropertyString(lib, ptr, "video-format"),
-    pixelFormat = readMpvPropertyString(lib, ptr, "video-params/pixelformat"),
-    hardwarePixelFormat = readMpvPropertyString(lib, ptr, "video-params/hw-pixelformat"),
-    primaries = readMpvPropertyString(lib, ptr, "video-params/primaries"),
-    transfer = readMpvPropertyString(lib, ptr, "video-params/gamma"),
-    matrix = readMpvPropertyString(lib, ptr, "video-params/colormatrix"),
-    levels = readMpvPropertyString(lib, ptr, "video-params/colorlevels"),
-    signalPeak = readMpvPropertyString(lib, ptr, "video-params/sig-peak"),
-    dolbyVision = readMpvPropertyString(lib, ptr, "video-params/dolby-vision"),
+    codec = client.readNonBlankProperty("video-codec"),
+    decoder = client.readNonBlankProperty("video-decoder"),
+    hardwareDecoder = client.readNonBlankProperty("hwdec-current"),
+    format = client.readNonBlankProperty("video-format"),
+    pixelFormat = client.readNonBlankProperty("video-params/pixelformat"),
+    hardwarePixelFormat = client.readNonBlankProperty("video-params/hw-pixelformat"),
+    primaries = client.readNonBlankProperty("video-params/primaries"),
+    transfer = client.readNonBlankProperty("video-params/gamma"),
+    matrix = client.readNonBlankProperty("video-params/colormatrix"),
+    levels = client.readNonBlankProperty("video-params/colorlevels"),
+    signalPeak = client.readNonBlankProperty("video-params/sig-peak"),
+    dolbyVision = client.readNonBlankProperty("video-params/dolby-vision"),
 )
 
 internal fun readMpvAudioDiagnostics(
-    lib: WindowsMpvLibrary,
-    ptr: Pointer,
-    state: WindowsPlayerWindowState,
+    client: MpvClient,
+    state: MpvPlaybackState,
 ): WindowsAudioDiagnostics {
-    fun get(name: String): String? = readMpvPropertyString(lib, ptr, name)
+    fun get(name: String): String? = client.readNonBlankProperty(name)
     val trackCount = boundedWindowsMpvTrackCount(get("track-list/count"))
     val selectedAudioTrackIndex = (0 until trackCount).firstOrNull { index ->
         get("track-list/$index/type") == "audio" && get("track-list/$index/selected") == "yes"
@@ -133,15 +128,11 @@ internal fun readMpvAudioDiagnostics(
     )
 }
 
-internal fun recordWindowsAudioUnderrun(state: WindowsPlayerWindowState, data: Pointer?) {
-    val message = runCatching { data?.let { MpvLogMessage(it).apply { read() } } }.getOrNull()
-    val text = mpvLogText(message?.text)
+internal fun recordWindowsAudioUnderrun(state: MpvPlaybackState, text: String) {
     state.audioUnderrunTracker.record(isWindowsAudioUnderrunLog(text))
 }
 
-internal fun markWindowsAudioDiagnosticsRequested(state: WindowsPlayerWindowState, data: Pointer?) {
-    val property = data?.let { pointer -> runCatching { MpvEventPropertyChange(pointer).apply { read() } }.getOrNull() }
-    val name = property?.name?.getString(0).orEmpty()
+internal fun markWindowsAudioDiagnosticsRequested(state: MpvPlaybackState, name: String) {
     if (name == "aid" || name == "track-list/count" || name.startsWith("audio-")) {
         state.audioDiagnosticsRequested = true
     }
