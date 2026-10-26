@@ -38,6 +38,9 @@ internal class MpvCommandThread : MpvEngineDispatcher {
         executor.shutdown()
     }
 
+    fun awaitTermination(timeoutMs: Long): Boolean =
+        executor.awaitTermination(timeoutMs, TimeUnit.MILLISECONDS)
+
     private fun runAction(action: () -> Unit) {
         try {
             action()

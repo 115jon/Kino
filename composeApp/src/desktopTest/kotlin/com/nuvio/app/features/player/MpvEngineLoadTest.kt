@@ -1,6 +1,8 @@
 package com.nuvio.app.features.player
 
 import kotlinx.coroutines.Dispatchers
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -203,15 +205,70 @@ class MpvEngineLoadTest {
 
     @Test
     fun `pending events are drained into the property cache before loadfile`() {
-        val drainClient = FakeMpvClient()
-        drainClient.events += MpvClientEvent.PropertyChange(MPV_EVENT_PROPERTY_CHANGE, 0, "pause", true)
-        drainClient.events += MpvClientEvent.StartFile(MPV_EVENT_START_FILE, 0, 9L)
-        val cache = MpvPropertyCache()
+        startEngine()
+        engine.closeEvents()
+        client.events += MpvClientEvent.PropertyChange(MPV_EVENT_PROPERTY_CHANGE, 0, "pause", true)
+        client.events += MpvClientEvent.StartFile(MPV_EVENT_START_FILE, 0, 9L)
+        var cacheHadPauseAtLoadfile = false
+        var queueWasEmptyAtLoadfile = false
+        client.commandResult = { args ->
+            if (args.first() == "loadfile") {
+                cacheHadPauseAtLoadfile = engine.properties.flag("pause")
+                queueWasEmptyAtLoadfile = client.events.isEmpty()
+            }
+            0
+        }
 
-        val discarded = discardPendingWindowsMpvEvents(drainClient, cache)
+        engine.load("https://addon.example/play", null, emptyMap())
 
-        assertEquals(2, discarded)
-        assertTrue(cache.flag("pause"))
-        assertTrue(drainClient.events.isEmpty())
+        assertTrue(cacheHadPauseAtLoadfile)
+        assertTrue(queueWasEmptyAtLoadfile)
+        assertNull(engine.playback.activePlaylistEntryId)
+    }
+
+    @Test
+    fun `load resolves off the caller and commits on the command thread`() {
+        val commandThread = MpvCommandThread()
+        val threadedClient = FakeMpvClient()
+        val releaseResolution = CountDownLatch(1)
+        val committed = CountDownLatch(1)
+        var resolverThread = ""
+        var loadfileThread = ""
+        threadedClient.commandResult = { args ->
+            if (args.first() == "loadfile") loadfileThread = Thread.currentThread().name
+            0
+        }
+        val threadedEngine = MpvEngine(
+            tracePrefix = "test panel",
+            clientFactory = { threadedClient },
+            dispatcher = commandThread,
+            urlResolver = { url, _, _, _ ->
+                resolverThread = Thread.currentThread().name
+                releaseResolution.await(5, TimeUnit.SECONDS)
+                resolved.copy(url = url)
+            },
+            resolutionContext = Dispatchers.IO,
+        )
+        threadedEngine.start(WidOutput(1L))
+        threadedClient.clearCalls()
+
+        threadedEngine.load("https://cdn.example/threaded.mkv", null, emptyMap(), onCommitted = { committed.countDown() })
+
+        assertEquals(1L, threadedEngine.playback.sourceGeneration)
+        assertTrue(threadedEngine.playback.pendingLoadRequestGeneration != null)
+        assertFalse(threadedClient.snapshotCalls().any { it.startsWith("command loadfile") })
+        releaseResolution.countDown()
+
+        assertTrue(committed.await(5, TimeUnit.SECONDS))
+        val calls = threadedClient.snapshotCalls()
+        assertTrue(
+            calls.indexOf("set http-header-fields=Referer: https://site.example") <
+                calls.indexOf("command loadfile https://cdn.example/threaded.mkv replace"),
+        )
+        assertEquals("Kino-mpv-commands", loadfileThread)
+        assertTrue(resolverThread.isNotEmpty() && resolverThread != "Kino-mpv-commands")
+        assertNull(threadedEngine.playback.pendingLoadRequestGeneration)
+        threadedEngine.shutdown()
+        assertTrue(commandThread.awaitTermination(5_000L))
     }
 }
