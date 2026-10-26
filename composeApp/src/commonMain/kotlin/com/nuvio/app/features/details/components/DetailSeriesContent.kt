@@ -68,6 +68,8 @@ import com.nuvio.app.core.i18n.localizedSeasonEpisodeCode
 import com.nuvio.app.core.ui.NuvioAnimatedWatchedBadge
 import com.nuvio.app.core.ui.NuvioCardDepthSurface
 import com.nuvio.app.core.ui.NuvioProgressBar
+import com.nuvio.app.core.ui.NuvioTokens
+import com.nuvio.app.core.ui.nuvio
 import com.nuvio.app.core.ui.nuvioCardDepth
 import com.nuvio.app.core.ui.nuvioSecondaryClick
 import com.nuvio.app.core.ui.nuvioHorizontalScrollBleed
@@ -296,7 +298,6 @@ fun DetailSeriesContent(
 }
 
 @Composable
-@OptIn(ExperimentalFoundationApi::class)
 private fun DesktopSeasonEpisodeLayout(
     seasons: List<Int>,
     groupedEpisodes: Map<Int, List<MetaVideo>>,
@@ -325,62 +326,23 @@ private fun DesktopSeasonEpisodeLayout(
             ) {
                 Text(
                     text = stringResource(Res.string.details_seasons),
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onBackground,
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                    color = MaterialTheme.nuvio.colors.textPrimary,
+                    modifier = Modifier.padding(horizontal = NuvioTokens.Space.s4),
                 )
                 LazyColumn(
                     modifier = Modifier.height(560.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(NuvioTokens.Space.s4),
                     contentPadding = PaddingValues(bottom = 12.dp),
                 ) {
                     items(seasons, key = { it }) { season ->
-                        val selected = season == currentSeason
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(
-                                    if (selected) {
-                                        MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
-                                    } else {
-                                        Color.Transparent
-                                    },
-                                )
-                                .border(
-                                    width = if (selected) 1.dp else 0.dp,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    shape = RoundedCornerShape(10.dp),
-                                )
-                                .combinedClickable(
-                                    onClick = { onSeasonSelect(season) },
-                                    onLongClick = onSeasonLongPress?.let { handler -> { handler(season) } },
-                                )
-                                .nuvioSecondaryClick(onSeasonLongPress?.let { handler -> { handler(season) } })
-                                .padding(horizontal = 14.dp, vertical = 12.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(
-                                text = season.label(),
-                                style = MaterialTheme.typography.bodyLarge.copy(
-                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-                                ),
-                                color = if (selected) {
-                                    MaterialTheme.colorScheme.onBackground
-                                } else {
-                                    MaterialTheme.colorScheme.onSurfaceVariant
-                                },
-                            )
-                            Text(
-                                text = groupedEpisodes[season].orEmpty().size.toString(),
-                                style = MaterialTheme.typography.labelMedium,
-                                color = if (selected) {
-                                    MaterialTheme.colorScheme.onBackground.copy(alpha = 0.72f)
-                                } else {
-                                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                                },
-                            )
-                        }
+                        DesktopSeasonRailItem(
+                            label = season.label(),
+                            episodeCount = groupedEpisodes[season].orEmpty().size,
+                            selected = season == currentSeason,
+                            onClick = { onSeasonSelect(season) },
+                            onSecondaryClick = onSeasonLongPress?.let { handler -> { handler(season) } },
+                        )
                     }
                 }
             }
