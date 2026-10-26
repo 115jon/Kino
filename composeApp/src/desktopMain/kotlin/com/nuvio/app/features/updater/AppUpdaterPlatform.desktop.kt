@@ -1,5 +1,6 @@
 package com.nuvio.app.features.updater
 
+import co.touchlab.kermit.Logger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -8,6 +9,8 @@ import java.net.URL
 import java.util.prefs.Preferences
 import kotlin.io.path.createTempDirectory
 import kotlin.system.exitProcess
+
+private val updaterLogger = Logger.withTag("DesktopUpdater")
 
 actual object AppUpdaterPlatform {
     private const val ignoredTagKey = "ignoredUpdateTag"
@@ -87,6 +90,7 @@ actual object AppUpdaterPlatform {
                 check(actualSha256.equals(expectedSha256, ignoreCase = true)) {
                     "Downloaded update checksum does not match the release manifest."
                 }
+                updaterLogger.i { "Downloaded $assetName ($downloadedBytes bytes) with verified SHA-256 to ${output.absolutePath}" }
                 output.absolutePath
             } finally {
                 connection.disconnect()
@@ -101,22 +105,9 @@ actual object AppUpdaterPlatform {
     actual fun installDownloadedApk(path: String): Result<Unit> = runCatching {
         val installer = File(path)
         require(installer.isFile) { "Downloaded installer was not found." }
-        val command = if (shouldLaunchWindowsInstallerDetached(System.getProperty("os.name"))) {
-            windowsSilentInstallerLaunchCommand(installer.absolutePath)
-        } else {
-            listOf(installer.absolutePath)
-        }
-        ProcessBuilder(command)
-            .directory(installer.parentFile)
-            .redirectOutput(ProcessBuilder.Redirect.DISCARD)
-            .redirectError(ProcessBuilder.Redirect.DISCARD)
-            .start()
+        DesktopInstallerLauncher.launch(installer)
+        updaterLogger.i { "Launched installer ${installer.absolutePath}; exiting for update" }
         exitProcess(0)
     }
 }
 
-internal fun shouldLaunchWindowsInstallerDetached(osName: String?): Boolean =
-    osName.orEmpty().contains("win", ignoreCase = true)
-
-internal fun windowsSilentInstallerLaunchCommand(path: String): List<String> =
-    listOf("cmd.exe", "/c", "start", "", path, "/S")

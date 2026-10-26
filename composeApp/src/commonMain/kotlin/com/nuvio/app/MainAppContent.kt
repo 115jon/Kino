@@ -1288,7 +1288,10 @@ internal fun MainAppContent(
 
         AppUpdaterHost(
             controller = appUpdaterController,
-            modifier = Modifier.fillMaxSize(),
+            inPlayback = currentRoute is StreamRoute ||
+                currentRoute is PlayerRoute ||
+                currentRoute is PartyRoute ||
+                visiblePlayerEntries > 0,
         ) {
             Box(
                 modifier = Modifier

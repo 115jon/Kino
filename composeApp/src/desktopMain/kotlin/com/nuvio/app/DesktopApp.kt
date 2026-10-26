@@ -6,6 +6,7 @@ import androidx.compose.ui.awt.ComposeWindow
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
+import co.touchlab.kermit.Logger
 import com.nuvio.app.core.logging.initializeDesktopAppLogging
 import com.nuvio.app.features.player.prewarmDesktopPlaybackBackend
 import nuvio.composeapp.generated.resources.Res
@@ -21,6 +22,7 @@ import java.awt.Color as AwtColor
 import java.awt.EventQueue
 
 private val DesktopWindowBackground = AwtColor(0x0C, 0x0C, 0x0C)
+private val singleInstanceLogger = Logger.withTag("DesktopSingleInstance")
 
 internal fun restoredDesktopWindowState(extendedState: Int): Int =
     extendedState and Frame.ICONIFIED.inv()
@@ -82,12 +84,14 @@ fun main() {
     }
     when (instanceLaunch) {
         is DesktopInstanceLaunch.Secondary -> {
-            if (!instanceLaunch.activationDelivered) {
-                System.err.println("Kino is already running, but its window could not be activated.")
+            if (instanceLaunch.activationDelivered) {
+                singleInstanceLogger.i { "Kino is already running; activated the existing window" }
+            } else {
+                singleInstanceLogger.w { "Kino is already running, but its window could not be activated" }
             }
         }
         is DesktopInstanceLaunch.Unavailable -> {
-            System.err.println("Single-instance coordination is unavailable: ${instanceLaunch.reason}")
+            singleInstanceLogger.e { "Single-instance coordination is unavailable: ${instanceLaunch.reason}" }
         }
         else -> Unit
     }
