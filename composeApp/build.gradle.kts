@@ -737,6 +737,8 @@ compose.desktop {
     }
 }
 
+apply(from = "desktop-release-bytecode.gradle.kts")
+
 val bootIosTestSimulator by tasks.registering(Exec::class) {
     val device = tasks.named<KotlinNativeSimulatorTest>("iosSimulatorArm64Test").flatMap { it.device }
     commandLine("xcrun", "simctl", "boot")
