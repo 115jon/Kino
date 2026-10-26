@@ -23,8 +23,8 @@ internal val defaultMpvUrlResolver = MpvUrlResolver { url, audioUrl, headers, fo
 
 internal class MpvEngine(
     private val tracePrefix: String,
-    private val dispatcher: MpvEngineDispatcher,
     private val clientFactory: () -> MpvClient,
+    private val dispatcher: MpvEngineDispatcher = MpvCommandThread(),
     urlResolver: MpvUrlResolver = defaultMpvUrlResolver,
     resolutionContext: CoroutineContext = Dispatchers.IO,
 ) {
@@ -113,6 +113,7 @@ internal class MpvEngine(
             current.terminateDestroy()
             desktopPlayerTrace("$tracePrefix mpv shutdown complete")
         }
+        dispatcher.shutdown()
     }
 
     fun close() {

@@ -168,7 +168,7 @@ class MpvEngineLifecycleTest {
     fun `volume level updates coalesce to the latest value`() {
         val queued = ManualMpvDispatcher(runPostsImmediately = false)
         val queuedClient = FakeMpvClient()
-        val queuedEngine = MpvEngine("test panel", queued, { queuedClient }, resolutionContext = Dispatchers.Unconfined)
+        val queuedEngine = MpvEngine(tracePrefix = "test panel", clientFactory = { queuedClient }, dispatcher = queued, resolutionContext = Dispatchers.Unconfined)
         queuedEngine.start(WidOutput(7L))
         queuedClient.clearCalls()
 

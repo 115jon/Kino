@@ -140,7 +140,7 @@ class MpvEngineStateTest {
     @Test
     fun `event pump applies property changes and start file without notifying for silent ones`() {
         val client = FakeMpvClient()
-        val engine = MpvEngine("test panel", ManualMpvDispatcher(), { client }, resolutionContext = Dispatchers.Unconfined)
+        val engine = MpvEngine(tracePrefix = "test panel", clientFactory = { client }, dispatcher = ManualMpvDispatcher(), resolutionContext = Dispatchers.Unconfined)
         val notified = CountDownLatch(1)
         engine.onStateChanged = { notified.countDown() }
         engine.start(WidOutput(1L))
@@ -161,7 +161,7 @@ class MpvEngineStateTest {
     @Test
     fun `poll builds the snapshot from observed properties`() {
         val client = FakeMpvClient()
-        val engine = MpvEngine("test panel", ManualMpvDispatcher(), { client }, resolutionContext = Dispatchers.Unconfined)
+        val engine = MpvEngine(tracePrefix = "test panel", clientFactory = { client }, dispatcher = ManualMpvDispatcher(), resolutionContext = Dispatchers.Unconfined)
         engine.start(WidOutput(1L))
         engine.properties.update("path", "https://cdn.example/video.mkv")
         engine.properties.update("time-pos", 61.0)

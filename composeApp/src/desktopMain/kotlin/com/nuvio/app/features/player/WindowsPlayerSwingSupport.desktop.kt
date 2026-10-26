@@ -20,15 +20,6 @@ internal class SwingStateNotifier(
     }
 }
 
-internal fun scheduleWindowsSwingAction(delayMs: Int, action: () -> Unit) {
-    SwingUtilities.invokeLater {
-        javax.swing.Timer(delayMs) { action() }.apply {
-            isRepeats = false
-            start()
-        }
-    }
-}
-
 internal fun windowsComposeColor(color: androidx.compose.ui.graphics.Color): java.awt.Color =
     java.awt.Color(
         (color.red * 255f).roundToInt().coerceIn(0, 255),

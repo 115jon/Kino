@@ -97,9 +97,13 @@ internal class EmbeddedWindowsPlayerPanel(
         engine.onStateChanged = stateChangedNotifier::request
         engine.onFatalError = { SwingUtilities.invokeLater { dispose() } }
         engine.onLoadCommitted = {
-            requestFocusInWindow()
-            glPanel.requestFocusInWindow()
-            scheduleRender(force = true)
+            SwingUtilities.invokeLater {
+                if (!playerDisposed) {
+                    requestFocusInWindow()
+                    glPanel.requestFocusInWindow()
+                    scheduleRender(force = true)
+                }
+            }
         }
         background = java.awt.Color.BLACK
         isFocusable = true

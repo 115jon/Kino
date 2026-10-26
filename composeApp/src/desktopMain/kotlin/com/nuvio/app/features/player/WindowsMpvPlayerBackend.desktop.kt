@@ -65,7 +65,6 @@ internal object WindowsMpvPlayerBackend : DesktopPlaybackBackend {
             WindowsPlayerWindowState(
                 MpvEngine(
                     tracePrefix = if (useNativeVideoSurface) "native panel" else "embedded panel",
-                    dispatcher = SwingMpvEngineDispatcher,
                     clientFactory = ::createJnaMpvClient,
                 ).apply { perfCollector = backendPerfStats },
             )
