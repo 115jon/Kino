@@ -267,9 +267,9 @@ class AppUpdaterController internal constructor(
                         downloadProgress = null,
                         downloadedApkPath = path,
                         errorMessage = null,
+                        showDialog = true,
                     )
                 }
-                installDownloadedUpdate()
             }.onFailure { error ->
                 updaterLogger.w(error) { "Update download failed for ${update.assetName}" }
                 _uiState.update {

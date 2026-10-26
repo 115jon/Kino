@@ -1725,9 +1725,9 @@
     <string name="updates_download_empty_body">Empty download body</string>
     <string name="updates_download_file_missing">Downloaded update file is missing.</string>
     <string name="updates_downloading_progress">Downloading %1$d%</string>
-    <string name="updates_debug_test_complete">Banner test complete</string>
-    <string name="updates_debug_test_description">Preview the banner and simulated download progress.</string>
-    <string name="updates_debug_test_title">Test update banner</string>
+    <string name="updates_debug_test_complete">Update dialog test complete</string>
+    <string name="updates_debug_test_description">Preview the update dialog and simulated download progress.</string>
+    <string name="updates_debug_test_title">Test update dialog</string>
     <string name="updates_install_failed">Unable to start installation</string>
     <string name="updates_latest_version">You&apos;re using the latest version.</string>
     <string name="updates_message_allow_installs">Enable app installs for Kino, then come back and continue.</string>
@@ -1741,6 +1741,12 @@
     <string name="updates_title_allow_installs">Allow installs to continue</string>
     <string name="updates_title_available">Update available</string>
     <string name="updates_title_status">Update status</string>
+    <string name="updates_message_available">Kino %1$s is available. You&apos;re on %2$s.</string>
+    <string name="updates_message_restart">Kino will close, install the update, and reopen.</string>
+    <string name="updates_title_ready">Ready to update</string>
+    <string name="updates_title_failed">Update failed</string>
+    <string name="updates_action_restart">Restart and update</string>
+    <string name="updates_action_hide">Hide</string>
     <string name="addon_already_installed">That addon is already installed.</string>
     <string name="addon_invalid_url">Enter a valid addon URL</string>
     <string name="addon_load_manifest_failed">Unable to load manifest</string>

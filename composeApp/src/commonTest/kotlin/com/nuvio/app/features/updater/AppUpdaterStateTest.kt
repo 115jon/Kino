@@ -7,7 +7,7 @@ import kotlin.test.assertNull
 
 class AppUpdaterStateTest {
     @Test
-    fun `dismissing banner clears visible prompt state`() {
+    fun `dismissing the dialog clears visible prompt state`() {
         val state = AppUpdaterUiState(
             update = update(),
             showDialog = true,
@@ -24,7 +24,7 @@ class AppUpdaterStateTest {
     }
 
     @Test
-    fun `failed download keeps banner open for retry`() {
+    fun `failed download keeps the dialog open for retry`() {
         val failed = AppUpdaterUiState(
             update = update(),
             isDownloading = true,
@@ -36,6 +36,26 @@ class AppUpdaterStateTest {
         assertNull(failed.downloadedApkPath)
         assertEquals("checksum mismatch", failed.errorMessage)
         assertEquals(true, failed.showDialog)
+    }
+
+    @Test
+    fun `dialog follows the update lifecycle`() {
+        val available = AppUpdaterUiState(update = update(), isUpdateAvailable = true, showDialog = true)
+
+        assertEquals(UpdateDialogPhase.Available, available.dialogPhase())
+        assertEquals(UpdateDialogPhase.Downloading, available.copy(isDownloading = true).dialogPhase())
+        assertEquals(UpdateDialogPhase.ReadyToInstall, available.copy(downloadedApkPath = "setup.exe").dialogPhase())
+        assertEquals(UpdateDialogPhase.Failed, available.copy(errorMessage = "failed").dialogPhase())
+        assertNull(AppUpdaterUiState().dialogPhase())
+    }
+
+    @Test
+    fun `dialog is deferred during playback and after later`() {
+        val available = AppUpdaterUiState(update = update(), isUpdateAvailable = true, showDialog = true)
+
+        assertNull(available.visibleDialogPhase(inPlayback = true))
+        assertEquals(UpdateDialogPhase.Available, available.visibleDialogPhase(inPlayback = false))
+        assertNull(available.dismissed().visibleDialogPhase(inPlayback = false))
     }
 
     private fun update() = AppUpdate(
