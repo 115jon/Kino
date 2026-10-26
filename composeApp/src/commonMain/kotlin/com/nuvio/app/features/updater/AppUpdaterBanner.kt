@@ -10,7 +10,6 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
@@ -27,14 +26,12 @@ import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.CloudDownload
 import androidx.compose.material.icons.rounded.Info
-import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -56,6 +53,7 @@ import com.nuvio.app.core.ui.DialogButton
 import com.nuvio.app.core.ui.DialogButtons
 import com.nuvio.app.core.ui.DialogButtonStyle
 import com.nuvio.app.core.ui.DialogSurface
+import com.nuvio.app.core.ui.NuvioTokens
 import com.nuvio.app.core.ui.themePalette
 import com.nuvio.app.core.ui.accentBrush
 import com.nuvio.app.core.ui.appTheme
@@ -180,11 +178,11 @@ private fun AppUpdateBanner(
         animationSpec = tween(durationMillis = 180),
         label = "updateBannerProgress",
     )
-    val containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+    val containerColor = tokens.colors.surfaceCard
     val isWhiteTheme = MaterialTheme.appTheme == AppTheme.WHITE
     val progressBrush = MaterialTheme.themePalette.accentBrush()
     val progressAlpha = if (isWhiteTheme) 0.18f else 1f
-    val dividerColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.7f)
+    val dividerColor = tokens.colors.borderSubtle
     val debugTestComplete = state.isDebugTest && !state.isDownloading && !state.isUpdateAvailable
     val subtitle = when {
         state.errorMessage != null -> state.errorMessage
@@ -217,8 +215,8 @@ private fun AppUpdateBanner(
                 }
                 drawRect(
                     color = dividerColor,
-                    topLeft = Offset(0f, size.height - 1.dp.toPx()),
-                    size = Size(width = size.width, height = 1.dp.toPx()),
+                    topLeft = Offset(0f, size.height - tokens.borders.thin.toPx()),
+                    size = Size(width = size.width, height = tokens.borders.thin.toPx()),
                 )
             }
             .windowInsetsPadding(WindowInsets.statusBars),
@@ -227,15 +225,15 @@ private fun AppUpdateBanner(
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(min = 68.dp)
-                .padding(horizontal = tokens.spacing.screenHorizontal, vertical = 8.dp),
+                .padding(horizontal = tokens.spacing.screenHorizontal, vertical = NuvioTokens.Space.s10),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(tokens.spacing.controlGap),
         ) {
             Icon(
                 imageVector = if (debugTestComplete) Icons.Rounded.CheckCircle else Icons.Rounded.CloudDownload,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.size(24.dp),
+                tint = tokens.colors.textPrimary,
+                modifier = Modifier.size(tokens.icons.lg),
             )
 
             Column(
@@ -245,7 +243,7 @@ private fun AppUpdateBanner(
                 Text(
                     text = update?.tag ?: stringResource(Res.string.updates_title_status),
                     style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
+                    color = tokens.colors.textPrimary,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -254,10 +252,10 @@ private fun AppUpdateBanner(
                     text = subtitle,
                     style = MaterialTheme.typography.bodySmall,
                     color = when {
-                        state.errorMessage != null -> MaterialTheme.colorScheme.error
-                        state.isDownloading && isWhiteTheme -> MaterialTheme.colorScheme.onSurface
-                        state.isDownloading -> MaterialTheme.colorScheme.onPrimary
-                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+                        state.errorMessage != null -> tokens.colors.danger
+                        state.isDownloading && isWhiteTheme -> tokens.colors.textPrimary
+                        state.isDownloading -> tokens.colors.onAccent
+                        else -> tokens.colors.textSecondary
                     },
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
@@ -272,37 +270,34 @@ private fun AppUpdateBanner(
                 Icon(
                     imageVector = Icons.Rounded.Info,
                     contentDescription = stringResource(Res.string.updates_release_notes),
-                    tint = MaterialTheme.colorScheme.onSurface,
+                    tint = tokens.colors.textPrimary,
                 )
             }
 
             if (!state.isDownloading && !debugTestComplete) {
-                Button(
+                DialogButton(
+                    text = if (state.downloadedApkPath != null) {
+                        stringResource(Res.string.action_install)
+                    } else if (state.errorMessage != null) {
+                        stringResource(Res.string.action_retry)
+                    } else {
+                        stringResource(Res.string.action_update)
+                    },
                     onClick = when {
                         state.downloadedApkPath != null -> onInstall
                         state.errorMessage != null -> onRetry
                         else -> onDownload
                     },
                     enabled = state.downloadedApkPath != null || state.isUpdateAvailable || state.errorMessage != null,
-                    modifier = Modifier.heightIn(min = 40.dp),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-                ) {
-                    Text(
-                        if (state.downloadedApkPath != null) {
-                            stringResource(Res.string.action_install)
-                        } else if (state.errorMessage != null) {
-                            stringResource(Res.string.action_retry)
-                        } else {
-                            stringResource(Res.string.action_update)
-                        },
-                    )
-                }
+                    style = DialogButtonStyle.Primary,
+                )
             }
 
             if (!state.isDownloading) {
-                TextButton(onClick = onDismiss) {
-                    Text(stringResource(Res.string.action_later))
-                }
+                DialogButton(
+                    text = stringResource(Res.string.action_later),
+                    onClick = onDismiss,
+                )
                 IconButton(
                     onClick = onDismiss,
                     modifier = Modifier.size(40.dp),
@@ -310,7 +305,7 @@ private fun AppUpdateBanner(
                     Icon(
                         imageVector = Icons.Rounded.Close,
                         contentDescription = stringResource(Res.string.action_close),
-                        tint = MaterialTheme.colorScheme.onSurface,
+                        tint = tokens.colors.textPrimary,
                     )
                 }
             }
