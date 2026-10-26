@@ -1877,7 +1877,10 @@ internal object WindowsMpvPlayerBackend : DesktopPlaybackBackend {
                     val videoOutputConfigured = getString("vo-configured")
                     val videoWidth = getString("video-params/w")?.toIntOrNull() ?: 0
                     val videoHeight = getString("video-params/h")?.toIntOrNull() ?: 0
-                    val videoOutputReady = shouldShowNativeWindowsVideoSurface(
+                    val videoOutputReady = shouldRevealWindowsVideoSurface(
+                        loadPending = pollLoadRequestGeneration != null,
+                        activePlaylistEntryGeneration = windowState.activePlaylistEntryGeneration,
+                        sourceGeneration = pollGeneration,
                         videoOutputConfigured = videoOutputConfigured,
                         videoWidth = videoWidth,
                         videoHeight = videoHeight,
