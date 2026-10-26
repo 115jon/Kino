@@ -1,9 +1,5 @@
 package com.nuvio.app.features.player
 
-import com.nuvio.app.features.details.MetaVideo
-import com.nuvio.app.features.streams.AddonStreamGroup
-import com.nuvio.app.features.streams.StreamItem
-
 internal class WindowsPlayerWindowState(
     val engine: MpvEngine,
 ) {
@@ -17,38 +13,6 @@ internal class WindowsPlayerWindowState(
 
     @Volatile
     var panelRef: WindowsPlaybackPanel? = null
-
-    var metaTitle = ""
-    var metaStreamTitle = ""
-    var metaProviderName = ""
-    var metaSeason: Int? = null
-    var metaEpisode: Int? = null
-    var metaEpisodeTitle: String? = null
-    var hasVideoId = false
-    var isSeries = false
-    var submitIntroEnabled = false
-
-    var addonSubtitles = emptyList<AddonSubtitle>()
-    var addonSubtitlesLoading = false
-
-    var skipIntroType: String? = null
-    var skipIntroEndTimeMs: Long? = null
-    var nextEpisodeSeason: Int? = null
-    var nextEpisodeEpisode: Int? = null
-    var nextEpisodeTitle: String? = null
-
-    var sourceStreams = emptyList<StreamItem>()
-    var sourceGroups = emptyList<AddonStreamGroup>()
-    var sourcesLoading = false
-    var sourceFilter: String? = null
-    var currentSourceStreamUrl: String? = null
-
-    var episodes = emptyList<MetaVideo>()
-    var episodeStreams = emptyList<StreamItem>()
-    var episodeGroups = emptyList<AddonStreamGroup>()
-    var episodeLoading = false
-    var episodeFilter: String? = null
-    var currentEpisodeStreamUrl: String? = null
 }
 
 internal interface WindowsPlaybackPanel {

@@ -72,15 +72,7 @@ internal object WindowsMpvPlayerBackend : DesktopPlaybackBackend {
         }
         val engine = windowState.engine
         val playbackHeaders = remember(sourceHeaders) { sanitizePlaybackHeaders(sourceHeaders) }
-        val playerTheme = remember(colorScheme) {
-            PlayerTheme(
-                accentColor = windowsComposeColor(colorScheme.primary),
-                panelBgColor = windowsComposeColor(colorScheme.surface),
-                controlBgColor = windowsComposeColor(colorScheme.surface.copy(alpha = 0.92f)),
-                buttonBgColor = windowsComposeColor(colorScheme.surfaceVariant.copy(alpha = 0.95f)),
-                textMutedColor = windowsComposeColor(colorScheme.onSurfaceVariant),
-            )
-        }
+        val panelBackground = remember(colorScheme) { windowsComposeColor(colorScheme.surface) }
 
         SwingPanel(
             background = ComposeColor(windowsPlayerInteropBackgroundArgb()),
@@ -93,7 +85,7 @@ internal object WindowsMpvPlayerBackend : DesktopPlaybackBackend {
                 if (useNativeVideoSurface) {
                     desktopPlayerTrace("native panel factory start")
                     WindowsPlayerPanel(
-                        playerTheme = playerTheme,
+                        panelBackground = panelBackground,
                         overlayColorScheme = colorScheme,
                         overlayTypography = overlayTypography,
                         overlayNuvioTokens = overlayNuvioTokens,
@@ -112,19 +104,7 @@ internal object WindowsMpvPlayerBackend : DesktopPlaybackBackend {
                         onSurfaceInteraction = onSurfaceInteraction,
                         onSurfaceExit = onSurfaceExit,
                         onWindowFocusChanged = onWindowFocusChanged,
-                        onAddonSubtitlesFetch = { callbacks.onAddonSubtitlesFetch?.invoke() },
-                        onSourcesRequested = { callbacks.onSourcesRequested?.invoke() },
-                        onSourceSelected = { url -> callbacks.onSourceStreamSelected?.invoke(url) },
-                        onSourceReload = { callbacks.onSourceReload?.invoke() },
-                        onEpisodesRequested = { callbacks.onEpisodesRequested?.invoke() },
-                        onEpisodeSelected = { id -> callbacks.onEpisodeSelected?.invoke(id) },
-                        onEpisodeStreamSelected = { url -> callbacks.onEpisodeStreamSelected?.invoke(url) },
-                        onNextEpisodeRequested = { callbacks.onNextEpisodeRequested?.invoke() },
-                        onSubmitIntro = { segmentType, startSec, endSec ->
-                            callbacks.onSubmitIntroSubmitted?.invoke(segmentType, startSec, endSec)
-                        },
                         overlayContent = { currentOverlayContent.value() },
-                        showNativeControls = false,
                     )
                 } else {
                     EmbeddedWindowsPlayerPanel(
@@ -264,15 +244,7 @@ private fun applyWindowsPlaybackPoll(
     playback.subtitleTracks = pollPayload.subtitleTracks
     playback.volumeLevel = pollPayload.volumeLevel
     if (useNativeVideoSurface) {
-        (windowState.panelRef as? WindowsPlayerPanel)?.updatePlaybackState(
-            positionMs = pollPayload.snapshot.positionMs,
-            durationMs = pollPayload.snapshot.durationMs,
-            isPlaying = pollPayload.snapshot.isPlaying,
-            isLoading = pollPayload.snapshot.isLoading,
-            speed = pollPayload.snapshot.playbackSpeed,
-            volumePercent = pollPayload.volumeLevel.fraction * 100f,
-            videoOutputReady = pollPayload.videoOutputReady,
-        )
+        (windowState.panelRef as? WindowsPlayerPanel)?.updateVideoOutputReady(pollPayload.videoOutputReady)
     }
     onSnapshot(pollPayload.snapshot)
     val playbackError = selectWindowsPlaybackError(

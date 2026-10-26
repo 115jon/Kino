@@ -29,14 +29,6 @@ internal fun scheduleWindowsSwingAction(delayMs: Int, action: () -> Unit) {
     }
 }
 
-internal class PlayerTheme(
-    val accentColor: java.awt.Color,
-    val panelBgColor: java.awt.Color,
-    val controlBgColor: java.awt.Color,
-    val buttonBgColor: java.awt.Color,
-    val textMutedColor: java.awt.Color,
-)
-
 internal fun windowsComposeColor(color: androidx.compose.ui.graphics.Color): java.awt.Color =
     java.awt.Color(
         (color.red * 255f).roundToInt().coerceIn(0, 255),
@@ -62,8 +54,6 @@ internal fun createWindowsOverlayPointerListener(onPointerExit: () -> Unit): Mou
 
 internal fun isWindowsPlayerPointerInside(playerInside: Boolean, overlayInside: Boolean): Boolean =
     playerInside || overlayInside
-
-internal fun shouldHideWindowsPlayerControls(pointerInside: Boolean): Boolean = !pointerInside
 
 internal fun createCoalescedSwingUpdate(update: () -> Unit): () -> Unit {
     val pending = AtomicBoolean(false)

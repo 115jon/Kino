@@ -12,12 +12,6 @@ class WindowsPlayerInteractionPolicyTest {
     }
 
     @Test
-    fun `controls hide only after pointer leaves the full player surface`() {
-        assertEquals(false, shouldHideWindowsPlayerControls(pointerInside = true))
-        assertEquals(true, shouldHideWindowsPlayerControls(pointerInside = false))
-    }
-
-    @Test
     fun `overlay clicks do not toggle the player surface controls`() {
         assertEquals(true, shouldForwardWindowsPlayerClick(WindowsPlayerPointerTarget.Video))
         assertEquals(false, shouldForwardWindowsPlayerClick(WindowsPlayerPointerTarget.Overlay))
