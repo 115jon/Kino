@@ -25,7 +25,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nuvio.app.core.auth.AuthRepository
 import com.nuvio.app.core.auth.AuthState
 import com.nuvio.app.core.auth.DeviceSessionRegistration
-import com.nuvio.app.core.network.NetworkCondition
 import com.nuvio.app.core.network.NetworkStatusRepository
 import com.nuvio.app.core.sync.SyncManager
 import com.nuvio.app.core.ui.NativeProfileSwitcherController
@@ -42,14 +41,6 @@ import com.nuvio.app.features.profiles.ProfileRepository
 import com.nuvio.app.features.profiles.ProfileSelectionScreen
 import com.nuvio.app.features.profiles.profileAvatarImageUrl
 import com.nuvio.app.navigation.AppRoute
-
-private enum class AppGateScreen {
-    Loading,
-    Auth,
-    ProfileSelection,
-    ProfileEdit,
-    Main,
-}
 
 @Composable
 internal fun AppGate(
@@ -289,44 +280,45 @@ internal fun AppGate(
         }
     }
 
-    LaunchedEffect(authState, networkStatusUiState.condition, profileState.profiles) {
-        val cachedProfiles = profileState.profiles
-        val hasCachedProfileAccess =
-            cachedProfiles.isNotEmpty() &&
-                authState !is AuthState.Authenticated
-        val allowCachedProfileAccess =
-            hasCachedProfileAccess &&
-                (
-                    networkStatusUiState.condition != NetworkCondition.Online ||
-                        gateScreen != AppGateScreen.Auth.name
-                )
-
-        when (authState) {
-            is AuthState.Loading -> {
-                if (hasCachedProfileAccess) {
-                    enterProfileGate(cachedProfiles, syncOnEnter = false)
-                } else {
-                    gateScreen = AppGateScreen.Loading.name
-                }
+    fun applyAppGateTransition(
+        transition: AppGateTransition,
+        profiles: List<NuvioProfile>,
+        syncOnEnter: Boolean,
+    ) {
+        when (transition) {
+            AppGateTransition.KeepCurrent -> Unit
+            AppGateTransition.ShowLoading -> gateScreen = AppGateScreen.Loading.name
+            AppGateTransition.ShowAuth -> {
+                ProfileRepository.clearInMemory()
+                profileSelectionLoading = false
+                profileSelectionTransitionActive = false
+                gateScreen = AppGateScreen.Auth.name
             }
-            is AuthState.Unauthenticated -> {
-                if (allowCachedProfileAccess) {
-                    enterProfileGate(cachedProfiles, syncOnEnter = false)
-                } else {
-                    ProfileRepository.clearInMemory()
-                    profileSelectionLoading = false
-                    profileSelectionTransitionActive = false
-                    gateScreen = AppGateScreen.Auth.name
-                }
-            }
-            is AuthState.Authenticated -> {
-                val authenticatedState = authState as AuthState.Authenticated
-                ProfileRepository.ensureLoaded(authenticatedState.userId)
-                if (gateScreen == AppGateScreen.Loading.name || gateScreen == AppGateScreen.Auth.name) {
-                    enterProfileGate(ProfileRepository.state.value.profiles, syncOnEnter = true)
-                }
-            }
+            AppGateTransition.EnterProfileGate -> enterProfileGate(profiles, syncOnEnter)
         }
+    }
+
+    LaunchedEffect(authState, networkStatusUiState.condition, profileState.profiles) {
+        val currentGateScreen = AppGateScreen.entries
+            .firstOrNull { it.name == gateScreen }
+            ?: AppGateScreen.Loading
+        val profiles = when (val state = authState) {
+            is AuthState.Authenticated -> {
+                ProfileRepository.ensureLoaded(state.userId)
+                ProfileRepository.state.value.profiles
+            }
+            else -> profileState.profiles
+        }
+        applyAppGateTransition(
+            transition = appGateTransition(
+                currentScreen = currentGateScreen,
+                authState = authState,
+                hasCachedProfiles = profiles.isNotEmpty(),
+                networkCondition = networkStatusUiState.condition,
+            ),
+            profiles = profiles,
+            syncOnEnter = authState is AuthState.Authenticated,
+        )
     }
 
     LaunchedEffect((authState as? AuthState.Authenticated)?.userId) {
