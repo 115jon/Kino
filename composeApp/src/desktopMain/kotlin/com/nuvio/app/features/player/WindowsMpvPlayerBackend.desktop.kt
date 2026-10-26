@@ -229,7 +229,7 @@ private class DesktopBackendPerfStats {
         } else {
             0.0
         }
-        desktopPlayerPerfLog.i {
+        desktopPlayerPerfLog.d {
             "backend wakeupBursts=$wakeupBursts wakeupEvents=$wakeupEvents updateCallbacks=$updateCallbacks fallbackSignals=$fallbackSignals sourceLoadSignals=$sourceLoadSignals polls=$polls avgPollMs=${"%.2f".format(averagePollMs)} renderFrames=$renderFrames avgRenderMs=${"%.2f".format(averageRenderMs)} maxRenderMs=${"%.2f".format(renderDurationNsMax / 1_000_000.0)} avgRenderQueueMs=${"%.2f".format(averageRenderQueueMs)} maxRenderQueueMs=${"%.2f".format(renderQueueDelayNsMax / 1_000_000.0)} playing=$playing loading=$loading idle=$idle"
         }
         lastLogNs = nowNs

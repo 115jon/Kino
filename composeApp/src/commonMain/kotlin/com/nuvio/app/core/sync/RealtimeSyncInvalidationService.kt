@@ -29,7 +29,8 @@ import kotlinx.serialization.json.jsonPrimitive
 private const val REALTIME_INVALIDATION_COALESCE_MS = 500L
 private const val REALTIME_SUBSCRIBE_TIMEOUT_MS = 15_000L
 private const val REALTIME_RETRY_BASE_DELAY_MS = 1_000L
-private const val REALTIME_RETRY_MAX_DELAY_MS = 10_000L
+private const val REALTIME_RETRY_MAX_DELAY_MS = 300_000L
+private const val REALTIME_RETRY_MAX_SHIFT = 20
 
 object RealtimeSyncInvalidationService {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -64,13 +65,13 @@ object RealtimeSyncInvalidationService {
                 val realtimeStatusJob = launch {
                     realtime.status
                         .collect { status ->
-                            log.i { "Realtime client status=$status channel=$channelName" }
+                            log.d { "Realtime client status=$status channel=$channelName" }
                         }
                 }
                 val channelStatusJob = launch {
                     channel.status
                         .collect { status ->
-                            log.i { "Realtime channel status=$status channel=$channelName" }
+                            log.d { "Realtime channel status=$status channel=$channelName" }
                         }
                 }
                 val changesJob = channel.postgresChangeFlow<PostgresAction.Insert>(schema = "public") {
@@ -88,7 +89,7 @@ object RealtimeSyncInvalidationService {
                     log.i { "Subscribed to sync invalidations channel=$channelName profile=$profileId" }
                     awaitCancellation()
                 } catch (error: TimeoutCancellationException) {
-                    log.e(error) {
+                    log.w {
                         "Timed out subscribing to sync invalidations channel=$channelName " +
                             "realtimeStatus=${realtime.status.value} channelStatus=${channel.status.value}"
                     }
@@ -109,7 +110,7 @@ object RealtimeSyncInvalidationService {
                 }
 
                 if (isActive) {
-                    val retryDelay = (REALTIME_RETRY_BASE_DELAY_MS * attempt)
+                    val retryDelay = (REALTIME_RETRY_BASE_DELAY_MS shl (attempt - 1).coerceAtMost(REALTIME_RETRY_MAX_SHIFT))
                         .coerceAtMost(REALTIME_RETRY_MAX_DELAY_MS)
                     log.w { "Retrying sync invalidations subscription in ${retryDelay}ms profile=$profileId nextAttempt=${attempt + 1}" }
                     delay(retryDelay)
