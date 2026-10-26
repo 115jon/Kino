@@ -39,7 +39,7 @@ namespace Installer
                 InstallRootLayout layout = InstallRootLayout.FromLocalAppData(GetLocalAppDataDirectory());
                 InstallerLogger.Info("Installing Kino to " + layout.RootPath);
 
-                WaitForProcessesToExit(layout, TimeSpan.FromSeconds(30));
+                WaitForProcessesToExit(layout, TimeSpan.FromSeconds(8), TimeSpan.FromSeconds(60));
                 DeleteShortcuts();
                 Directory.CreateDirectory(layout.RootPath);
                 Directory.CreateDirectory(layout.StagingPath);
@@ -67,7 +67,7 @@ namespace Installer
                 InstallRootLayout layout = InstallRootLayout.FromLocalAppData(GetLocalAppDataDirectory());
                 InstallerLogger.Info("Uninstalling Kino from " + layout.RootPath);
 
-                WaitForProcessesToExit(layout, TimeSpan.FromSeconds(30));
+                WaitForProcessesToExit(layout, TimeSpan.FromSeconds(8), TimeSpan.FromSeconds(60));
                 DeleteShortcuts();
                 DeleteRegistryKeyTree(Registry.CurrentUser, UninstallKeyPath);
                 DeleteRegistryKeyTree(Registry.CurrentUser, InstallLocationKeyPath);
@@ -83,33 +83,80 @@ namespace Installer
             return path;
         }
 
-        private static void WaitForProcessesToExit(InstallRootLayout layout, TimeSpan timeout)
+        private static void WaitForProcessesToExit(InstallRootLayout layout, TimeSpan gracePeriod, TimeSpan timeout)
         {
             Stopwatch stopwatch = Stopwatch.StartNew();
+            bool closeRequested = false;
+            bool killRequested = false;
             while (stopwatch.Elapsed < timeout)
             {
-                Process[] processes = ManagedProcessNames.SelectMany(Process.GetProcessesByName).ToArray();
-                processes = processes.Concat(Process.GetProcesses()
-                    .Where(process => process.Id != Process.GetCurrentProcess().Id)
-                    .Where(process => ProcessMatchesPath(process, layout.GetInstalledExecutablePaths(ExecutableFileName))))
-                    .GroupBy(process => process.Id)
-                    .Select(group => group.First())
-                    .ToArray();
-
-                if (processes.Length == 0) return;
-                if (stopwatch.Elapsed.TotalSeconds > 5)
+                Process[] processes = FindManagedProcesses(layout);
+                try
                 {
-                    foreach (Process process in processes)
+                    if (processes.Length == 0)
                     {
-                        try { process.Kill(); } catch { }
+                        if (closeRequested) InstallerLogger.Info("Kino processes exited after " + stopwatch.ElapsedMilliseconds + " ms.");
+                        return;
+                    }
+
+                    if (!closeRequested)
+                    {
+                        closeRequested = true;
+                        InstallerLogger.Info("Waiting for running Kino processes to exit: " + DescribeProcesses(processes));
+                        foreach (Process process in processes)
+                        {
+                            try { process.CloseMainWindow(); } catch { }
+                        }
+                    }
+                    else if (!killRequested && stopwatch.Elapsed >= gracePeriod)
+                    {
+                        killRequested = true;
+                        InstallerLogger.Warn("Killing Kino processes that did not exit: " + DescribeProcesses(processes));
+                    }
+
+                    if (killRequested)
+                    {
+                        foreach (Process process in processes)
+                        {
+                            try
+                            {
+                                process.Kill();
+                                process.WaitForExit(2000);
+                            }
+                            catch (Exception exception)
+                            {
+                                InstallerLogger.Warn("Could not kill Kino process " + process.Id + ": " + exception.Message);
+                            }
+                        }
                     }
                 }
+                finally
+                {
+                    foreach (Process process in processes) process.Dispose();
+                }
 
-                foreach (Process process in processes) process.Dispose();
-                Thread.Sleep(500);
+                Thread.Sleep(250);
             }
 
             InstallerLogger.Warn("Timed out waiting for Kino processes to exit.");
+        }
+
+        private static Process[] FindManagedProcesses(InstallRootLayout layout)
+        {
+            int currentProcessId = Process.GetCurrentProcess().Id;
+            string[] installedPaths = layout.GetInstalledExecutablePaths(ExecutableFileName).ToArray();
+            return ManagedProcessNames
+                .SelectMany(Process.GetProcessesByName)
+                .Concat(Process.GetProcesses().Where(process => ProcessMatchesPath(process, installedPaths)))
+                .Where(process => process.Id != currentProcessId)
+                .GroupBy(process => process.Id)
+                .Select(group => group.First())
+                .ToArray();
+        }
+
+        private static string DescribeProcesses(IEnumerable<Process> processes)
+        {
+            return string.Join(", ", processes.Select(process => process.ProcessName + "#" + process.Id));
         }
 
         private static bool ProcessMatchesPath(Process process, IEnumerable<string> paths)
@@ -415,6 +462,8 @@ namespace Installer
 
         private static void LaunchApplication(string executablePath, string arguments, string workingDirectory)
         {
+            InstallerLogger.Info("Launching Kino: " + executablePath + " " + arguments);
+            ForegroundPermission.AllowAny();
             Process.Start(new ProcessStartInfo
             {
                 FileName = executablePath,
