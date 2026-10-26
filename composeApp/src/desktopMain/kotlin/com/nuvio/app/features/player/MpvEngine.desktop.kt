@@ -134,18 +134,16 @@ internal class MpvEngine(
         }
     }
 
-    fun readProperty(name: String): String? {
-        var value: String? = null
-        withClient { current -> value = current.getProperty(name) }
-        return value
+    fun postCommand(block: (MpvClient) -> Unit) {
+        dispatcher.post { withClient(block) }
     }
 
     fun setProperty(name: String, value: String) {
-        withClient { current -> current.setProperty(name, value) }
+        postCommand { current -> current.setProperty(name, value) }
     }
 
     fun command(vararg args: String) {
-        withClient { current -> current.command(*args) }
+        postCommand { current -> current.command(*args) }
     }
 
     fun load(
@@ -158,7 +156,11 @@ internal class MpvEngine(
         loader.load(url, audioUrl, headers, onCommitted, forceResolve)
     }
 
-    fun currentPositionSeconds(): Double = readProperty("time-pos")?.toDoubleOrNull() ?: 0.0
+    fun currentPositionSeconds(): Double {
+        val current = client ?: return 0.0
+        if (isClosed) return 0.0
+        return runCatching { current.getProperty("time-pos") }.getOrNull()?.toDoubleOrNull() ?: 0.0
+    }
 
     fun restorePositionAfterLoad(loadGeneration: Long, positionSeconds: Double) {
         val expectedClient = client ?: return
@@ -181,37 +183,31 @@ internal class MpvEngine(
 
     fun seekTo(positionMs: Long) {
         val seconds = positionMs / 1000.0
-        dispatcher.post {
-            withClient { current ->
-                val result = current.command("seek", String.format("%.3f", seconds), "absolute")
-                desktopPlayerTrace("seek command targetMs=$positionMs result=$result")
-            }
+        postCommand { current ->
+            val result = current.command("seek", String.format("%.3f", seconds), "absolute")
+            desktopPlayerTrace("seek command targetMs=$positionMs result=$result")
         }
     }
 
     fun seekToKeyframe(positionMs: Long) {
         val seconds = positionMs / 1000.0
-        dispatcher.post {
-            withClient { current ->
-                val result = current.command("seek", String.format("%.3f", seconds), "absolute", "keyframes")
-                if (result == 0) {
-                    playback.initialSeekRequestedAtMs = System.currentTimeMillis()
-                    playback.initialSeekTargetMs = positionMs
-                    playback.initialSeekRecoveryIssued = false
-                } else {
-                    playback.initialSeekRequestedAtMs = 0L
-                    playback.initialSeekTargetMs = 0L
-                }
-                desktopPlayerTrace("keyframe seek command targetMs=$positionMs result=$result")
+        postCommand { current ->
+            val result = current.command("seek", String.format("%.3f", seconds), "absolute", "keyframes")
+            if (result == 0) {
+                playback.initialSeekRequestedAtMs = System.currentTimeMillis()
+                playback.initialSeekTargetMs = positionMs
+                playback.initialSeekRecoveryIssued = false
+            } else {
+                playback.initialSeekRequestedAtMs = 0L
+                playback.initialSeekTargetMs = 0L
             }
+            desktopPlayerTrace("keyframe seek command targetMs=$positionMs result=$result")
         }
     }
 
     fun seekBy(offsetMs: Long) {
         val seconds = offsetMs / 1000.0
-        dispatcher.post {
-            command("seek", String.format("%.3f", seconds), "relative")
-        }
+        command("seek", String.format("%.3f", seconds), "relative")
     }
 
     fun setSpeed(speed: Float) {
@@ -242,7 +238,7 @@ internal class MpvEngine(
     }
 
     fun adjustVolumePercent(delta: Double) {
-        withClient { current ->
+        postCommand { current ->
             val currentVolume = current.getProperty("volume")?.toDoubleOrNull() ?: 0.0
             val nextVolume = (currentVolume + delta).coerceIn(0.0, 100.0)
             current.setProperty("volume", nextVolume.toString())
@@ -258,8 +254,9 @@ internal class MpvEngine(
     }
 
     fun applyAudioLanguagePreferences(languages: List<String>) {
-        withClient { current ->
-            current.setProperty("alang", languages.joinToString(","))
+        val languageList = languages.joinToString(",")
+        postCommand { current ->
+            current.setProperty("alang", languageList)
             current.setProperty("aid", "auto")
         }
     }
@@ -270,17 +267,16 @@ internal class MpvEngine(
     }
 
     fun selectSubtitleTrack(index: Int) {
-        withClient { current ->
-            if (index < 0) {
-                current.setProperty("sid", "no")
-            } else if (index in playback.subtitleTracks.indices) {
-                current.setProperty("sid", playback.subtitleTracks[index].id)
-            }
+        if (index < 0) {
+            setProperty("sid", "no")
+        } else {
+            val track = playback.subtitleTracks.getOrNull(index) ?: return
+            setProperty("sid", track.id)
         }
     }
 
     fun addSubtitle(url: String, reapplyStyleLater: Boolean) {
-        withClient { current ->
+        postCommand { current ->
             current.command("sub-add", url, "select")
             applyWindowsMpvSubtitleStyle(current, playback.subtitleStyle)
             if (reapplyStyleLater) {
@@ -290,30 +286,22 @@ internal class MpvEngine(
     }
 
     fun clearExternalSubtitles() {
-        withClient { current ->
-            val count = boundedWindowsMpvTrackCount(current.getProperty("track-list/count"))
-            for (i in count - 1 downTo 0) {
-                val type = current.getProperty("track-list/$i/type") ?: ""
-                val external = current.getProperty("track-list/$i/external") == "yes"
-                if (type == "sub" && external) {
-                    val id = current.getProperty("track-list/$i/id") ?: ""
-                    current.command("sub-remove", id)
-                }
-            }
-            current.setProperty("sid", "no")
-        }
+        postCommand(::removeExternalSubtitles)
     }
 
     fun clearExternalSubtitlesAndSelect(trackIndex: Int) {
-        clearExternalSubtitles()
-        if (trackIndex >= 0 && trackIndex < playback.subtitleTracks.size) {
-            setProperty("sid", playback.subtitleTracks[trackIndex].id)
+        val track = playback.subtitleTracks.getOrNull(trackIndex)
+        postCommand { current ->
+            removeExternalSubtitles(current)
+            if (track != null) {
+                current.setProperty("sid", track.id)
+            }
         }
     }
 
     fun applySubtitleStyle(style: SubtitleStyleState) {
         playback.subtitleStyle = style
-        withClient { current -> applyWindowsMpvSubtitleStyle(current, style) }
+        postCommand { current -> applyWindowsMpvSubtitleStyle(current, style) }
     }
 
     fun reapplySubtitleStyleLater(expectedClient: MpvClient) {
@@ -328,7 +316,7 @@ internal class MpvEngine(
     }
 
     fun setResizeMode(resizeMode: PlayerResizeMode) {
-        withClient { current ->
+        postCommand { current ->
             mpvResizeModeOptions(resizeMode).forEach { (name, value) -> current.setOption(name, value) }
         }
     }
@@ -347,6 +335,19 @@ internal class MpvEngine(
         desktopPlayerTrace(
             "stream capability profile summary=${profileSummary ?: ""} hdr=$isHdrLike dolbyVision=$hasDolbyVision hdrFallback=$hasHdrFallback"
         )
+    }
+
+    private fun removeExternalSubtitles(current: MpvClient) {
+        val count = boundedWindowsMpvTrackCount(current.getProperty("track-list/count"))
+        for (i in count - 1 downTo 0) {
+            val type = current.getProperty("track-list/$i/type") ?: ""
+            val external = current.getProperty("track-list/$i/external") == "yes"
+            if (type == "sub" && external) {
+                val id = current.getProperty("track-list/$i/id") ?: ""
+                current.command("sub-remove", id)
+            }
+        }
+        current.setProperty("sid", "no")
     }
 
     private fun scheduleVolumeUpdate(expectedClient: MpvClient) {
