@@ -45,6 +45,10 @@
 -keep interface dev.whyoleg.** { *; }
 -keep enum dev.whyoleg.** { *; }
 
+-keep class kotlinx.coroutines.** { *; }
+-keep interface kotlinx.coroutines.** { *; }
+-keep enum kotlinx.coroutines.** { *; }
+
 -keep class com.sun.jna.** { *; }
 -keep interface com.sun.jna.** { *; }
 -keep enum com.sun.jna.** { *; }
