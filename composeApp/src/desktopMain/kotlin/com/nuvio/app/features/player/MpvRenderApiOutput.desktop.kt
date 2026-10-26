@@ -4,6 +4,10 @@ import com.sun.jna.Pointer
 import com.sun.jna.ptr.PointerByReference
 
 internal class RenderApiOutput(
+    private val extraOptions: List<MpvOption> = emptyList(),
+    flipY: Boolean = true,
+    blockForTargetTime: Boolean = true,
+    override val logLevel: String = "warn",
     private val onRenderUpdate: () -> Unit,
 ) : MpvVideoOutput {
     private var lib: WindowsMpvLibrary? = null
@@ -11,19 +15,19 @@ internal class RenderApiOutput(
     private var glProcAddressCallback: MpvOpenGlGetProcAddressCallback? = null
     private var glInitParams: MpvOpenGlInitParams? = null
     private val renderFbo = MpvOpenGlFbo()
-    private val renderFlipY = intMemory(1)
+    private val renderFlipY = intMemory(if (flipY) 1 else 0)
+    private val renderBlock = intMemory(if (blockForTargetTime) 1 else 0)
     private val renderParams = createRenderParams(
         MPV_RENDER_PARAM_OPENGL_FBO to renderFbo.pointer,
         MPV_RENDER_PARAM_FLIP_Y to renderFlipY,
+        MPV_RENDER_PARAM_BLOCK_FOR_TARGET_TIME to renderBlock,
     )
 
     @Volatile
     var renderContext: Pointer? = null
         private set
 
-    override val logLevel: String = "warn"
-
-    override fun options(): List<MpvOption> = listOf(MpvOption("vo", "libmpv"))
+    override fun options(): List<MpvOption> = listOf(MpvOption("vo", "libmpv")) + extraOptions
 
     override fun attach(client: MpvClient) {
         val jnaClient = client as? JnaMpvClient
@@ -83,13 +87,18 @@ internal class RenderApiOutput(
         return (library.mpv_render_context_update(renderPtr) and MPV_RENDER_UPDATE_FRAME) != 0L
     }
 
-    fun render(framebuffer: Int, width: Int, height: Int): Int? {
+    fun reportSwap() {
+        val renderPtr = renderContext ?: return
+        lib?.mpv_render_context_report_swap(renderPtr)
+    }
+
+    fun render(framebuffer: Int, width: Int, height: Int, internalFormat: Int = 0): Int? {
         val renderPtr = renderContext ?: return null
         val library = lib ?: return null
         renderFbo.fbo = framebuffer
         renderFbo.w = width
         renderFbo.h = height
-        renderFbo.internal_format = 0
+        renderFbo.internal_format = internalFormat
         renderFbo.write()
         return library.mpv_render_context_render(renderPtr, renderParams[0].pointer)
     }

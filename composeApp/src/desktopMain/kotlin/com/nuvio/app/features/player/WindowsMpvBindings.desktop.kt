@@ -34,6 +34,7 @@ internal interface WindowsMpvLibrary : Library {
     fun mpv_render_context_update(ctx: Pointer): Long
     fun mpv_render_context_render(ctx: Pointer, params: Pointer): Int
     fun mpv_render_context_free(ctx: Pointer)
+    fun mpv_render_context_report_swap(ctx: Pointer)
 }
 
 private const val MPV_RENDER_PARAM_INVALID = 0
@@ -41,6 +42,7 @@ internal const val MPV_RENDER_PARAM_API_TYPE = 1
 internal const val MPV_RENDER_PARAM_OPENGL_INIT_PARAMS = 2
 internal const val MPV_RENDER_PARAM_OPENGL_FBO = 3
 internal const val MPV_RENDER_PARAM_FLIP_Y = 4
+internal const val MPV_RENDER_PARAM_BLOCK_FOR_TARGET_TIME = 12
 internal const val MPV_RENDER_UPDATE_FRAME = 1L
 internal const val MPV_RENDER_API_TYPE_OPENGL = "opengl"
 
@@ -51,6 +53,7 @@ internal const val MPV_EVENT_PROPERTY_CHANGE = 22
 internal const val MPV_EVENT_START_FILE = 6
 internal const val MPV_EVENT_END_FILE = 7
 internal const val MPV_EVENT_FILE_LOADED = 8
+internal const val MPV_EVENT_PLAYBACK_RESTART = 21
 internal const val MPV_FORMAT_STRING = 1
 internal const val MPV_FORMAT_FLAG = 3
 internal const val MPV_FORMAT_INT64 = 4

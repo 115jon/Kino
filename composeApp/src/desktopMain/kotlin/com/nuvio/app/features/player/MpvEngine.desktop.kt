@@ -49,6 +49,9 @@ internal class MpvEngine(
     var onFatalError: () -> Unit = {}
 
     @Volatile
+    var onPlaybackRestart: (Long) -> Unit = {}
+
+    @Volatile
     private var client: MpvClient? = null
     private var output: MpvVideoOutput? = null
     private var eventPump: MpvEventPump? = null
@@ -374,6 +377,10 @@ internal class MpvEngine(
         }
     }
 
+    fun isActiveEntryCurrent(): Boolean =
+        playback.pendingLoadRequestGeneration == null &&
+            playback.activePlaylistEntryGeneration == playback.sourceGeneration
+
     private fun drainEvents() {
         callLock.withLock {
             val current = client ?: return
@@ -407,6 +414,9 @@ internal class MpvEngine(
                         eventCount += 1
                     }
                     is MpvClientEvent.Other -> {
+                        if (event.id == MPV_EVENT_PLAYBACK_RESTART && isActiveEntryCurrent()) {
+                            onPlaybackRestart(playback.sourceGeneration)
+                        }
                         if (event.id == MPV_EVENT_FILE_LOADED) {
                             desktopPlayerTrace("mpv event id=${event.id} error=${event.error} applying subtitle style")
                             applyWindowsMpvSubtitleStyle(current, playback.subtitleStyle)

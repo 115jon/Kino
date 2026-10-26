@@ -49,4 +49,8 @@ internal val mpvEngineCommonOptions: List<MpvOption> = listOf(
     MpvOption("demuxer-readahead-secs", WindowsPlayerReadAheadSeconds),
 )
 
-internal fun mpvEngineOptions(output: MpvVideoOutput): List<MpvOption> = output.options() + mpvEngineCommonOptions
+internal fun mpvEngineOptions(output: MpvVideoOutput): List<MpvOption> {
+    val outputOptions = output.options()
+    val outputNames = outputOptions.mapTo(HashSet()) { it.name }
+    return outputOptions + mpvEngineCommonOptions.filterNot { it.name in outputNames }
+}
