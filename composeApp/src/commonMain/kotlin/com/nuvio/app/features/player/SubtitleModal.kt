@@ -21,7 +21,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -31,6 +33,7 @@ import androidx.compose.material.icons.rounded.CloudDownload
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import com.nuvio.app.features.autosync.AutoSyncedChip
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -45,6 +48,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.nuvio.app.core.ui.nuvio
+import com.nuvio.app.core.ui.withDuplicateSafeLazyKeys
 import nuvio.composeapp.generated.resources.Res
 import nuvio.composeapp.generated.resources.addon_title
 import nuvio.composeapp.generated.resources.compose_player_built_in
@@ -83,9 +87,8 @@ fun SubtitleModal(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val effectiveSelectedAddonSubtitle = selectedAddonSubtitle ?: addonSubtitles.firstOrNull { subtitle ->
-        subtitle.id == selectedAddonSubtitleId || subtitle.url == selectedAddonSubtitleId
-    }
+    val effectiveSelectedAddonSubtitle = selectedAddonSubtitle
+        ?: addonSubtitles.findSelectedAddon(selectedAddonSubtitleId)
     val playbackLanguageKey = selectedSubtitleLanguageKey(
         subtitleTracks = subtitleTracks,
         selectedSubtitleIndex = selectedSubtitleIndex,
@@ -96,9 +99,11 @@ fun SubtitleModal(
         selectedSubtitleIndex = selectedSubtitleIndex,
         selectedAddonSubtitle = effectiveSelectedAddonSubtitle,
     )
+    val subtitleStructureKey = subtitleTracksStructureKey(subtitleTracks)
+    val addonStructureKey = addonSubtitlesStructureKey(addonSubtitles)
     val languageItems = remember(
-        subtitleTracks,
-        addonSubtitles,
+        subtitleStructureKey,
+        addonStructureKey,
         preferredSubtitleLanguage,
         secondaryPreferredSubtitleLanguage,
         subtitleStyle.showOnlyPreferredLanguages,
@@ -121,12 +126,28 @@ fun SubtitleModal(
         )
     }
     var pendingOptionId by remember(visible) { mutableStateOf<String?>(playbackOptionId) }
-    val options = remember(activeLanguageKey, subtitleTracks, addonSubtitles) {
+    val options = remember(activeLanguageKey, subtitleStructureKey, addonStructureKey) {
         buildSubtitleSelectionOptions(activeLanguageKey, subtitleTracks, addonSubtitles)
     }
+    val keyedOptions = remember(options) { options.withDuplicateSafeLazyKeys { it.id } }
     val selectedOptionId = pendingOptionId ?: playbackOptionId
+    val languageListState = rememberLazyListState()
+    val optionsListState = rememberLazyListState()
     val styleVisible = activeLanguageKey != SubtitleOffLanguageKey &&
         selectedOptionId != null && options.any { it.id == selectedOptionId }
+
+    LaunchedEffect(visible) {
+        if (!visible) return@LaunchedEffect
+        val languageIndex = languageItems.indexOfFirst { it.key == activeLanguageKey }
+        if (languageIndex >= 0) {
+            languageListState.scrollItemIntoViewIfNeeded(languageIndex)
+        }
+        val optionId = selectedOptionId ?: return@LaunchedEffect
+        val optionIndex = options.indexOfFirst { it.id == optionId }
+        if (optionIndex >= 0) {
+            optionsListState.scrollItemIntoViewIfNeeded(optionIndex)
+        }
+    }
 
     LaunchedEffect(languageItems) {
         if (languageItems.none { it.key == activeLanguageKey }) {
@@ -173,6 +194,7 @@ fun SubtitleModal(
                         width = 200.dp,
                     ) {
                         LazyColumn(
+                            state = languageListState,
                             modifier = Modifier.heightIn(max = railMaxHeight),
                             verticalArrangement = Arrangement.spacedBy(4.dp),
                             contentPadding = PaddingValues(vertical = 8.dp),
@@ -234,11 +256,13 @@ fun SubtitleModal(
 
                             else -> {
                                 LazyColumn(
+                                    state = optionsListState,
                                     modifier = Modifier.heightIn(max = railMaxHeight),
                                     verticalArrangement = Arrangement.spacedBy(4.dp),
                                     contentPadding = PaddingValues(vertical = 8.dp),
                                 ) {
-                                    items(options, key = { it.id }) { option ->
+                                    items(keyedOptions, key = { it.lazyKey }) { keyedOption ->
+                                        val option = keyedOption.value
                                         SubtitleOptionRow(
                                             option = option,
                                             selected = option.id == selectedOptionId,
@@ -339,7 +363,7 @@ private fun SubtitleLanguageRow(
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
             .background(if (selected) tokens.colors.accent else Color.Transparent)
-            .clickable(onClick = onClick)
+            .clickableIncludingFlingStop(onClick = onClick)
             .padding(horizontal = 10.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
@@ -408,7 +432,7 @@ private fun SubtitleOptionRow(
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
             .background(if (selected) tokens.colors.accent else Color.Transparent)
-            .clickable(onClick = onClick)
+            .clickableIncludingFlingStop(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 9.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
@@ -417,7 +441,15 @@ private fun SubtitleOptionRow(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            SubtitleSourceChip(label = sourceLabel, selected = selected)
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                SubtitleSourceChip(label = sourceLabel, selected = selected)
+                (option as? SubtitleSelectionOption.Addon)?.let {
+                    AutoSyncedChip(it.subtitle.url, selected) // AutoSync hook
+                }
+            }
             Text(
                 text = title,
                 color = if (selected) tokens.colors.onAccent else Color.White,
@@ -512,4 +544,10 @@ private fun SubtitleRailEmptyState(
             style = MaterialTheme.typography.bodyLarge,
         )
     }
+}
+
+private suspend fun LazyListState.scrollItemIntoViewIfNeeded(targetIndex: Int) {
+    if (targetIndex < 0) return
+    if (layoutInfo.visibleItemsInfo.any { it.index == targetIndex }) return
+    scrollToItem(targetIndex)
 }

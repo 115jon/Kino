@@ -6,6 +6,7 @@ import com.nuvio.app.features.addons.AddonManifest
 import com.nuvio.app.features.addons.ManagedAddon
 import com.nuvio.app.features.addons.enabledAddons
 import com.nuvio.app.features.catalog.supportsPagination
+import com.nuvio.app.features.servers.ServerCatalog
 import kotlinx.coroutines.runBlocking
 import nuvio.composeapp.generated.resources.Res
 import nuvio.composeapp.generated.resources.home_catalog_default_title
@@ -21,6 +22,7 @@ data class HomeCatalogDefinition(
     val catalogId: String,
     val supportsPagination: Boolean,
     val descriptorSignature: String,
+    val serverConnectionId: String? = null,
 ) {
     val cacheKey: String
         get() = "$key|$descriptorSignature"
@@ -29,14 +31,15 @@ data class HomeCatalogDefinition(
         if (showCatalogType) defaultTitle else catalogName
 }
 
-fun buildHomeCatalogRefreshSignature(addons: List<ManagedAddon>): List<String> =
-    addons.enabledAddons().mapNotNull { addon ->
-        val manifest = addon.manifest ?: return@mapNotNull null
-        addon to manifest
-    }.flatMap { (addon, manifest) ->
-        manifest.catalogs.map { catalog ->
-            buildHomeCatalogDescriptorSignature(addon, manifest, catalog)
+fun buildAddonCatalogRefreshSignature(addons: List<ManagedAddon>): List<String> =
+    addons.enabledAddons().map { addon ->
+        val signature = CatalogDescriptorSignature()
+        signature.addAddon(addon)
+        addon.manifest?.let { manifest ->
+            signature.addManifest(manifest)
+            manifest.catalogs.forEach(signature::addCatalog)
         }
+        signature.value()
     }.sorted()
 
 fun buildHomeCatalogDefinitions(addons: List<ManagedAddon>): List<HomeCatalogDefinition> =
@@ -65,73 +68,83 @@ fun buildHomeCatalogDefinitions(addons: List<ManagedAddon>): List<HomeCatalogDef
                     descriptorSignature = buildHomeCatalogDescriptorSignature(addon, manifest, catalog),
                 )
             }
-    }.distinctBy(HomeCatalogDefinition::key)
+    }.distinctBy(HomeCatalogDefinition::key) + ServerCatalog.homeDefinitions()
 
 private fun buildHomeCatalogDescriptorSignature(
     addon: ManagedAddon,
     manifest: AddonManifest,
     catalog: AddonCatalog,
-): String =
-    buildString {
-        append(addon.displayTitle)
-        append('|')
-        append(addon.enabled)
-        append('|')
-        append(addon.isRefreshing)
-        append('|')
-        append(addon.errorMessage.orEmpty())
-        append('|')
-        append(addon.manifestUrl)
-        append('|')
-        append(manifest.id)
-        append('|')
-        append(manifest.name)
-        append('|')
-        append(manifest.version)
-        append('|')
-        append(manifest.description)
-        append('|')
-        append(manifest.logoUrl.orEmpty())
-        append('|')
-        append(manifest.transportUrl)
-        append('|')
-        append(manifest.types.joinToString(","))
-        append('|')
-        append(manifest.idPrefixes.joinToString(","))
-        append('|')
-        append(manifest.resources.joinToString(",") { resource ->
-            listOf(
-                resource.name,
-                resource.types.joinToString("/"),
-                resource.idPrefixes.joinToString("/"),
-            ).joinToString(":")
-        })
-        append('|')
-        append(
-            listOf(
-                manifest.behaviorHints.configurable,
-                manifest.behaviorHints.configurationRequired,
-                manifest.behaviorHints.adult,
-                manifest.behaviorHints.p2p,
-            ).joinToString(":"),
-        )
-        append('|')
-        append(catalog.type)
-        append('|')
-        append(catalog.id)
-        append('|')
-        append(catalog.name)
-        append('|')
-        append(catalog.supportsPagination())
-        append('|')
-        append(catalog.extra.joinToString(",") { extra ->
-            listOf(
-                extra.name,
-                extra.isRequired.toString(),
-                extra.options.joinToString("/"),
-                extra.optionsLimit?.toString().orEmpty(),
-            ).joinToString(":")
-        })
+): String {
+    val signature = CatalogDescriptorSignature()
+    signature.addAddon(addon)
+    signature.addManifest(manifest)
+    signature.addCatalog(catalog)
+    return signature.value()
+}
+
+private class CatalogDescriptorSignature {
+    private var hash = -3750763034362895579L
+
+    fun add(value: String?) {
+        val text = value.orEmpty()
+        mix(text.length)
+        text.forEach { character -> mix(character.code) }
     }
+
+    fun add(value: Boolean) {
+        mix(if (value) 1 else 0)
+    }
+
+    fun add(value: Int?) {
+        mix(value ?: Int.MIN_VALUE)
+    }
+
+    fun addAddon(addon: ManagedAddon) {
+        add(addon.userSetName)
+        add(addon.enabled)
+        add(addon.isRefreshing)
+        add(addon.errorMessage)
+        add(addon.manifestUrl)
+    }
+
+    fun addManifest(manifest: AddonManifest) {
+        add(manifest.id)
+        add(manifest.name)
+        add(manifest.version)
+        add(manifest.description)
+        add(manifest.logoUrl)
+        add(manifest.transportUrl)
+        manifest.types.forEach(::add)
+        manifest.idPrefixes.forEach(::add)
+        manifest.resources.forEach { resource ->
+            add(resource.name)
+            resource.types.forEach(::add)
+            resource.idPrefixes.forEach(::add)
+        }
+        add(manifest.behaviorHints.configurable)
+        add(manifest.behaviorHints.configurationRequired)
+        add(manifest.behaviorHints.adult)
+        add(manifest.behaviorHints.p2p)
+    }
+
+    fun addCatalog(catalog: AddonCatalog) {
+        add(catalog.type)
+        add(catalog.id)
+        add(catalog.name)
+        add(catalog.supportsPagination())
+        catalog.extra.forEach { extra ->
+            add(extra.name)
+            add(extra.isRequired)
+            extra.options.forEach(::add)
+            add(extra.optionsLimit)
+        }
+    }
+
+    fun value(): String = hash.toULong().toString(16)
+
+    private fun mix(value: Int) {
+        hash = (hash xor value.toLong()) * 1099511628211L
+    }
+}
 
 internal fun String.displayLabel(): String = localizedMediaTypeLabel(this)

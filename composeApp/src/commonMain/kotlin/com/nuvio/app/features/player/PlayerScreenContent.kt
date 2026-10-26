@@ -3,6 +3,7 @@ package com.nuvio.app.features.player
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -42,8 +43,6 @@ import org.jetbrains.compose.resources.stringResource
 
 @Composable
 internal fun PlayerScreenContent(args: PlayerScreenArgs) {
-    LockPlayerToLandscape()
-
     val playerSettingsUiState by remember {
         PlayerSettingsRepository.ensureLoaded()
         PlayerSettingsRepository.uiState
@@ -90,7 +89,9 @@ internal fun PlayerScreenContent(args: PlayerScreenArgs) {
 
         runtime.scope = rememberCoroutineScope()
         runtime.hapticFeedback = LocalHapticFeedback.current
-        val platformGestureController = rememberPlayerGestureController()
+        val platformGestureController = rememberPlayerGestureController(
+            restoreBrightness = playerSettingsUiState.touchGesturesEnabled,
+        )
         val desktopGestureController = remember {
             object : PlayerGestureController {
                 override fun currentBrightness(): Float? = null
@@ -119,13 +120,18 @@ internal fun PlayerScreenContent(args: PlayerScreenArgs) {
         runtime.episodeStreamsRepoState = episodeStreamsRepoState
         runtime.metaUiState = metaUiState
         runtime.addonsUiState = addonsUiState
-        runtime.addonSubtitles = addonSubtitles
+        runtime.addonSubtitles = mergeStreamAndAddonSubtitles(addonSubtitles, runtime.externalSubtitles)
         runtime.isLoadingAddonSubtitles = isLoadingAddonSubtitles
         runtime.horizontalSafePadding = horizontalSafePadding
         runtime.metrics = metrics
         runtime.isDesktopLayout = isDesktopLayout
         runtime.sliderEdgePadding = horizontalSafePadding + metrics.horizontalPadding
-        runtime.overlayBottomPadding = sliderOverlayBottomPadding(metrics)
+        runtime.overlayBottomPadding = if (playerSettingsUiState.useLegacyPlayerLayout) {
+            sliderOverlayBottomPadding(metrics)
+        } else {
+            playerTimelineBottomInsets(metrics).asPaddingValues().calculateBottomPadding() +
+                72.dp + PlayerSliderOverlayGap
+        }
         runtime.sideGestureSystemEdgeExclusionPx = with(density) {
             PlayerSideGestureSystemEdgeExclusion.toPx()
         }

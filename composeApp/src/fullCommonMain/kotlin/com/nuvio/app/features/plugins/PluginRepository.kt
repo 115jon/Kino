@@ -76,7 +76,6 @@ actual object PluginRepository {
     actual val uiState: StateFlow<PluginsUiState> = _uiState.asStateFlow()
 
     private var initialized = false
-    private var pulledFromServer = false
     private var currentProfileId = 1
     private val activeRefreshJobs = mutableMapOf<String, Job>()
     private val persistenceGeneration = atomic(0L)
@@ -90,7 +89,11 @@ actual object PluginRepository {
         ensureStateLoadedForProfile(effectiveProfileId)
         if (!shouldRefreshStoredRepos) return
 
-        _uiState.value.repositories.forEach { repo ->
+        val state = _uiState.value
+        val nowEpochMs = currentEpochMillis()
+        state.repositories.filter { repo ->
+            shouldRefreshRepository(repo, state.scrapers, nowEpochMs)
+        }.forEach { repo ->
             refreshRepositoryInternal(repo.manifestUrl, pushAfterRefresh = false, ensureInitialized = false)
         }
     }
@@ -102,7 +105,6 @@ actual object PluginRepository {
         cancelActiveRefreshes()
         currentProfileId = effectiveProfileId
         initialized = false
-        pulledFromServer = false
         _uiState.value = PluginsUiState()
     }
 
@@ -111,7 +113,6 @@ actual object PluginRepository {
         persistenceGeneration.incrementAndGet()
         currentProfileId = 1
         initialized = false
-        pulledFromServer = false
         _uiState.value = PluginsUiState()
     }
 
@@ -128,26 +129,30 @@ actual object PluginRepository {
                 .decodeList<PluginRow>()
 
             val urls = dedupeManifestUrls(rows.map { it.url })
-            if (urls.isEmpty() && !pulledFromServer) {
-                val localUrls = _uiState.value.repositories.map { it.manifestUrl }
-                if (localUrls.isNotEmpty()) {
-                    initialize()
-                    pulledFromServer = true
-                    pushToServer()
-                    return
-                }
-            }
-
-            val existingReposByUrl = _uiState.value.repositories.associateBy { it.manifestUrl }
+            val existingState = _uiState.value
+            val existingReposByUrl = existingState.repositories.associateBy { it.manifestUrl }
+            val nowEpochMs = currentEpochMillis()
             val nextRepos = urls.map { url ->
-                existingReposByUrl[url]?.copy(isRefreshing = true, errorMessage = null)
-                    ?: PluginRepositoryItem(
+                val existing = existingReposByUrl[url]
+                if (existing == null) {
+                    PluginRepositoryItem(
                         manifestUrl = url,
                         name = url.substringBefore("?").substringAfterLast('/'),
                         isRefreshing = true,
                     )
+                } else {
+                    val shouldRefresh = shouldRefreshRepository(
+                        repository = existing,
+                        scrapers = existingState.scrapers,
+                        nowEpochMs = nowEpochMs,
+                    )
+                    existing.copy(
+                        isRefreshing = shouldRefresh,
+                        errorMessage = if (shouldRefresh) null else existing.errorMessage,
+                    )
+                }
             }
-            val nextScrapers = _uiState.value.scrapers.filter { scraper ->
+            val nextScrapers = existingState.scrapers.filter { scraper ->
                 urls.contains(scraper.repositoryUrl)
             }
 
@@ -159,11 +164,10 @@ actual object PluginRepository {
             )
             persist()
 
-            urls.forEach { url ->
-                refreshRepository(url, pushAfterRefresh = false)
+            nextRepos.filter(PluginRepositoryItem::isRefreshing).forEach { repository ->
+                refreshRepository(repository.manifestUrl, pushAfterRefresh = false)
             }
 
-            pulledFromServer = true
             initialized = true
         }.onFailure { error ->
             log.e(error) { "pullFromServer failed" }
@@ -246,6 +250,7 @@ actual object PluginRepository {
                 }
 
                 _uiState.update { state ->
+                    if (state.repositories.none { it.manifestUrl == manifestUrl }) return@update state
                     result.fold(
                         onSuccess = { (repo, scrapers) ->
                             val updatedRepos = state.repositories.map { existing ->
@@ -313,6 +318,10 @@ actual object PluginRepository {
         persist()
     }
 
+    actual fun setLocalPluginSearchPaused(paused: Boolean) {
+        PluginRuntime.setSearchPaused(paused)
+    }
+
     actual fun getEnabledScrapersForType(type: String): List<PluginScraper> {
         initialize()
         if (!_uiState.value.pluginsEnabled) return emptyList()
@@ -329,12 +338,13 @@ actual object PluginRepository {
         val mediaType = if (scraper.supportsType("movie")) "movie" else "tv"
         val season = if (mediaType == "tv") 1 else null
         val episode = if (mediaType == "tv") 1 else null
-        return executeScraper(
+        return executeScraperInternal(
             scraper = scraper,
             tmdbId = "603",
             mediaType = mediaType,
             season = season,
             episode = episode,
+            respectSearchPause = false,
         )
     }
 
@@ -344,6 +354,22 @@ actual object PluginRepository {
         mediaType: String,
         season: Int?,
         episode: Int?,
+    ): Result<List<PluginRuntimeResult>> = executeScraperInternal(
+        scraper = scraper,
+        tmdbId = tmdbId,
+        mediaType = mediaType,
+        season = season,
+        episode = episode,
+        respectSearchPause = true,
+    )
+
+    private suspend fun executeScraperInternal(
+        scraper: PluginScraper,
+        tmdbId: String,
+        mediaType: String,
+        season: Int?,
+        episode: Int?,
+        respectSearchPause: Boolean,
     ): Result<List<PluginRuntimeResult>> {
         val resolvedTmdbId = resolvePluginTmdbId(
             tmdbId = tmdbId,
@@ -358,6 +384,7 @@ actual object PluginRepository {
                 season = season,
                 episode = episode,
                 scraperId = scraper.id,
+                respectSearchPause = respectSearchPause,
             )
         }
     }
@@ -453,6 +480,13 @@ actual object PluginRepository {
         if (platform in disabled) return false
         return true
     }
+
+    private fun shouldRefreshRepository(
+        repository: PluginRepositoryItem,
+        scrapers: List<PluginScraper>,
+        nowEpochMs: Long,
+    ): Boolean = isPluginRepositoryRefreshDue(repository.lastUpdated, nowEpochMs) ||
+        scrapers.count { scraper -> scraper.repositoryUrl == repository.manifestUrl } < repository.scraperCount
 
     private fun markRefreshing(manifestUrl: String) {
         _uiState.update { state ->
@@ -555,7 +589,6 @@ actual object PluginRepository {
 
         if (currentProfileId != profileId) {
             cancelActiveRefreshes()
-            pulledFromServer = false
         }
 
         currentProfileId = profileId

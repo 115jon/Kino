@@ -54,6 +54,7 @@ actual fun PlatformPlayerSurface(
     initialPositionMs: Long?,
     initialPositionRequestKey: String?,
     resizeMode: PlayerResizeMode,
+    playbackEngine: AndroidPlaybackEngine?,
     useNativeController: Boolean,
     overlayContent: @Composable () -> Unit,
     onInitialPositionHandled: (key: String, handled: Boolean) -> Unit,
@@ -87,7 +88,14 @@ actual fun PlatformPlayerSurface(
     }
 
     val controller = remember(bridge) {
-        object : PlayerEngineController {
+        object : PlayerEngineController, PlayerSystemControlSource {
+            override val keepsPlaybackInBackground: Boolean
+                get() = bridge.getKeepsPlaybackInBackground()
+
+            override fun setSystemControlHandler(handler: PlayerSystemControlHandler?) {
+                bridge.setSystemControlHandler(handler)
+            }
+
             override fun play() {
                 bridge.play()
             }
@@ -199,6 +207,13 @@ actual fun PlatformPlayerSurface(
                     bridge.selectAudioTrack(trackId)
                 }
             }
+
+            override fun applyAudioLanguagePreferences(languages: List<String>) {
+                bridge.applyAudioLanguagePreferences(languages)
+            }
+
+            override suspend fun getMediaInfo(): PlayerMediaInfo =
+                mpvMediaInfo { name -> bridge.getProperty(name).ifBlank { null } }
 
             override fun selectSubtitleTrack(index: Int) {
                 if (index < 0) {

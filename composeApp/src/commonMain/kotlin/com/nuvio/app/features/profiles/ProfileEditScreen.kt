@@ -2,13 +2,9 @@ package com.nuvio.app.features.profiles
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -19,7 +15,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -46,17 +41,13 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
-import com.nuvio.app.core.auth.AuthRepository
-import com.nuvio.app.core.auth.AuthState
 import com.nuvio.app.core.ui.NuvioInputField
 import com.nuvio.app.core.ui.NuvioPrimaryButton
 import com.nuvio.app.core.ui.NuvioScreen
 import com.nuvio.app.core.ui.NuvioScreenHeader
 import com.nuvio.app.core.ui.NuvioStatusModal
 import com.nuvio.app.core.ui.NuvioSurfaceCard
-import com.nuvio.app.core.ui.ThemeColors
-import com.nuvio.app.core.ui.accentBrush
-import com.nuvio.app.core.ui.appTheme
+import com.nuvio.app.core.ui.themePalette
 import com.nuvio.app.features.membership.CosmeticEntitlement
 import com.nuvio.app.features.membership.MemberAccessRepository
 import com.nuvio.app.features.membership.ProfileBackgroundRepository
@@ -64,7 +55,6 @@ import kotlinx.coroutines.launch
 import nuvio.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.stringResource
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ProfileEditScreen(
     profile: NuvioProfile? = null,
@@ -92,7 +82,6 @@ fun ProfileEditScreen(
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var showPinSetup by remember { mutableStateOf(false) }
     var showPinClear by remember { mutableStateOf(false) }
-    val authState by AuthRepository.state.collectAsStateWithLifecycle()
     val memberAccess by remember {
         MemberAccessRepository.ensureStarted()
         MemberAccessRepository.access
@@ -102,7 +91,6 @@ fun ProfileEditScreen(
 
     val avatars by AvatarRepository.avatars.collectAsStateWithLifecycle()
     LaunchedEffect(Unit) {
-        AvatarRepository.fetchAvatars()
         AvatarRepository.refreshAvatars()
     }
     LaunchedEffect(canChooseBackground) {
@@ -234,33 +222,14 @@ fun ProfileEditScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
 
-                    if (avatars.isNotEmpty()) {
-                        val avatarSpacing = 10.dp
-                        val minAvatarSize = 58.dp
-                        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-                            val columns = (((maxWidth + avatarSpacing) / (minAvatarSize + avatarSpacing)).toInt())
-                                .coerceAtLeast(1)
-                            val avatarSize = (maxWidth - avatarSpacing * (columns - 1)) / columns
-
-                            FlowRow(
-                                horizontalArrangement = Arrangement.spacedBy(avatarSpacing),
-                                verticalArrangement = Arrangement.spacedBy(avatarSpacing),
-                                maxItemsInEachRow = columns,
-                            ) {
-                                avatars.forEach { avatar ->
-                                    AvatarChoiceItem(
-                                        avatar = avatar,
-                                        size = avatarSize,
-                                        isSelected = customAvatarUrl == null && avatar.id == selectedAvatarId,
-                                        onClick = {
-                                            avatarUrl = ""
-                                            selectedAvatarId = avatar.id
-                                        },
-                                    )
-                                }
-                            }
-                        }
-                    }
+                    AvatarPicker(
+                        avatars = avatars,
+                        selectedAvatarId = selectedAvatarId.takeIf { customAvatarUrl == null },
+                        onAvatarSelected = { avatar ->
+                            avatarUrl = ""
+                            selectedAvatarId = avatar.id
+                        },
+                    )
                 }
             }
         }
@@ -372,6 +341,7 @@ fun ProfileEditScreen(
             currentProfile?.name.orEmpty(),
         ),
         isVisible = showDeleteConfirm,
+        destructive = true,
         confirmText = stringResource(Res.string.action_delete),
         dismissText = stringResource(Res.string.action_cancel),
         onConfirm = {
@@ -390,11 +360,6 @@ fun ProfileEditScreen(
             hasExistingPin = currentProfile.pinEnabled,
             onDone = {
                 showPinSetup = false
-                scope.launch {
-                    if (authState is AuthState.Authenticated) {
-                        ProfileRepository.pullProfiles()
-                    }
-                }
             },
             onDismiss = { showPinSetup = false },
         )
@@ -549,56 +514,6 @@ private fun ProfileIdentityCard(
     }
 }
 
-@Composable
-private fun AvatarChoiceItem(
-    avatar: AvatarCatalogItem,
-    size: androidx.compose.ui.unit.Dp,
-    isSelected: Boolean,
-    onClick: () -> Unit,
-) {
-    val palette = ThemeColors.getColorPalette(MaterialTheme.appTheme)
-    Box(
-        modifier = Modifier
-            .size(size)
-            .clip(CircleShape)
-            .background(
-                avatar.bgColor?.let(::parseHexColor)
-                    ?: MaterialTheme.colorScheme.surfaceVariant,
-            )
-            .border(
-                width = if (isSelected) 3.dp else 1.dp,
-                color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
-                shape = CircleShape,
-            )
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        AsyncImage(
-            model = avatarImageUrl(avatar),
-            contentDescription = avatar.displayName,
-            modifier = Modifier.fillMaxSize().clip(CircleShape),
-            contentScale = ContentScale.Crop,
-        )
-
-        if (isSelected) {
-            Box(
-                modifier = Modifier
-                    .size(20.dp)
-                    .align(Alignment.BottomEnd)
-                    .clip(CircleShape)
-                    .background(palette.accentBrush()),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.Check,
-                    contentDescription = null,
-                    tint = palette.onSecondary,
-                    modifier = Modifier.size(12.dp),
-                )
-            }
-        }
-    }
-}
 
 @Composable
 private fun ProfileOptionRow(
