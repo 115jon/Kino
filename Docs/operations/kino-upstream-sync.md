@@ -112,4 +112,5 @@ Developer PowerShell). If Gradle hangs, `./gradlew --stop` and retry.
 - New `expect` declarations in `commonMain` need desktop actuals in `desktopMain`, or the desktop compile fails.
 - Orphan gitlinks without `.gitmodules` break `actions/checkout`. If upstream bumps `tools`, `libass-android`,
   `vendor/TorrServer` or `vendor/quickjs-kt`, resolve the modify/delete conflict by keeping them deleted.
-- `scripts/*` is ignored upstream; Kino scripts live in `scripts/kino/`, which `.gitignore` re-includes.
+- Upstream ignores `scripts/*` and `Docs`. Kino's `.gitignore` re-includes `scripts/kino/` and `Docs/operations/`;
+  keep those lines when `.gitignore` conflicts.
