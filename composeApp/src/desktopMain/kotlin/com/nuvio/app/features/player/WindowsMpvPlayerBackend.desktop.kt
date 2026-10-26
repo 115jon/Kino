@@ -662,6 +662,7 @@ private fun configureWindowsVideoPipeline(
 ): String? {
     val lib = WindowsMpvLibrary.INSTANCE
     val diagnostics = readMpvVideoDiagnostics(lib, ptr)
+    if (diagnostics.pixelFormat.isNullOrBlank()) return null
     val signature = diagnostics.signature()
     if (signature == state.lastVideoDiagnosticsSignature) return null
 
@@ -681,11 +682,10 @@ private fun configureWindowsVideoPipeline(
     return logMessage
 }
 
-private fun resetWindowsVideoPipeline(state: WindowsPlayerWindowState, ptr: Pointer) {
+private fun resetWindowsVideoPipeline(state: WindowsPlayerWindowState) {
     state.lastVideoDiagnosticsSignature = null
     state.videoPipelineMode = DesktopVideoPipelineMode.Standard
-    val result = WindowsMpvLibrary.INSTANCE.mpv_set_property_string(ptr, "vf", "")
-    desktopPlayerTrace("video pipeline reset result=$result")
+    desktopPlayerTrace("video pipeline reset")
 }
 
 private fun toPlayerAudioLevel(volumePercent: Double): PlayerAudioLevel {
@@ -2720,7 +2720,7 @@ internal class EmbeddedWindowsPlayerPanel(
                             "audioHeaderKeys=${resolved.audioHeaders.keys.joinToString()} " +
                             "videoHeaderBlobLength=${videoHeadersStr.length}"
                     )
-                    resetWindowsVideoPipeline(state, ptr)
+                    resetWindowsVideoPipeline(state)
                     val discardedEvents = discardPendingWindowsMpvEvents(lib, ptr)
                     if (discardedEvents > 0) {
                         desktopPlayerTrace("embedded panel discarded pending mpv events count=$discardedEvents")
@@ -3155,6 +3155,11 @@ internal class WindowsPlayerPanel(
                 }
                 stateChangedNotifier.request()
             }
+        }
+
+        override fun removeNotify() {
+            shutdownMpv()
+            super.removeNotify()
         }
     }
 
@@ -3952,7 +3957,7 @@ internal class WindowsPlayerPanel(
                         desktopPlayerTrace("native panel video header setup failed result=$videoHeadersResult")
                         return@withLock
                     }
-                    resetWindowsVideoPipeline(state, ptr)
+                    resetWindowsVideoPipeline(state)
                     desktopPlayerTrace(
                         "native panel loadFile host=${playbackUrlForLog(url)} " +
                             "effectiveHost=${playbackUrlForLog(resolved.url)} " +
@@ -4098,18 +4103,12 @@ internal class WindowsPlayerPanel(
     }
 
     private fun setVideoSurfaceVisible(visible: Boolean) {
-        if (videoSurfaceVisible == visible && canvas.isVisible == visible) {
-            setOverlayWindowTransparency(transparent = visible)
-            return
-        }
-        videoSurfaceVisible = visible
         if (visible) {
-            canvas.isVisible = true
             setOverlayWindowTransparency(transparent = true)
-        } else {
-            setOverlayWindowTransparency(transparent = false)
-            canvas.isVisible = false
         }
+        if (videoSurfaceVisible == visible && canvas.isVisible == visible) return
+        videoSurfaceVisible = visible
+        canvas.isVisible = visible
         desktopPlayerTrace(
             "native video canvas visible=$visible displayable=${canvas.isDisplayable} " +
                 "showing=${canvas.isShowing}",
@@ -4367,26 +4366,30 @@ internal class WindowsPlayerPanel(
         overlayWindow?.dispose()
         overlayWindow = null
         desktopPlayerTrace("native panel overlay disposed")
-        eventPump.closeAndAwait()
+        shutdownMpv()
         onWindowFocusChanged(false, null)
         fullscreenState.exit(SwingUtilities.getWindowAncestor(this))
-        state.mpvCallLock.withLock {
-            val ptr = initializedPlayerPtr
-            if (state.playerPtr == ptr) {
-                state.playerPtr = null
-            }
-            if (ptr != null) {
-                WindowsMpvLibrary.INSTANCE.mpv_set_wakeup_callback(ptr, null, null)
-                WindowsMpvLibrary.INSTANCE.mpv_terminate_destroy(ptr)
-            }
-        }
-        initializedPlayerPtr = null
-        wakeupCallback = null
         val w = SwingUtilities.getWindowAncestor(this)
         if (w != null) {
             w.cursor = Cursor.getDefaultCursor()
         }
         desktopPlayerTrace("native panel dispose complete")
+    }
+
+    private fun shutdownMpv() {
+        eventPump.closeAndAwait()
+        state.mpvCallLock.withLock {
+            val ptr = initializedPlayerPtr ?: return@withLock
+            desktopPlayerTrace("native panel mpv shutdown start")
+            if (state.playerPtr == ptr) {
+                state.playerPtr = null
+            }
+            initializedPlayerPtr = null
+            WindowsMpvLibrary.INSTANCE.mpv_set_wakeup_callback(ptr, null, null)
+            WindowsMpvLibrary.INSTANCE.mpv_terminate_destroy(ptr)
+            desktopPlayerTrace("native panel mpv shutdown complete")
+        }
+        wakeupCallback = null
     }
 
     private fun readEvents() {
