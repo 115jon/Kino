@@ -8,6 +8,7 @@ import org.jetbrains.skia.Image
 import org.jetbrains.skia.SurfaceOrigin
 
 private const val VideoFrameSlotCount = 3
+private const val FenceTimeoutNs = 100_000_000L
 
 internal class VideoFrameSlot(
     val texture: Int,
@@ -15,12 +16,14 @@ internal class VideoFrameSlot(
     val width: Int,
     val height: Int,
 ) {
-    var writeFence: Pointer? = null
     var readFence: Pointer? = null
     var image: Image? = null
 }
 
-internal class VideoFrameRing(private val contexts: SharedGlContexts) {
+internal class VideoFrameRing(
+    private val contexts: SharedGlContexts,
+    private val stats: ComposeVideoStats,
+) {
     private val lock = Any()
     private var slots: List<VideoFrameSlot> = emptyList()
     private var latest: VideoFrameSlot? = null
@@ -57,25 +60,22 @@ internal class VideoFrameRing(private val contexts: SharedGlContexts) {
 
     fun beginWrite(): VideoFrameSlot? {
         var readFence: Pointer? = null
-        var staleWriteFence: Pointer? = null
         val slot = synchronized(lock) {
             slots.firstOrNull { it !== latest && it !== displayed }?.also { slot ->
                 readFence = slot.readFence
-                staleWriteFence = slot.writeFence
                 slot.readFence = null
-                slot.writeFence = null
             }
         }
-        contexts.sync.delete(staleWriteFence)
-        contexts.sync.waitAndDelete(readFence)
+        contexts.sync.awaitAndDelete(readFence, FenceTimeoutNs)
         return slot
     }
 
     fun publish(slot: VideoFrameSlot) {
-        val fence = contexts.sync.fence()
-        OpenGl32Library.INSTANCE.glFlush()
+        if (!contexts.sync.awaitAndDelete(contexts.sync.fence(), FenceTimeoutNs)) {
+            composeVideoTrace("compose video frame fence timed out")
+        }
         synchronized(lock) {
-            slot.writeFence = fence
+            if (latest != null && latest !== displayed) stats.recordUnshownFrame()
             latest = slot
             publishedFrames += 1
         }
@@ -91,9 +91,8 @@ internal class VideoFrameRing(private val contexts: SharedGlContexts) {
                     contexts.sync.delete(previous.readFence)
                     previous.readFence = contexts.sync.fence()
                 }
-                contexts.sync.waitAndDelete(next.writeFence)
-                next.writeFence = null
                 displayed = next
+                stats.recordPresent(System.nanoTime())
             }
             disposals = retired.filter { it !== displayed }
             retired.removeAll(disposals)
@@ -135,9 +134,7 @@ internal class VideoFrameRing(private val contexts: SharedGlContexts) {
 
     private fun disposeOnSkiko(slot: VideoFrameSlot) {
         contexts.sync.delete(slot.readFence)
-        contexts.sync.delete(slot.writeFence)
         slot.readFence = null
-        slot.writeFence = null
         val image = slot.image
         slot.image = null
         if (image != null) image.close() else OpenGl32Library.INSTANCE.glDeleteTextures(1, intArrayOf(slot.texture))

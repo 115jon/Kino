@@ -26,7 +26,11 @@ internal const val GL_VENDOR = 0x1F00
 internal const val GL_RENDERER = 0x1F01
 internal const val GL_VERSION = 0x1F02
 internal const val GL_SYNC_GPU_COMMANDS_COMPLETE = 0x9117
-private const val GL_TIMEOUT_IGNORED = -1L
+private const val GL_SYNC_FLUSH_COMMANDS_BIT = 1
+private const val GL_ALREADY_SIGNALED = 0x911A
+private const val GL_CONDITION_SATISFIED = 0x911C
+private const val GL_WAIT_FAILED = 0x911D
+private const val FencePollIntervalNs = 500_000
 
 internal interface OpenGl32Library : Library {
     fun glGenTextures(count: Int, textures: IntArray)
@@ -107,16 +111,29 @@ internal class GlFramebufferFunctions private constructor(
 
 internal class GlSyncFunctions private constructor(
     private val fenceSync: Function,
-    private val waitSync: Function,
     private val deleteSync: Function,
+    private val clientWaitSync: Function,
     private val createContextAttribs: Function,
 ) {
     fun fence(): Pointer? = fenceSync.invokePointer(arrayOf(GL_SYNC_GPU_COMMANDS_COMPLETE, 0))
 
-    fun waitAndDelete(sync: Pointer?) {
-        if (sync == null) return
-        waitSync.invokeVoid(arrayOf(sync, 0, GL_TIMEOUT_IGNORED))
+    fun awaitAndDelete(sync: Pointer?, timeoutNs: Long): Boolean {
+        if (sync == null) return true
+        val deadline = System.nanoTime() + timeoutNs
+        var flags = GL_SYNC_FLUSH_COMMANDS_BIT
+        var signaled = false
+        while (true) {
+            val result = clientWaitSync.invokeInt(arrayOf(sync, flags, 0L))
+            flags = 0
+            if (result == GL_ALREADY_SIGNALED || result == GL_CONDITION_SATISFIED) {
+                signaled = true
+                break
+            }
+            if (result == GL_WAIT_FAILED || System.nanoTime() >= deadline) break
+            Thread.sleep(0L, FencePollIntervalNs)
+        }
         deleteSync.invokeVoid(arrayOf(sync))
+        return signaled
     }
 
     fun delete(sync: Pointer?) {
@@ -134,8 +151,8 @@ internal class GlSyncFunctions private constructor(
                     ?.let { Function.getFunction(it, Function.ALT_CONVENTION) }
             return GlSyncFunctions(
                 fenceSync = function("glFenceSync") ?: return null,
-                waitSync = function("glWaitSync") ?: return null,
                 deleteSync = function("glDeleteSync") ?: return null,
+                clientWaitSync = function("glClientWaitSync") ?: return null,
                 createContextAttribs = function("wglCreateContextAttribsARB") ?: return null,
             )
         }
