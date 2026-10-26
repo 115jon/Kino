@@ -1,6 +1,7 @@
 package com.nuvio.app.features.player
 
 internal class MpvPlaybackState {
+    @Volatile
     var currentSourceUrl = ""
     @Volatile
     var sourceGeneration = 0L
@@ -33,24 +34,38 @@ internal class MpvPlaybackState {
     var initialSeekTargetMs = 0L
     @Volatile
     var initialSeekRecoveryIssued = false
+    @Volatile
     var currentSourceAudioUrl: String? = null
+    @Volatile
     var currentHeaders = mapOf<String, String>()
+    @Volatile
     var volumeLevel = PlayerAudioLevel(fraction = 1f, isMuted = false)
+    @Volatile
     var streamProfileSummary: String? = null
+    @Volatile
     var streamIsHdrLike = false
+    @Volatile
     var streamHasDolbyVision = false
+    @Volatile
     var streamHasHdrFallback = false
+    @Volatile
     var lastVideoDiagnosticsSignature: String? = null
+    @Volatile
     var videoPipelineMode = DesktopVideoPipelineMode.Standard
     val audioDiagnosticsRateLimiter = WindowsAudioDiagnosticsRateLimiter()
     val audioUnderrunTracker = WindowsAudioUnderrunTracker()
+    @Volatile
     var audioDiagnosticsRequested = false
     var lastTrackMetadataSignature: String? = null
+    @Volatile
     var lastReportedPlaybackError: String? = null
+    @Volatile
     var subtitleStyle = SubtitleStyleState.DEFAULT
     @Volatile
     var lastTrackPollEpochMs = 0L
+    @Volatile
     var audioTracks = emptyList<AudioTrack>()
+    @Volatile
     var subtitleTracks = emptyList<SubtitleTrack>()
 
     fun beginLoadRequest(requestGeneration: Long) {
