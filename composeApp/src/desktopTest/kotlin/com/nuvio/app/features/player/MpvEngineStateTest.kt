@@ -111,7 +111,7 @@ class MpvEngineStateTest {
         assertTrue(mpvPropertyChangeNotifiesState("pause"))
         assertTrue(mpvPropertyChangeNotifiesState("track-list/count"))
         assertTrue(mpvPropertyChangeNotifiesState(""))
-        assertFalse(mpvPropertyChangeNotifiesState("time-pos"))
+        assertFalse(mpvPropertyChangeNotifiesState("path"))
         assertFalse(mpvPropertyChangeNotifiesState("vo-configured"))
         assertEquals(10, mpvObservedProperties.count { it.notifiesState })
     }
@@ -138,20 +138,20 @@ class MpvEngineStateTest {
     }
 
     @Test
-    fun `event pump applies property changes and start file without notifying for silent ones`() {
+    fun `event pump applies property changes and start file events`() {
         val client = FakeMpvClient()
         val engine = MpvEngine(tracePrefix = "test panel", clientFactory = { client }, dispatcher = ManualMpvDispatcher(), resolutionContext = Dispatchers.Unconfined)
         val notified = CountDownLatch(1)
         engine.onStateChanged = { notified.countDown() }
         engine.start(WidOutput(1L))
 
-        client.events += MpvClientEvent.PropertyChange(MPV_EVENT_PROPERTY_CHANGE, 0, "time-pos", 3.0)
+        client.events += MpvClientEvent.PropertyChange(MPV_EVENT_PROPERTY_CHANGE, 0, "path", "https://cdn.example/a.mkv")
         client.events += MpvClientEvent.PropertyChange(MPV_EVENT_PROPERTY_CHANGE, 0, "pause", true)
         client.events += MpvClientEvent.StartFile(MPV_EVENT_START_FILE, 0, 4L)
         client.wakeup?.invoke()
 
         assertTrue(notified.await(5, TimeUnit.SECONDS))
-        assertEquals(3.0, engine.properties.double("time-pos"))
+        assertEquals("https://cdn.example/a.mkv", engine.properties.string("path"))
         assertTrue(engine.properties.flag("pause"))
         assertEquals(4L, engine.playback.activePlaylistEntryId)
         assertEquals(0L, engine.playback.activePlaylistEntryGeneration)
@@ -164,9 +164,9 @@ class MpvEngineStateTest {
         val engine = MpvEngine(tracePrefix = "test panel", clientFactory = { client }, dispatcher = ManualMpvDispatcher(), resolutionContext = Dispatchers.Unconfined)
         engine.start(WidOutput(1L))
         engine.properties.update("path", "https://cdn.example/video.mkv")
-        engine.properties.update("time-pos", 61.0)
+        client.properties["time-pos"] = "61.000000"
         engine.properties.update("duration", 120.0)
-        engine.properties.update("demuxer-cache-time", 9.0)
+        client.properties["demuxer-cache-time"] = "9.000000"
         engine.properties.update("speed", 1.25)
         engine.properties.update("volume", 40.0)
         engine.properties.update("pause", false)

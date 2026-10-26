@@ -44,9 +44,9 @@ internal fun MpvEngine.pollPlayback(
 
     fun getString(name: String): String? = client.getProperty(name)
 
-    val posSec = cache.double("time-pos") ?: 0.0
+    val posSec = getString("time-pos")?.toDoubleOrNull() ?: 0.0
     val durSec = cache.double("duration") ?: 0.0
-    val cacheSec = cache.double("demuxer-cache-time") ?: 0.0
+    val cacheSec = getString("demuxer-cache-time")?.toDoubleOrNull() ?: 0.0
     val speed = cache.double("speed") ?: 1.0
     val paused = cache.flag("pause")
     val idle = cache.flag("core-idle")
