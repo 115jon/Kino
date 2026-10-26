@@ -3,7 +3,7 @@ name: Release Please
 on:
   push:
     branches:
-      - desktop
+      - main
   workflow_dispatch:
 
 permissions:
@@ -20,8 +20,8 @@ jobs:
           GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
         run: |
           mkdir -p "$RUNNER_TEMP/kino-release-tools"
-          gh api "repos/$GITHUB_REPOSITORY/contents/scripts/versioning.mjs?ref=desktop" --jq .content | tr -d '\n' | base64 --decode > "$RUNNER_TEMP/kino-release-tools/versioning.mjs"
-          gh api "repos/$GITHUB_REPOSITORY/contents/scripts/sync-release-version.mjs?ref=desktop" --jq .content | tr -d '\n' | base64 --decode > "$RUNNER_TEMP/kino-release-tools/sync-release-version.mjs"
+          gh api "repos/$GITHUB_REPOSITORY/contents/scripts/versioning.mjs?ref=main" --jq .content | tr -d '\n' | base64 --decode > "$RUNNER_TEMP/kino-release-tools/versioning.mjs"
+          gh api "repos/$GITHUB_REPOSITORY/contents/scripts/sync-release-version.mjs?ref=main" --jq .content | tr -d '\n' | base64 --decode > "$RUNNER_TEMP/kino-release-tools/sync-release-version.mjs"
 
       - name: Require release token
         env:
@@ -37,7 +37,7 @@ jobs:
         uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071
         with:
           token: ${{ secrets.RELEASE_TOKEN }}
-          target-branch: desktop
+          target-branch: main
           config-file: .github/release-please/desktop-config.json
           manifest-file: .github/release-please/desktop-manifest.json
 
@@ -46,7 +46,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
         run: |
-          branch=$(gh pr list --repo "$GITHUB_REPOSITORY" --base desktop --head release-please--branches--desktop--components--desktop --state open --json headRefName --jq '.[0].headRefName')
+          branch=$(gh pr list --repo "$GITHUB_REPOSITORY" --base main --head release-please--branches--main--components--desktop --state open --json headRefName --jq '.[0].headRefName')
           if [ -n "$branch" ]; then
             echo "branch=$branch" >> "$GITHUB_OUTPUT"
           fi
@@ -65,12 +65,12 @@ jobs:
         run: |
           git init
           git remote add origin "https://x-access-token:$RELEASE_TOKEN@github.com/$GITHUB_REPOSITORY.git"
-          git fetch --no-tags origin "refs/heads/$RELEASE_BRANCH:refs/remotes/origin/$RELEASE_BRANCH" "refs/heads/desktop:refs/remotes/origin/desktop"
+          git fetch --no-tags origin "refs/heads/$RELEASE_BRANCH:refs/remotes/origin/$RELEASE_BRANCH" "refs/heads/main:refs/remotes/origin/main"
           git checkout -B "$RELEASE_BRANCH" "origin/$RELEASE_BRANCH"
 
       - name: Synchronize desktop version code
         if: steps.release-pr.outputs.branch != ''
-        run: node "$RUNNER_TEMP/kino-release-tools/sync-release-version.mjs" --platform=desktop --base-ref=origin/desktop
+        run: node "$RUNNER_TEMP/kino-release-tools/sync-release-version.mjs" --platform=desktop --base-ref=origin/main
 
       - name: Push synchronized version code
         if: steps.release-pr.outputs.branch != ''

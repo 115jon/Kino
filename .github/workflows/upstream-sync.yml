@@ -13,10 +13,10 @@ jobs:
   propose-sync:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Kino desktop branch
+      - name: Checkout Kino main branch
         uses: actions/checkout@v4
         with:
-          ref: desktop
+          ref: main
           fetch-depth: 0
           persist-credentials: false
 
@@ -63,7 +63,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh pr create \
-            --base desktop \
+            --base main \
             --head "${{ steps.sync.outputs.branch }}" \
             --title "chore: sync upstream cmp-rewrite" \
             --body "This pull request proposes the latest upstream cmp-rewrite changes for review. Resolve conflicts manually if the merge cannot be completed automatically."
