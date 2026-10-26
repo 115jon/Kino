@@ -105,7 +105,7 @@ jobs:
             echo
             sed 's/^/- `/; s/$/`/' "$RUNNER_TEMP/conflicts.txt"
             echo
-            echo "Follow docs/operations/kino-upstream-sync.md to merge by hand."
+            echo "Follow Docs/operations/kino-upstream-sync.md to merge by hand."
           } > "$body"
           number=$(gh issue list --state open --search "\"$ISSUE_TITLE\" in:title" --json number,title \
             --jq '.[] | select(.title == env.ISSUE_TITLE) | .number' | head -n 1)
@@ -142,7 +142,7 @@ jobs:
             --base main \
             --head "$BRANCH" \
             --title "chore(sync): merge upstream $UPSTREAM_BRANCH" \
-            --body "Merges $BEHIND upstream commits up to \`$UPSTREAM_SHA\` without conflicts. Run the verify steps in docs/operations/kino-upstream-sync.md before merging."
+            --body "Merges $BEHIND upstream commits up to \`$UPSTREAM_SHA\` without conflicts. Run the verify steps in Docs/operations/kino-upstream-sync.md before merging."
           number=$(gh issue list --state open --search "\"$ISSUE_TITLE\" in:title" --json number,title \
             --jq '.[] | select(.title == env.ISSUE_TITLE) | .number' | head -n 1)
           if [ -n "$number" ]; then

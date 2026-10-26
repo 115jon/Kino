@@ -23,7 +23,8 @@ installed-capture/
 node_modules/
 logs/
 analysis/
-Docs
+Docs/*
+!Docs/operations/
 SUPPORTER_COSMETICS.md
 supabase/migrations/
 keystore/
