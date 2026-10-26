@@ -421,6 +421,8 @@ private fun PlayerScreenRuntime.BindPlayerMetadataAndSkipEffects() {
         showNextEpisodeCard = false
         nextEpisodeAutoPlayJob?.cancel()
         nextEpisodeAutoPlaySearching = false
+        nextEpisodeAutoPlaySourceName = null
+        nextEpisodeAutoPlayCountdown = null
 
         val season = activeSeasonNumber
         val episode = activeEpisodeNumber
@@ -497,7 +499,7 @@ private fun PlayerScreenRuntime.BindPlayerMetadataAndSkipEffects() {
     ) {
         playbackTimeline.collect {
             val snapshot = latestPlaybackSnapshot
-            if (nextEpisodeInfo == null || snapshot.durationMs <= 0L) {
+            if (nextEpisodeInfo == null || snapshot.durationMs <= 0L || snapshot.isLoading || !initialLoadCompleted) {
                 showNextEpisodeCard = false
                 return@collect
             }
@@ -521,7 +523,7 @@ private fun PlayerScreenRuntime.BindPlayerMetadataAndSkipEffects() {
     }
 
     LaunchedEffect(playbackSnapshot.isEnded, nextEpisodeInfo) {
-        if (playbackSnapshot.isEnded && nextEpisodeInfo != null && !showNextEpisodeCard) {
+        if (playbackSnapshot.isEnded && initialLoadCompleted && nextEpisodeInfo != null && !showNextEpisodeCard) {
             showNextEpisodeCard = true
             if (playerSettingsUiState.streamAutoPlayNextEpisodeEnabled && nextEpisodeInfo?.hasAired == true) {
                 playNextEpisode()

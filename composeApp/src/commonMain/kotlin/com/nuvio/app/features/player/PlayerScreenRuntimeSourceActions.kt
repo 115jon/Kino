@@ -397,6 +397,10 @@ internal fun PlayerScreenRuntime.beginSourceAttempt() {
 }
 
 internal fun PlayerScreenRuntime.playNextEpisode() {
+    if (nextEpisodeAutoPlaySearching || nextEpisodeAutoPlayCountdown != null) return
+    val requestVideoId = activeVideoId
+    val nextVideoId = nextEpisodeInfo?.takeIf { it.hasAired == true }?.videoId ?: return
+    fun isCurrentRequest() = activeVideoId == requestVideoId && nextEpisodeInfo?.videoId == nextVideoId
     scope.launchPlayerNextEpisodeAutoPlay(
         previousJob = nextEpisodeAutoPlayJob,
         nextEpisodeInfo = nextEpisodeInfo,
@@ -406,9 +410,14 @@ internal fun PlayerScreenRuntime.playNextEpisode() {
         contentType = contentType,
         settings = playerSettingsUiState,
         currentStreamBingeGroup = currentStreamBingeGroup,
-        onDownloadedEpisodeSelected = { item, episode -> switchToDownloadedEpisode(item, episode) },
-        onEpisodeStreamSelected = { stream, episode -> switchToEpisodeStream(stream, episode) },
+        onDownloadedEpisodeSelected = { item, episode ->
+            if (isCurrentRequest()) switchToDownloadedEpisode(item, episode)
+        },
+        onEpisodeStreamSelected = { stream, episode ->
+            if (isCurrentRequest()) switchToEpisodeStream(stream, episode)
+        },
         onManualSelectionRequired = { nextVideo ->
+            if (!isCurrentRequest()) return@launchPlayerNextEpisodeAutoPlay
             episodeStreamsPanelState = EpisodeStreamsPanelState(
                 showStreams = true,
                 selectedEpisode = nextVideo,
