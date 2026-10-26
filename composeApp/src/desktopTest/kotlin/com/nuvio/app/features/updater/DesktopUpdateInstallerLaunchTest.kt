@@ -1,6 +1,5 @@
 package com.nuvio.app.features.updater
 
-import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -8,18 +7,14 @@ import kotlin.test.assertTrue
 
 class DesktopUpdateInstallerLaunchTest {
     @Test
-    fun `windows installer is launched detached with its progress window`() {
-        val installer = File("C:\\Users\\kino\\AppData\\Local\\Temp\\kino-update\\Kino-Desktop-0.4.0.exe")
+    fun `windows installer is created by wmi so it outlives the app job`() {
+        val command = windowsDetachedInstallerLaunchCommand()
 
-        val command = windowsInstallerLaunchCommand(installer.absolutePath)
-
-        assertEquals("cmd.exe", command[0])
-        assertEquals("/c", command[1])
-        assertEquals("start", command[2])
-        assertEquals("", command[3])
-        assertEquals(installer.absolutePath, command[4])
-        assertEquals(5, command.size)
-        assertFalse(command[0].equals(installer.absolutePath, ignoreCase = true))
+        assertEquals("powershell.exe", command.first())
+        assertTrue("-NonInteractive" in command)
+        assertTrue(command.last().contains("Invoke-CimMethod -ClassName Win32_Process -MethodName Create"))
+        assertTrue(command.last().contains("\$env:KINO_UPDATE_INSTALLER"))
+        assertFalse(command.any { it.contains("Kino-Desktop") })
     }
 
     @Test
