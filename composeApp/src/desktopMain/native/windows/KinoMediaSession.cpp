@@ -9,6 +9,7 @@
 #include <winrt/base.h>
 
 #include <cwchar>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -129,10 +130,19 @@ private:
     bool initialized = false;
 };
 
+struct KinoMediaSessionState {
+    std::mutex mutex;
+    KinoMediaKeyCallback callback = nullptr;
+    void *context = nullptr;
+    bool disposed = false;
+};
+
 class KinoMediaSession {
 public:
     KinoMediaSession(HWND window, KinoMediaKeyCallback callback, void *context)
-        : callback(callback), context(context) {
+        : state(std::make_shared<KinoMediaSessionState>()) {
+        state->callback = callback;
+        state->context = context;
         auto factory = winrt::get_activation_factory<
             winrt::Windows::Media::SystemMediaTransportControls,
             ISystemMediaTransportControlsInterop>();
@@ -143,10 +153,13 @@ public:
         if (FAILED(report_hresult(L"GetForWindow", result))) {
             winrt::throw_hresult(result);
         }
-        buttonToken = controls.ButtonPressed([this](
+        buttonToken = controls.ButtonPressed([state = state](
             winrt::Windows::Media::SystemMediaTransportControls const &,
             winrt::Windows::Media::SystemMediaTransportControlsButtonPressedEventArgs const &args) {
-            buttonPressed(args.Button());
+            std::scoped_lock lock(state->mutex);
+            if (!state->disposed && state->callback != nullptr) {
+                state->callback(state->context, static_cast<int>(args.Button()));
+            }
         });
         controls.IsPlayEnabled(true);
         controls.IsPauseEnabled(true);
@@ -160,8 +173,8 @@ public:
     HRESULT update(winrt::Windows::Media::MediaPlaybackStatus status) {
         try {
             ApartmentGuard apartment;
-            std::scoped_lock lock(mutex);
-            if (disposed) {
+            std::scoped_lock lock(state->mutex);
+            if (state->disposed) {
                 return RO_E_CLOSED;
             }
             controls.PlaybackStatus(status);
@@ -176,8 +189,8 @@ public:
     HRESULT updateMetadata(const wchar_t *title, const wchar_t *subtitle, const wchar_t *artworkUrl) {
         try {
             ApartmentGuard apartment;
-            std::scoped_lock lock(mutex);
-            if (disposed) {
+            std::scoped_lock lock(state->mutex);
+            if (state->disposed) {
                 return RO_E_CLOSED;
             }
             auto updater = controls.DisplayUpdater();
@@ -202,8 +215,8 @@ public:
     HRESULT clearMetadata() {
         try {
             ApartmentGuard apartment;
-            std::scoped_lock lock(mutex);
-            if (disposed) {
+            std::scoped_lock lock(state->mutex);
+            if (state->disposed) {
                 return RO_E_CLOSED;
             }
             auto updater = controls.DisplayUpdater();
@@ -222,14 +235,14 @@ public:
             ApartmentGuard apartment;
             winrt::Windows::Media::SystemMediaTransportControls controlsCopy{nullptr};
             {
-                std::scoped_lock lock(mutex);
-                if (disposed) {
+                std::scoped_lock lock(state->mutex);
+                if (state->disposed) {
                     return S_OK;
                 }
-                disposed = true;
+                state->disposed = true;
                 controlsCopy = controls;
-                callback = nullptr;
-                context = nullptr;
+                state->callback = nullptr;
+                state->context = nullptr;
             }
             HRESULT result = S_OK;
             if (controlsCopy) {
@@ -259,7 +272,7 @@ public:
                 }
             }
             {
-                std::scoped_lock lock(mutex);
+                std::scoped_lock lock(state->mutex);
                 controls = nullptr;
             }
             return result;
@@ -271,19 +284,9 @@ public:
     }
 
 private:
-    void buttonPressed(winrt::Windows::Media::SystemMediaTransportControlsButton button) {
-        std::scoped_lock lock(mutex);
-        if (!disposed && callback != nullptr) {
-            callback(context, static_cast<int>(button));
-        }
-    }
-
-    std::mutex mutex;
+    std::shared_ptr<KinoMediaSessionState> state;
     winrt::Windows::Media::SystemMediaTransportControls controls{nullptr};
     winrt::event_token buttonToken{};
-    KinoMediaKeyCallback callback = nullptr;
-    void *context = nullptr;
-    bool disposed = false;
 };
 
 extern "C" __declspec(dllexport) HRESULT __cdecl kino_windows_media_session_create(
