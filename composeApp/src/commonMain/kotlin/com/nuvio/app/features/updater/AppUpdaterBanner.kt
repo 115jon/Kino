@@ -25,6 +25,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.CloudDownload
 import androidx.compose.material.icons.rounded.Info
@@ -54,6 +55,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nuvio.app.core.build.AppFeaturePolicy
+import com.nuvio.app.core.ui.AppTheme
+import com.nuvio.app.core.ui.appTheme
 import com.nuvio.app.core.ui.nuvio
 import nuvio.composeapp.generated.resources.Res
 import nuvio.composeapp.generated.resources.action_close
@@ -63,9 +66,11 @@ import nuvio.composeapp.generated.resources.action_later
 import nuvio.composeapp.generated.resources.action_retry
 import nuvio.composeapp.generated.resources.action_update
 import nuvio.composeapp.generated.resources.updates_asset_line
+import nuvio.composeapp.generated.resources.updates_debug_test_complete
 import nuvio.composeapp.generated.resources.updates_downloading_progress
 import nuvio.composeapp.generated.resources.updates_message_allow_installs
 import nuvio.composeapp.generated.resources.updates_message_ready
+import nuvio.composeapp.generated.resources.updates_no_release_notes
 import nuvio.composeapp.generated.resources.updates_preparing_download
 import nuvio.composeapp.generated.resources.updates_release_notes
 import nuvio.composeapp.generated.resources.updates_title_allow_installs
@@ -163,10 +168,10 @@ private fun AppUpdateBanner(
     onDismiss: () -> Unit,
 ) {
     val tokens = MaterialTheme.nuvio
-    val targetProgress = if (state.isDownloading) {
-        state.downloadProgress ?: 0f
-    } else {
-        0f
+    val targetProgress = when {
+        state.isDownloading -> state.downloadProgress ?: 0f
+        state.isDebugTest && !state.isUpdateAvailable -> 1f
+        else -> 0f
     }.coerceIn(0f, 1f)
     val progress by animateFloatAsState(
         targetValue = targetProgress,
@@ -174,8 +179,14 @@ private fun AppUpdateBanner(
         label = "updateBannerProgress",
     )
     val containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
-    val progressColor = MaterialTheme.colorScheme.primary
+    val isWhiteTheme = MaterialTheme.appTheme == AppTheme.WHITE
+    val progressColor = if (isWhiteTheme) {
+        MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
+    } else {
+        MaterialTheme.colorScheme.primary
+    }
     val dividerColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.7f)
+    val debugTestComplete = state.isDebugTest && !state.isDownloading && !state.isUpdateAvailable
     val subtitle = when {
         state.errorMessage != null -> state.errorMessage
         state.isDownloading && state.downloadProgress != null -> stringResource(
@@ -183,6 +194,7 @@ private fun AppUpdateBanner(
             (state.downloadProgress * 100).toInt().coerceIn(0, 100),
         )
         state.isDownloading -> stringResource(Res.string.updates_preparing_download)
+        debugTestComplete -> stringResource(Res.string.updates_debug_test_complete)
         state.downloadedApkPath != null -> stringResource(Res.string.updates_message_ready)
         else -> stringResource(Res.string.updates_title_status)
     }
@@ -220,7 +232,7 @@ private fun AppUpdateBanner(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Icon(
-                imageVector = Icons.Rounded.CloudDownload,
+                imageVector = if (debugTestComplete) Icons.Rounded.CheckCircle else Icons.Rounded.CloudDownload,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.size(24.dp),
@@ -243,6 +255,7 @@ private fun AppUpdateBanner(
                     style = MaterialTheme.typography.bodySmall,
                     color = when {
                         state.errorMessage != null -> MaterialTheme.colorScheme.error
+                        state.isDownloading && isWhiteTheme -> MaterialTheme.colorScheme.onSurface
                         state.isDownloading -> MaterialTheme.colorScheme.onPrimary
                         else -> MaterialTheme.colorScheme.onSurfaceVariant
                     },
@@ -263,7 +276,7 @@ private fun AppUpdateBanner(
                 )
             }
 
-            if (!state.isDownloading) {
+            if (!state.isDownloading && !debugTestComplete) {
                 Button(
                     onClick = when {
                         state.downloadedApkPath != null -> onInstall
@@ -360,7 +373,7 @@ private fun ReleaseNotesDialog(
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
                 Text(
-                    text = update.notes,
+                    text = update.notes.ifBlank { stringResource(Res.string.updates_no_release_notes) },
                     modifier = Modifier
                         .fillMaxWidth()
                         .heightIn(max = 420.dp)

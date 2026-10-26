@@ -9,6 +9,7 @@ import com.nuvio.app.core.i18n.localizedByteUnit
 import com.nuvio.app.core.ui.NuvioToastController
 import com.nuvio.app.features.addons.httpRequestRaw
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -52,6 +53,7 @@ data class AppUpdaterUiState(
     val showDialog: Boolean = false,
     val showUnknownSourcesDialog: Boolean = false,
     val errorMessage: String? = null,
+    val isDebugTest: Boolean = false,
 )
 
 internal fun AppUpdaterUiState.dismissed(): AppUpdaterUiState = copy(
@@ -207,6 +209,7 @@ class AppUpdaterController internal constructor(
                     isChecking = true,
                     errorMessage = null,
                     showUnknownSourcesDialog = false,
+                    isDebugTest = false,
                 )
             }
 
@@ -284,6 +287,10 @@ class AppUpdaterController internal constructor(
 
     fun downloadUpdate() {
         val update = _uiState.value.update ?: return
+        if (_uiState.value.isDebugTest) {
+            runDebugDownloadTest()
+            return
+        }
 
         scope.launch {
             _uiState.update { state ->
@@ -350,6 +357,60 @@ class AppUpdaterController internal constructor(
             installDownloadedUpdate()
         } else {
             AppUpdaterPlatform.openUnknownSourcesSettings()
+        }
+    }
+
+    fun showDebugTestUpdate() {
+        if (!AppUpdaterPlatform.isDebugBuild || !AppUpdaterPlatform.isSupported) return
+
+        _uiState.value = AppUpdaterUiState(
+            update = AppUpdate(
+                tag = "9.9.9",
+                version = "9.9.9",
+                versionCode = null,
+                mandatory = false,
+                title = "Kino 9.9.9",
+                notes = """
+                    A local preview of the new update experience.
+
+                    - The banner pushes the app content down.
+                    - Download progress fills the banner with the primary accent.
+                    - Release notes live behind the info button.
+                """.trimIndent(),
+                releaseUrl = null,
+                assetName = "Kino-debug-preview.apk",
+                assetUrl = "debug://update-preview",
+                assetSha256 = "",
+                assetSizeBytes = 185L * 1024L * 1024L,
+            ),
+            isUpdateAvailable = true,
+            showDialog = true,
+            isDebugTest = true,
+        )
+    }
+
+    private fun runDebugDownloadTest() {
+        scope.launch {
+            _uiState.update { state ->
+                state.copy(
+                    isDownloading = true,
+                    downloadProgress = 0f,
+                    errorMessage = null,
+                )
+            }
+
+            for (step in 1..100) {
+                delay(35)
+                _uiState.update { state -> state.copy(downloadProgress = step / 100f) }
+            }
+
+            _uiState.update { state ->
+                state.copy(
+                    isDownloading = false,
+                    isUpdateAvailable = false,
+                    downloadProgress = 1f,
+                )
+            }
         }
     }
 }

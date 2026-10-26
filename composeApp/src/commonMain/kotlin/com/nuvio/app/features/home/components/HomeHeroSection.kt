@@ -28,6 +28,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -52,8 +53,11 @@ import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import co.touchlab.kermit.Logger
 import com.nuvio.app.core.format.formatReleaseDateForDisplay
+import com.nuvio.app.core.ui.heroStretchHeight
+import com.nuvio.app.core.ui.heroStretchZoom
 import com.nuvio.app.features.home.MetaPreview
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import nuvio.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.stringResource
@@ -68,6 +72,7 @@ private const val HERO_SCROLL_UP_SCALE_MULTIPLIER = 0.002f
 private const val HERO_SCROLL_MAX_SCALE = 1.3f
 private const val HERO_SWIPE_THRESHOLD_FRACTION = 0.16f
 private const val HERO_SWIPE_VELOCITY_THRESHOLD = 300f
+private const val HERO_AUTO_SCROLL_INTERVAL_MS = 8_000L
 private const val MOBILE_HERO_VIEWPORT_RATIO = 0.82f
 private const val MOBILE_HERO_MIN_HEIGHT_DP = 360f
 private const val MOBILE_HERO_MAX_HEIGHT_DP = 760f
@@ -92,12 +97,27 @@ fun HomeHeroSection(
     viewportHeight: Dp? = null,
     mobileBelowSectionHeightHint: Dp? = null,
     listState: LazyListState? = null,
+    stretchPx: () -> Float = { 0f },
     onItemClick: ((MetaPreview) -> Unit)? = null,
 ) {
     if (items.isEmpty()) return
 
     val pagerState = rememberPagerState(pageCount = { items.size })
     val coroutineScope = rememberCoroutineScope()
+    val autoScrollPage = pagerState.currentPage
+
+    LaunchedEffect(autoScrollPage, items.size) {
+        if (items.size <= 1) return@LaunchedEffect
+        delay(HERO_AUTO_SCROLL_INTERVAL_MS)
+        while (pagerState.isScrollInProgress) {
+            delay(100L)
+        }
+
+        val nextPage = (pagerState.currentPage + 1) % items.size
+        coroutineScope.launch {
+            pagerState.animateScrollToPage(nextPage)
+        }
+    }
 
     BoxWithConstraints(
         modifier = modifier
@@ -156,7 +176,7 @@ fun HomeHeroSection(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(layout.heroHeight),
+                .heroStretchHeight(layout.heroHeight, stretchPx),
         ) {
             HorizontalPager(
                 state = pagerState,
@@ -171,27 +191,33 @@ fun HomeHeroSection(
             Box(
                 modifier = Modifier.fillMaxSize(),
             ) {
-                visiblePages.forEach { layer ->
-                    val item = items[layer.page]
-                    val background = item.banner ?: item.poster
-                    AsyncImage(
-                        model = background,
-                        contentDescription = item.name,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .graphicsLayer {
-                                alpha = layer.visibility
-                                translationX = -layer.offset * heroWidthPx * HERO_BACKGROUND_PARALLAX
-                                translationY = heroScrollTranslationY
-                                scaleX = HERO_BACKGROUND_SCALE * heroScrollScale
-                                scaleY = HERO_BACKGROUND_SCALE * heroScrollScale
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(layout.heroHeight)
+                        .heroStretchZoom(stretchPx),
+                ) {
+                    visiblePages.forEach { layer ->
+                        val item = items[layer.page]
+                        AsyncImage(
+                            model = item.banner ?: item.poster,
+                            contentDescription = item.name,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .graphicsLayer {
+                                    alpha = layer.visibility
+                                    translationX = -layer.offset * heroWidthPx * HERO_BACKGROUND_PARALLAX
+                                    translationY = heroScrollTranslationY
+                                    scaleX = HERO_BACKGROUND_SCALE * heroScrollScale
+                                    scaleY = HERO_BACKGROUND_SCALE * heroScrollScale
+                                },
+                            alignment = if (layout.isTablet) Alignment.TopCenter else Alignment.Center,
+                            contentScale = ContentScale.Crop,
+                            onError = {
+                                homeHeroLog.w { "Hero artwork failed for ${item.type}:${item.id}" }
                             },
-                        alignment = if (layout.isTablet) Alignment.TopCenter else Alignment.Center,
-                        contentScale = ContentScale.Crop,
-                        onError = {
-                            homeHeroLog.w { "Hero artwork failed for ${item.type}:${item.id}" }
-                        },
-                    )
+                        )
+                    }
                 }
 
                 Box(

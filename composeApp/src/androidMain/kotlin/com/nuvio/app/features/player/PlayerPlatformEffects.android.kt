@@ -5,10 +5,10 @@ import android.content.Context
 import android.content.ContextWrapper
 import android.content.pm.ActivityInfo
 import android.media.AudioManager
+import androidx.activity.ComponentActivity
 import android.os.Build
 import android.provider.Settings
 import android.view.WindowManager
-import androidx.activity.ComponentActivity
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.SideEffect
@@ -89,21 +89,17 @@ actual fun rememberIsInPictureInPicture(): Boolean {
     val activity = context.findActivity() ?: return false
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return false
     val componentActivity = activity as? ComponentActivity ?: return false
-    var isInPictureInPicture by remember(activity) {
-        mutableStateOf(componentActivity.isInPictureInPictureMode)
-    }
-
+    var pipState by remember(activity) { mutableStateOf(componentActivity.isInPictureInPictureMode) }
     DisposableEffect(componentActivity) {
         val listener = Consumer<PictureInPictureModeChangedInfo> { info ->
-            isInPictureInPicture = info.isInPictureInPictureMode
+            pipState = info.isInPictureInPictureMode
         }
         componentActivity.addOnPictureInPictureModeChangedListener(listener)
         onDispose {
             componentActivity.removeOnPictureInPictureModeChangedListener(listener)
         }
     }
-
-    return isInPictureInPicture
+    return pipState
 }
 
 @Composable

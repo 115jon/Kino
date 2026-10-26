@@ -151,7 +151,7 @@ object NetworkStatusRepository {
         val supabaseReachable = SupabaseEndpointConfig.restEndpointUrls().any { url ->
             probeReachable(
                 url = url,
-                headers = mapOf("apikey" to SupabaseConfig.ANON_KEY),
+                headers = mapOf("apikey" to ServerConfigurationRepository.active.value.publishableKey),
             )
         }
         if (!supabaseReachable) {

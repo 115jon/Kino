@@ -89,6 +89,7 @@ fun TmdbEntityBrowseScreen(
         WatchedRepository.ensureLoaded()
         WatchedRepository.uiState
     }.collectAsStateWithLifecycle()
+    val fullyWatchedSeriesKeys by WatchedRepository.fullyWatchedSeriesKeys.collectAsStateWithLifecycle()
     val loadFailedMessage = stringResource(Res.string.details_browse_load_failed, entityName)
 
     LaunchedEffect(entityKind, entityId) {
@@ -121,6 +122,7 @@ fun TmdbEntityBrowseScreen(
                     data = state.data,
                     sourceType = sourceType,
                     watchedKeys = watchedUiState.watchedKeys,
+                    fullyWatchedSeriesKeys = fullyWatchedSeriesKeys,
                     onOpenMeta = onOpenMeta,
                 )
             }
@@ -149,6 +151,7 @@ private fun EntityBrowseContent(
     data: TmdbEntityBrowseData,
     sourceType: String,
     watchedKeys: Set<String>,
+    fullyWatchedSeriesKeys: Set<String>,
     onOpenMeta: (MetaPreview) -> Unit,
 ) {
     val backgroundUrl = remember(data.rails, sourceType) {
@@ -191,6 +194,7 @@ private fun EntityBrowseContent(
                 WideEntityBrowseContent(
                     data = data,
                     watchedKeys = watchedKeys,
+                    fullyWatchedSeriesKeys = fullyWatchedSeriesKeys,
                     onOpenMeta = onOpenMeta,
                 )
             } else if (data.rails.isEmpty()) {
@@ -224,6 +228,7 @@ private fun EntityBrowseContent(
                             title = entityRailTitle(rail),
                             items = rail.items,
                             watchedKeys = watchedKeys,
+                            fullyWatchedSeriesKeys = fullyWatchedSeriesKeys,
                             headerHorizontalPadding = 20.dp,
                             onPosterClick = onOpenMeta,
                         )
@@ -241,6 +246,7 @@ private fun EntityBrowseContent(
 private fun WideEntityBrowseContent(
     data: TmdbEntityBrowseData,
     watchedKeys: Set<String>,
+    fullyWatchedSeriesKeys: Set<String>,
     onOpenMeta: (MetaPreview) -> Unit,
 ) {
     Row(
@@ -291,6 +297,7 @@ private fun WideEntityBrowseContent(
                         title = entityRailTitle(rail),
                         items = rail.items,
                         watchedKeys = watchedKeys,
+                        fullyWatchedSeriesKeys = fullyWatchedSeriesKeys,
                         headerHorizontalPadding = 0.dp,
                         onPosterClick = onOpenMeta,
                     )

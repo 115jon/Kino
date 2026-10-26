@@ -8,9 +8,10 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.graphics.Color
 import android.graphics.drawable.Icon
 import android.os.Build
+import kotlin.math.roundToInt
+import kotlinx.coroutines.runBlocking
 import android.os.Handler
 import android.os.Looper
 import android.util.Rational
@@ -18,11 +19,7 @@ import androidx.activity.ComponentActivity
 import androidx.compose.ui.unit.IntSize
 import androidx.lifecycle.Lifecycle
 import com.nuvio.app.R
-import kotlin.math.roundToInt
-import kotlinx.coroutines.runBlocking
-import nuvio.composeapp.generated.resources.Res
-import nuvio.composeapp.generated.resources.action_play
-import nuvio.composeapp.generated.resources.compose_action_pause
+import nuvio.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.getString
 
 internal const val PIP_ACTION_TOGGLE_PLAY_PAUSE = "com.nuvio.app.action.PIP_TOGGLE_PLAY_PAUSE"
@@ -161,11 +158,12 @@ internal object PlayerPictureInPictureManager {
         val isPlaying = sessionState.isPlaying
         val iconRes = if (isPlaying) R.drawable.ic_player_pause else R.drawable.ic_player_play
         val title = if (isPlaying) pipPauseLabel else pipPlayLabel
+
         val toggleIntent = Intent(PIP_ACTION_TOGGLE_PLAY_PAUSE).setPackage(activity.packageName)
-        val flags = PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        val pendingIntent = PendingIntent.getBroadcast(activity, REQUEST_CODE_TOGGLE, toggleIntent, flags)
+        val flags = android.app.PendingIntent.FLAG_IMMUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT
+        val pendingIntent = android.app.PendingIntent.getBroadcast(activity, REQUEST_CODE_TOGGLE, toggleIntent, flags)
         val icon = Icon.createWithResource(activity, iconRes)
-        icon.setTint(Color.WHITE)
+        icon.setTint(android.graphics.Color.WHITE)
         return listOf(RemoteAction(icon, title, title, pendingIntent))
     }
 
@@ -184,18 +182,20 @@ internal object PlayerPictureInPictureManager {
 
 internal class PipRemoteActionReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context?, intent: Intent?) {
-        if (context == null || intent?.action != PIP_ACTION_TOGGLE_PLAY_PAUSE) return
+        if (context == null) return
+        if (intent?.action != PIP_ACTION_TOGGLE_PLAY_PAUSE) return
         PlayerPictureInPictureManager.toggleViaRemoteAction(context)
     }
 
     companion object {
         fun register(context: Context): PipRemoteActionReceiver {
+            val filter = IntentFilter(PIP_ACTION_TOGGLE_PLAY_PAUSE)
             val receiver = PipRemoteActionReceiver()
             androidx.core.content.ContextCompat.registerReceiver(
                 context,
                 receiver,
-                IntentFilter(PIP_ACTION_TOGGLE_PLAY_PAUSE),
-                androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED,
+                filter,
+                androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED
             )
             return receiver
         }

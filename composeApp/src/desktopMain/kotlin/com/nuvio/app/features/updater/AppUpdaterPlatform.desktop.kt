@@ -14,6 +14,7 @@ actual object AppUpdaterPlatform {
     private val preferences = Preferences.userNodeForPackage(AppUpdaterPlatform::class.java)
 
     actual val isSupported: Boolean = true
+    actual val isDebugBuild: Boolean = false
     actual val platform: String = "desktop"
 
     actual fun getSupportedAbis(): List<String> = emptyList()
