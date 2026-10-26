@@ -2,6 +2,7 @@ package com.nuvio.app.features.membership
 
 import co.touchlab.kermit.Logger
 import com.nuvio.app.core.auth.AuthRepository
+import com.nuvio.app.core.build.KinoFeaturePolicy
 import com.nuvio.app.core.auth.AuthState
 import com.nuvio.app.core.time.EpisodeReleaseDatePlatform
 import kotlinx.coroutines.CancellationException
@@ -27,13 +28,13 @@ object MemberAccessRepository {
     private val json = Json { ignoreUnknownKeys = true }
     private val refreshGeneration = MutableStateFlow(0L)
     private val _access = MutableStateFlow(MemberAccess.None)
-    val access: StateFlow<MemberAccess> = _access.asStateFlow()
+    val access: StateFlow<MemberAccess> = MutableStateFlow(KinoMemberAccess).asStateFlow()
     private var started = false
     private var verifiedUserId: String? = null
     private var verifiedAtMs = 0L
 
     fun ensureStarted() {
-        if (started) return
+        if (started || !KinoFeaturePolicy.memberAccessSyncEnabled) return
         started = true
         hydrateCachedAccess()
         scope.launch {

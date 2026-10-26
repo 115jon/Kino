@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import com.nuvio.app.core.build.KinoFeaturePolicy
 import com.nuvio.app.core.ui.LocalScreenActive
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -92,7 +93,7 @@ internal fun MemberBrandWordmark(
             modifier = Modifier.height(height),
             contentDescription = contentDescription,
         )
-        val tier = access.tier
+        val tier = access.tier.takeIf { KinoFeaturePolicy.memberBadgeEnabled }
         AnimatedVisibility(
             visible = tier != null,
             enter = fadeIn(tween(360)) +

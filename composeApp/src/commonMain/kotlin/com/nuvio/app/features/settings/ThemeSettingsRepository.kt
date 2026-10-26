@@ -169,7 +169,7 @@ object ThemeSettingsRepository {
     private fun applyEffectiveTheme() {
         val access = MemberAccessRepository.access.value
         val effective = resolveAppTheme(
-            selectedTheme = _selectedThemePreference.value,
+            selectedTheme = _selectedThemePreference.value ?: AppTheme.WHITE,
             entitlements = access.entitlements,
         )
         _customThemeColors.value = resolveCustomThemeColors(_customThemePreference.value, access.tier)
