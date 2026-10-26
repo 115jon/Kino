@@ -1877,7 +1877,10 @@ internal object WindowsMpvPlayerBackend : DesktopPlaybackBackend {
                     val videoOutputConfigured = getString("vo-configured")
                     val videoWidth = getString("video-params/w")?.toIntOrNull() ?: 0
                     val videoHeight = getString("video-params/h")?.toIntOrNull() ?: 0
-                    val videoOutputReady = shouldShowNativeWindowsVideoSurface(
+                    val videoOutputReady = shouldRevealWindowsVideoSurface(
+                        loadPending = pollLoadRequestGeneration != null,
+                        activePlaylistEntryGeneration = windowState.activePlaylistEntryGeneration,
+                        sourceGeneration = pollGeneration,
                         videoOutputConfigured = videoOutputConfigured,
                         videoWidth = videoWidth,
                         videoHeight = videoHeight,
@@ -3145,23 +3148,29 @@ internal class WindowsPlayerPanel(
 
         override fun addNotify() {
             super.addNotify()
-            SwingUtilities.invokeLater {
-                if (!mpvInitialized) {
-                    try {
-                        initializeMpv()
-                        mpvInitialized = true
-                    } catch (error: Throwable) {
-                        state.isClosed = true
-                        state.loadRequestGate.invalidate()
-                        state.panelRef = null
-                        urlResolutionScope.cancel()
-                        urlResolutionJob = null
-                        eventPump.closeAndAwait()
-                        onInitializationError(error.message ?: "Native video initialization failed")
-                    }
-                }
-                stateChangedNotifier.request()
+            urlResolutionScope.launch {
+                runCatching { WindowsMpvLibrary.INSTANCE }
+                SwingUtilities.invokeLater { initializeMpvWhenDisplayable() }
             }
+        }
+
+        private fun initializeMpvWhenDisplayable() {
+            if (playerDisposed || !isDisplayable) return
+            if (!mpvInitialized) {
+                try {
+                    initializeMpv()
+                    mpvInitialized = true
+                } catch (error: Throwable) {
+                    state.isClosed = true
+                    state.loadRequestGate.invalidate()
+                    state.panelRef = null
+                    urlResolutionScope.cancel()
+                    urlResolutionJob = null
+                    eventPump.closeAndAwait()
+                    onInitializationError(error.message ?: "Native video initialization failed")
+                }
+            }
+            stateChangedNotifier.request()
         }
 
         override fun removeNotify() {
