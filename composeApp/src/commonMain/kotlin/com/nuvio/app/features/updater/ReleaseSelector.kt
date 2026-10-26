@@ -8,12 +8,13 @@ internal object ReleaseSelector {
 
     fun eligibleReleases(
         releases: List<GitHubReleaseDto>,
-        channel: UpdateChannel
+        channel: UpdateChannel,
+        tagPrefix: String = ""
     ): List<GitHubReleaseDto> = releases
         .asSequence()
         .filterNot(GitHubReleaseDto::draft)
         .mapNotNull { release ->
-            val version = releaseVersion(release) ?: return@mapNotNull null
+            val version = releaseVersion(release, tagPrefix) ?: return@mapNotNull null
             ReleaseCandidate(
                 release = release,
                 version = version,
@@ -25,8 +26,13 @@ internal object ReleaseSelector {
         .map(ReleaseCandidate::release)
         .toList()
 
-    private fun releaseVersion(release: GitHubReleaseDto): SemanticVersion? =
-        VersionUtils.parse(release.tagName) ?: VersionUtils.parse(release.name)
+    private fun releaseVersion(release: GitHubReleaseDto, tagPrefix: String): SemanticVersion? {
+        if (tagPrefix.isEmpty()) {
+            return VersionUtils.parse(release.tagName) ?: VersionUtils.parse(release.name)
+        }
+        val tag = release.tagName?.takeIf { it.startsWith(tagPrefix, ignoreCase = true) } ?: return null
+        return VersionUtils.parse(tag.substring(tagPrefix.length))
+    }
 
     private fun isPrerelease(
         release: GitHubReleaseDto,

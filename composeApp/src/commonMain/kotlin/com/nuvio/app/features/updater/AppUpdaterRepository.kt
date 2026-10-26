@@ -1,5 +1,6 @@
 package com.nuvio.app.features.updater
 
+import com.nuvio.app.core.build.AppVersionConfig
 import com.nuvio.app.features.addons.httpRequestRaw
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -7,7 +8,9 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import nuvio.composeapp.generated.resources.Res
+import nuvio.composeapp.generated.resources.updates_apk_asset_missing
 import nuvio.composeapp.generated.resources.updates_github_api_error
+import nuvio.composeapp.generated.resources.updates_release_missing_manifest
 import org.jetbrains.compose.resources.getString
 
 @Serializable
@@ -32,18 +35,44 @@ internal data class GitHubAssetDto(
 internal class NoChannelReleaseException : IllegalStateException()
 
 internal object AppUpdaterRepository {
+    private const val releasesUrl = "https://api.github.com/repos/115jon/Kino/releases?per_page=100"
+    private const val releaseManifestName = "release-manifest.json"
+    private const val userAgent = "Kino"
+
     private val json = Json {
         ignoreUnknownKeys = true
         isLenient = true
     }
 
     suspend fun getLatestChannelUpdate(channel: UpdateChannel): Result<AppUpdate> = runCatching {
+        val platform = AppUpdaterPlatform.platform
+        val release = selectRelease(
+            responseBody = fetch(releasesUrl, accept = "application/vnd.github+json"),
+            channel = channel,
+            platform = platform,
+        ) ?: throw NoChannelReleaseException()
+        val manifestAsset = release.assets.firstOrNull { it.name == releaseManifestName }
+            ?: error(getString(Res.string.updates_release_missing_manifest))
+        val manifest = json.decodeFromString<ReleaseManifest>(
+            fetch(manifestAsset.browserDownloadUrl, accept = "application/json"),
+        )
+        if (!manifest.appliesTo(platform, channel)) throw NoChannelReleaseException()
+        resolveUpdate(
+            release = release,
+            manifest = manifest,
+            platform = platform,
+            supportedAbis = AppUpdaterPlatform.getSupportedAbis(),
+            currentVersionCode = AppVersionConfig.VERSION_CODE,
+        ) ?: error(getString(Res.string.updates_apk_asset_missing))
+    }
+
+    private suspend fun fetch(url: String, accept: String): String {
         val response = httpRequestRaw(
             method = "GET",
-            url = "https://api.github.com/repos/NuvioMedia/NuvioMobile/${releasePath(channel)}",
+            url = url,
             headers = mapOf(
-                "Accept" to "application/vnd.github+json",
-                "User-Agent" to "NuvioMobile",
+                "Accept" to accept,
+                "User-Agent" to userAgent,
             ),
             body = "",
         )
@@ -52,54 +81,66 @@ internal object AppUpdaterRepository {
         if (response.status !in 200..299) {
             error(getString(Res.string.updates_github_api_error, response.status))
         }
-        selectUpdate(response.body, channel, AppUpdaterPlatform.getSupportedAbis())
-            ?: throw NoChannelReleaseException()
+        return response.body
     }
 
-    internal fun releasePath(channel: UpdateChannel): String = when (channel) {
-        UpdateChannel.STABLE -> "releases/latest"
-        UpdateChannel.BETA -> "releases?per_page=100"
-    }
+    internal fun tagPrefix(platform: String): String = "$platform-v"
 
-    internal fun selectUpdate(
+    internal fun selectRelease(
         responseBody: String,
         channel: UpdateChannel,
+        platform: String,
+    ): GitHubReleaseDto? = ReleaseSelector
+        .eligibleReleases(
+            releases = json.decodeFromString<List<GitHubReleaseDto>>(responseBody),
+            channel = channel,
+            tagPrefix = tagPrefix(platform),
+        )
+        .firstOrNull { release -> release.assets.any { it.name == releaseManifestName } }
+
+    internal fun resolveUpdate(
+        release: GitHubReleaseDto,
+        manifest: ReleaseManifest,
+        platform: String,
         supportedAbis: List<String>,
+        currentVersionCode: Int,
     ): AppUpdate? {
-        val releases = when (channel) {
-            UpdateChannel.STABLE -> listOf(json.decodeFromString<GitHubReleaseDto>(responseBody))
-            UpdateChannel.BETA -> json.decodeFromString<List<GitHubReleaseDto>>(responseBody)
+        val tag = release.tagName?.takeIf { it.isNotBlank() } ?: return null
+        check(manifest.version == tag.removePrefix(tagPrefix(platform))) {
+            "Release manifest version does not match its tag."
         }
-        return ReleaseSelector.eligibleReleases(releases, channel).firstNotNullOfOrNull { release ->
-            val asset = chooseBestApkAsset(release.assets, supportedAbis) ?: return@firstNotNullOfOrNull null
-            val tag = release.tagName?.takeIf { VersionUtils.parse(it) != null }
-                ?: release.name.orEmpty()
-            AppUpdate(
-                tag = tag,
-                title = release.name?.takeIf { it.isNotBlank() } ?: tag,
-                notes = release.body.orEmpty(),
-                releaseUrl = release.htmlUrl,
-                assetName = asset.name,
-                assetUrl = asset.browserDownloadUrl,
-                assetSizeBytes = asset.size,
-            )
-        }
+        val asset = manifest.selectAsset(
+            candidates = release.assets
+                .filterNot { it.name == releaseManifestName }
+                .map { candidate ->
+                    ReleaseAssetCandidate(
+                        name = candidate.name,
+                        url = candidate.browserDownloadUrl,
+                        sizeBytes = candidate.size,
+                    )
+                },
+            supportedAbis = supportedAbis,
+        ) ?: return null
+        return AppUpdate(
+            tag = tag,
+            version = manifest.version,
+            versionCode = manifest.versionCode,
+            mandatory = manifest.mandatory || manifest.isMandatoryFor(currentVersionCode),
+            title = release.name?.takeIf { it.isNotBlank() } ?: tag,
+            notes = release.body.orEmpty(),
+            releaseUrl = release.htmlUrl,
+            assetName = asset.name,
+            assetUrl = asset.url,
+            assetSha256 = manifest.assets.first { it.name == asset.name }.sha256,
+            assetSizeBytes = asset.sizeBytes,
+        )
     }
 
-    private fun chooseBestApkAsset(
-        assets: List<GitHubAssetDto>,
-        supportedAbis: List<String>,
-    ): GitHubAssetDto? {
-        val apkAssets = assets.filter { asset ->
-            asset.name.endsWith(".apk", ignoreCase = true) ||
-                asset.contentType == "application/vnd.android.package-archive"
-        }
-        for (abi in supportedAbis) {
-            apkAssets.firstOrNull { it.name.contains(abi, ignoreCase = true) }?.let { return it }
-        }
-        return apkAssets.firstOrNull { asset ->
-            val name = asset.name.lowercase()
-            name.contains("universal") || name.contains("all")
-        } ?: apkAssets.firstOrNull()
+    internal fun ReleaseManifest.appliesTo(platform: String, channel: UpdateChannel): Boolean =
+        acceptedManifestChannels(channel).any { appliesTo(platform, it) }
+
+    private fun acceptedManifestChannels(channel: UpdateChannel): List<String> = when (channel) {
+        UpdateChannel.STABLE -> listOf(UpdateChannel.STABLE.storedValue)
+        UpdateChannel.BETA -> listOf(UpdateChannel.STABLE.storedValue, UpdateChannel.BETA.storedValue)
     }
 }

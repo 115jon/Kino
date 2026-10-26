@@ -11,6 +11,7 @@ import kotlin.system.exitProcess
 
 actual object AppUpdaterPlatform {
     private const val ignoredTagKey = "ignoredUpdateTag"
+    private const val updateChannelKey = "updateChannel"
     private val preferences = Preferences.userNodeForPackage(AppUpdaterPlatform::class.java)
 
     actual val isSupported: Boolean = true
@@ -29,11 +30,15 @@ actual object AppUpdaterPlatform {
         }
     }
 
-    actual fun getUpdateChannel(): String? = null
+    actual fun getUpdateChannel(): String? = preferences.get(updateChannelKey, null)
 
-    actual fun setUpdateChannel(channel: String) = Unit
+    actual fun setUpdateChannel(channel: String) {
+        preferences.put(updateChannelKey, channel)
+    }
 
-    actual fun deleteDownloadedApk(path: String) = Unit
+    actual fun deleteDownloadedApk(path: String) {
+        runCatching { File(path).delete() }
+    }
 
     actual suspend fun downloadApk(
         assetUrl: String,
