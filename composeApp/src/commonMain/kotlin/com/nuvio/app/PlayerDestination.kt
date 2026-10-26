@@ -46,6 +46,7 @@ internal fun PlayerDestination(
         sourceAudioUrl = launch.sourceAudioUrl,
         sourceHeaders = launch.sourceHeaders,
         sourceResponseHeaders = launch.sourceResponseHeaders,
+        startupFallbackCandidates = launch.startupFallbackCandidates,
         externalSubtitles = launch.externalSubtitles,
         streamType = launch.streamType,
         logo = launch.logo,

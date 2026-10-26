@@ -31,6 +31,7 @@ import com.nuvio.app.features.p2p.P2pSettingsRepository
 import com.nuvio.app.features.player.PlayerLaunch
 import com.nuvio.app.features.player.PlayerLaunchStore
 import com.nuvio.app.features.player.PlayerSettingsRepository
+import com.nuvio.app.features.player.startupFallbackCandidates
 import com.nuvio.app.features.player.sanitizePlaybackHeaders
 import com.nuvio.app.features.player.sanitizePlaybackResponseHeaders
 import com.nuvio.app.features.streams.StreamBehaviorHints
@@ -431,6 +432,9 @@ internal fun StreamDestination(
             sourceUrl = sourceUrl,
             sourceHeaders = sanitizePlaybackHeaders(stream.behaviorHints.proxyHeaders?.request),
             sourceResponseHeaders = sanitizePlaybackResponseHeaders(stream.behaviorHints.proxyHeaders?.response),
+            startupFallbackCandidates = startupFallbackCandidates(
+                listOf(stream) + streamsUiState.autoPlayCandidates,
+            ),
             externalSubtitles = stream.externalSubtitles,
             streamType = stream.streamType,
             logo = launch.logo,
