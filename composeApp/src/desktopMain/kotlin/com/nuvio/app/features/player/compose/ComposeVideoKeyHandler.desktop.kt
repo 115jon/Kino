@@ -5,11 +5,7 @@ import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
-import com.nuvio.app.features.player.PlayerAudioLevel
-import com.nuvio.app.features.player.WindowsMpvLibrary
 import com.nuvio.app.features.player.WindowsPlayerWindowState
-import com.nuvio.app.features.player.withMpv
-import kotlin.math.roundToInt
 
 internal class ComposeVideoKeyHandler(
     private val state: WindowsPlayerWindowState,
@@ -17,14 +13,15 @@ internal class ComposeVideoKeyHandler(
 ) {
     fun handle(event: KeyEvent): Boolean {
         if (event.type != KeyEventType.KeyDown) return false
-        if (state.startupStalled) {
+        if (state.playback.startupStalled) {
             if (event.key == Key.R) panel.retryPlayback()
             return event.key == Key.R
         }
+        val engine = state.engine
         when (event.key) {
-            Key.Spacebar -> command("cycle", "pause")
-            Key.DirectionLeft -> command("seek", "-10", "relative")
-            Key.DirectionRight -> command("seek", "10", "relative")
+            Key.Spacebar -> engine.togglePause()
+            Key.DirectionLeft -> engine.seekBy(-10_000L)
+            Key.DirectionRight -> engine.seekBy(10_000L)
             Key.DirectionUp -> adjustVolume(0.05f)
             Key.DirectionDown -> adjustVolume(-0.05f)
             Key.F -> panel.toggleFullScreen()
@@ -35,13 +32,6 @@ internal class ComposeVideoKeyHandler(
     }
 
     fun adjustVolume(delta: Float) {
-        val level = (state.volumeLevel.fraction + delta).coerceIn(0f, 1f)
-        val percent = (level * 100f).roundToInt()
-        state.withMpv { ptr -> WindowsMpvLibrary.INSTANCE.mpv_set_property_string(ptr, "volume", percent.toString()) }
-        state.volumeLevel = PlayerAudioLevel(fraction = level, isMuted = percent == 0)
-    }
-
-    private fun command(vararg args: String) {
-        state.withMpv { ptr -> WindowsMpvLibrary.INSTANCE.mpv_command(ptr, arrayOf(*args, null)) }
+        state.engine.setVolumeLevelNow((state.playback.volumeLevel.fraction + delta).coerceIn(0f, 1f))
     }
 }

@@ -1,8 +1,11 @@
 package com.nuvio.app.features.player.compose
 
-import com.nuvio.app.features.player.WindowsPlayerWindowState
+import com.nuvio.app.features.player.MpvOption
+import com.nuvio.app.features.player.MpvPlaybackState
 
 private val composeSurfaceNames = setOf("compose", "skia")
+
+internal const val ComposeVideoDefaultHwdec = "nvdec,d3d11va-copy,dxva2-copy"
 
 internal fun isComposeWindowsVideoSurface(surface: String?): Boolean =
     surface?.trim()?.lowercase() in composeSurfaceNames
@@ -15,6 +18,28 @@ internal fun configureWindowsComposeVideoRenderApi() {
     if (!isComposeWindowsVideoSurfaceSelected()) return
     if (System.getProperty("skiko.renderApi") == null) System.setProperty("skiko.renderApi", "OPENGL")
 }
+
+internal fun composeVideoHwdec(override: String?): String =
+    override?.trim()?.takeIf { it.isNotEmpty() } ?: ComposeVideoDefaultHwdec
+
+internal fun parseComposeVideoMpvOverrides(value: String?): List<MpvOption> =
+    value.orEmpty()
+        .split(',')
+        .mapNotNull { entry ->
+            val parts = entry.split('=', limit = 2)
+            if (parts.size != 2 || parts[0].isBlank()) null else MpvOption(parts[0].trim(), parts[1].trim())
+        }
+
+internal fun composeVideoMpvOptions(): List<MpvOption> {
+    val overrides = parseComposeVideoMpvOverrides(System.getProperty("kino.windows.compose-mpv-options"))
+    val overrideNames = overrides.mapTo(HashSet()) { it.name }
+    val defaults = listOf(
+        MpvOption("hwdec", composeVideoHwdec(System.getProperty("kino.windows.compose-hwdec"))),
+    )
+    return defaults.filterNot { it.name in overrideNames } + overrides
+}
+
+internal fun composeVideoReportsSwap(): Boolean = System.getProperty("kino.windows.compose-report-swap") == "true"
 
 internal fun isComposeMpvEventCurrent(
     loadPending: Boolean,
@@ -51,10 +76,10 @@ internal class ComposeVideoRevealTracker {
         armedGeneration = -1L
     }
 
-    fun shouldReveal(state: WindowsPlayerWindowState): Boolean = shouldRevealComposeVideo(
+    fun shouldReveal(playback: MpvPlaybackState): Boolean = shouldRevealComposeVideo(
         armedRestartGeneration = armedGeneration,
-        loadPending = state.pendingLoadRequestGeneration != null,
-        activePlaylistEntryGeneration = state.activePlaylistEntryGeneration,
-        sourceGeneration = state.sourceGeneration,
+        loadPending = playback.pendingLoadRequestGeneration != null,
+        activePlaylistEntryGeneration = playback.activePlaylistEntryGeneration,
+        sourceGeneration = playback.sourceGeneration,
     )
 }

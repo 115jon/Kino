@@ -2,11 +2,8 @@ package com.nuvio.app.features.player.compose
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import com.nuvio.app.features.player.WindowsMpvLibrary
 import com.nuvio.app.features.player.WindowsPlayerWindowState
-import com.nuvio.app.features.player.readMpvPropertyString
 import java.lang.management.ManagementFactory
-import kotlin.concurrent.withLock
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -46,15 +43,14 @@ internal fun WindowsMpvPerfSampler(state: WindowsPlayerWindowState, surface: Str
         while (!state.isClosed) {
             delay(PerfSampleIntervalMs)
             val line = withContext(Dispatchers.IO) {
-                val values = state.mpvCallLock.withLock {
-                    val ptr = state.playerPtr ?: return@withLock null
-                    perfProperties.joinToString(" ") { name ->
-                        "$name=${readMpvPropertyString(WindowsMpvLibrary.INSTANCE, ptr, name).orEmpty()}"
-                    }
-                } ?: return@withContext null
+                var values: String? = null
+                state.engine.withClient { client ->
+                    values = perfProperties.joinToString(" ") { name -> "$name=${client.getProperty(name).orEmpty()}" }
+                }
+                val sampled = values ?: return@withContext null
                 val cpu = osBean?.processCpuLoad?.let { "%.1f".format(it * 100.0) }.orEmpty()
                 val renderStats = (state.panelRef as? WindowsComposePlayerPanel)?.stats?.drain()?.let { " $it" }.orEmpty()
-                "player perf surface=$surface processCpu=$cpu $values$renderStats"
+                "player perf surface=$surface processCpu=$cpu $sampled$renderStats"
             } ?: continue
             withContext(Dispatchers.IO) { composeVideoTrace(line) }
         }

@@ -1,6 +1,6 @@
 package com.nuvio.app.features.player.compose
 
-import com.nuvio.app.features.player.WindowsPlayerWindowState
+import com.nuvio.app.features.player.MpvPlaybackState
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -68,7 +68,7 @@ class ComposeVideoSurfacePolicyTest {
 
     @Test
     fun `reveal tracker requires a render that started after the restart`() {
-        val state = WindowsPlayerWindowState().apply {
+        val state = MpvPlaybackState().apply {
             sourceGeneration = 4L
             activePlaylistEntryGeneration = 4L
         }

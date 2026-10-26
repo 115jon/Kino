@@ -119,6 +119,10 @@ internal class GlSyncFunctions private constructor(
         deleteSync.invokeVoid(arrayOf(sync))
     }
 
+    fun delete(sync: Pointer?) {
+        if (sync != null) deleteSync.invokeVoid(arrayOf(sync))
+    }
+
     fun createSharedContext(hdc: Pointer, share: Pointer): Pointer? =
         createContextAttribs.invokePointer(arrayOf(hdc, share, intArrayOf(0)))
 

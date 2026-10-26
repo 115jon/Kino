@@ -79,9 +79,8 @@ internal fun WindowsComposeVideoSurface(
             },
     ) {
         DesktopVideoLayer(
-            renderer = panel.renderer,
+            presenter = panel.presenter,
             stats = panel.stats,
-            visible = panel.videoVisible,
             modifier = Modifier.fillMaxSize(),
         )
         overlayContent()

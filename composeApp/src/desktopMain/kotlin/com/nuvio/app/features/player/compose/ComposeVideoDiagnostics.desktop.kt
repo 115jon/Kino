@@ -3,22 +3,11 @@ package com.nuvio.app.features.player.compose
 import co.touchlab.kermit.Logger
 import com.nuvio.app.features.player.boundWindowsMpvLogMessage
 import com.nuvio.app.features.player.redactMpvLogText
-import com.sun.jna.Library
-import com.sun.jna.Native
-import com.sun.jna.Pointer
 
 private val composeVideoLog = Logger.withTag("DesktopPlayerTrace")
 
 internal fun composeVideoTrace(message: String) {
     composeVideoLog.i { boundWindowsMpvLogMessage(redactMpvLogText(message)) }
-}
-
-internal interface MpvRenderSwapLibrary : Library {
-    fun mpv_render_context_report_swap(ctx: Pointer)
-
-    companion object {
-        val INSTANCE: MpvRenderSwapLibrary by lazy { Native.load("libmpv-2", MpvRenderSwapLibrary::class.java) }
-    }
 }
 
 internal class ComposeVideoStats {
