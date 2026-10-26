@@ -7,23 +7,19 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.asPaddingValues
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
@@ -34,9 +30,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
@@ -49,104 +43,6 @@ import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeEffect
 import org.jetbrains.compose.resources.DrawableResource
 import org.jetbrains.compose.resources.painterResource
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.WindowInsetsSides
-import androidx.compose.foundation.layout.only
-import androidx.compose.foundation.layout.safeContent
-import androidx.compose.foundation.background
-
-@Composable
-fun NuvioDesktopNavigationRail(
-    modifier: Modifier = Modifier,
-    header: @Composable ColumnScope.() -> Unit,
-    content: @Composable ColumnScope.() -> Unit,
-    footer: @Composable ColumnScope.() -> Unit,
-) {
-    val tokens = MaterialTheme.nuvio
-    Surface(
-        modifier = modifier
-            .widthIn(min = 220.dp, max = 240.dp)
-            .fillMaxHeight()
-            .drawBehind {
-                drawRect(
-                    color = tokens.colors.borderSubtle,
-                    topLeft = Offset(x = size.width - 1.dp.toPx(), y = 0f),
-                    size = Size(width = 1.dp.toPx(), height = size.height),
-                )
-            },
-        color = tokens.colors.background,
-        tonalElevation = 0.dp,
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxHeight()
-                .windowInsetsPadding(WindowInsets.safeContent.only(WindowInsetsSides.Vertical))
-                .padding(horizontal = 14.dp, vertical = 18.dp),
-        ) {
-            header()
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(top = 28.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                content()
-            }
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                footer()
-            }
-        }
-    }
-}
-
-@Composable
-fun NuvioDesktopNavigationItem(
-    selected: Boolean,
-    onClick: () -> Unit,
-    label: String,
-    contentDescription: String?,
-    modifier: Modifier = Modifier,
-    icon: @Composable () -> Unit,
-) {
-    val tokens = MaterialTheme.nuvio
-    val selectedBackground = tokens.colors.accent.copy(alpha = 0.10f)
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(
-                if (selected) selectedBackground else tokens.colors.background,
-            )
-            .drawBehind {
-                if (selected) {
-                    drawRect(
-                        color = tokens.colors.accent,
-                        size = Size(width = 2.dp.toPx(), height = size.height),
-                    )
-                }
-            }
-            .selectable(
-                selected = selected,
-                enabled = true,
-                role = Role.Tab,
-                onClick = onClick,
-            )
-            .padding(horizontal = 14.dp, vertical = 10.dp),
-        horizontalArrangement = Arrangement.spacedBy(14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        icon()
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelLarge,
-            color = if (selected) {
-                tokens.colors.textPrimary
-            } else {
-                tokens.colors.textMuted
-            },
-        )
-    }
-}
 
 /**
  * Scroll-aware state for the floating navigation bar.
