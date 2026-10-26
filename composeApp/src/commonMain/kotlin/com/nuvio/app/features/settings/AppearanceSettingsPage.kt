@@ -23,6 +23,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.nuvio.app.core.build.KinoFeaturePolicy
 import com.nuvio.app.core.ui.floatingNavigationGlowSupported
 import com.nuvio.app.core.ui.AppTheme
 import com.nuvio.app.isIos
@@ -137,24 +138,26 @@ internal fun LazyListScope.appearanceSettingsContent(
                         onCheckedChange = onLiquidGlassNativeTabBarToggle,
                     )
                 }
-                SettingsGroupDivider(isTablet = isTablet)
-                SettingsNavigationRow(
-                    title = stringResource(Res.string.settings_appearance_app_icon),
-                    description = stringResource(appIconState.selected.labelResource),
-                    enabled = appIconState.pending == null,
-                    isTablet = isTablet,
-                    trailingContent = {
-                        AppIconThumbnail(
-                            icon = appIconState.selected,
-                            modifier = Modifier.size(if (isTablet) 44.dp else 40.dp),
-                            cornerRadius = if (isTablet) 11.dp else 10.dp,
-                        )
-                    },
-                    onClick = {
-                        onAppIconFailureDismissed()
-                        showAppIconPicker = true
-                    },
-                )
+                if (KinoFeaturePolicy.alternateAppIconsEnabled) {
+                    SettingsGroupDivider(isTablet = isTablet)
+                    SettingsNavigationRow(
+                        title = stringResource(Res.string.settings_appearance_app_icon),
+                        description = stringResource(appIconState.selected.labelResource),
+                        enabled = appIconState.pending == null,
+                        isTablet = isTablet,
+                        trailingContent = {
+                            AppIconThumbnail(
+                                icon = appIconState.selected,
+                                modifier = Modifier.size(if (isTablet) 44.dp else 40.dp),
+                                cornerRadius = if (isTablet) 11.dp else 10.dp,
+                            )
+                        },
+                        onClick = {
+                            onAppIconFailureDismissed()
+                            showAppIconPicker = true
+                        },
+                    )
+                }
                 SettingsGroupDivider(isTablet = isTablet)
                 SettingsNavigationRow(
                     title = stringResource(Res.string.settings_appearance_app_language),
