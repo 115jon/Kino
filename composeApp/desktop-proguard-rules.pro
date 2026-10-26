@@ -62,3 +62,6 @@
 -keep class coil3.network.ktor3.internal.** { *; }
 -keep class dev.whyoleg.cryptography.providers.jdk.** { *; }
 -keep class io.ktor.server.config.** { *; }
+
+-keep class org.jetbrains.skiko.SkiaLayer { *; }
+-keep class org.jetbrains.skiko.renderer.** { *; }
