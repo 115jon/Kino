@@ -39,7 +39,6 @@ namespace Installer
         public string CurrentStatePath => Path.Combine(RootPath, CurrentStateFileName);
         public string RootIconPath => Path.Combine(RootPath, RootIconFileName);
         public string StagingPath => Path.Combine(RootPath, StagingDirectoryName);
-        public string LogsPath => Path.Combine(RootPath, LogsDirectoryName);
 
         public string GetVersionDirectoryPath(string version)
         {
