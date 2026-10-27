@@ -57,7 +57,9 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
+import com.nuvio.app.core.ui.legibleOnBackground
 import com.nuvio.app.core.format.extractReleaseYearForDisplay
+import com.nuvio.app.core.ui.TitleLogoImage
 import com.nuvio.app.core.ui.NuvioTokens
 import com.nuvio.app.features.details.MetaDetails
 import com.nuvio.app.features.details.formatRuntimeForDisplay
@@ -282,7 +284,7 @@ fun TabletDetailHero(
                 ),
         ) {
             if (logoUrl != null && !logoLoadError) {
-                AsyncImage(
+                TitleLogoImage(
                     model = logoUrl,
                     contentDescription = stringResource(Res.string.detail_logo_content_description, meta.name),
                     modifier = Modifier
@@ -437,7 +439,7 @@ private fun TabletHeroMetaRow(meta: MetaDetails, showImdbRating: Boolean) {
                 Text(
                     text = validImdbRating,
                     style = itemStyle,
-                    color = ImdbYellow,
+                    color = ImdbYellow.legibleOnBackground(),
                 )
             }
         }

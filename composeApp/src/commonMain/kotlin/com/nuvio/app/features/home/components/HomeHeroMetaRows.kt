@@ -19,6 +19,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.nuvio.app.core.ui.legibleOnBackground
 import com.nuvio.app.core.format.formatReleaseDateForDisplay
 import com.nuvio.app.core.i18n.localizedMediaStatusLabel
 import com.nuvio.app.features.details.components.DetailHeroMetaBadge
@@ -135,7 +136,7 @@ private fun HeroImdbRating(rating: String) {
         Text(
             text = rating,
             style = textStyle,
-            color = ImdbYellow,
+            color = ImdbYellow.legibleOnBackground(),
             maxLines = 1,
         )
     }
