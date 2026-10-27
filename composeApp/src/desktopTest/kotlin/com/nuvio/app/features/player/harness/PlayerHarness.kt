@@ -75,7 +75,7 @@ fun main() {
     if (System.getProperty("kino.player.perf-log") == null) System.setProperty("kino.player.perf-log", "true")
     if (System.getProperty("kino.player.perf-interval-ms") == null) System.setProperty("kino.player.perf-interval-ms", "1000")
     configureWindowsComposeVideoRenderApi()
-    Logger.setLogWriters(HarnessLogWriter)
+    Logger.setLogWriters(listOf(HarnessLogWriter))
     harnessLog("start surface=$surface media=${media.size} script=$script")
     application {
         Window(
