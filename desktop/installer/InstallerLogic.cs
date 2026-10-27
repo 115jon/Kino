@@ -39,7 +39,7 @@ namespace Installer
                 InstallRootLayout layout = InstallRootLayout.FromLocalAppData(GetLocalAppDataDirectory());
                 InstallerLogger.Info("Installing Kino to " + layout.RootPath);
 
-                WaitForProcessesToExit(layout, TimeSpan.FromSeconds(8), TimeSpan.FromSeconds(60));
+                WaitForProcessesToExit(layout, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(60));
                 DeleteShortcuts();
                 Directory.CreateDirectory(layout.RootPath);
                 Directory.CreateDirectory(layout.StagingPath);
@@ -67,7 +67,7 @@ namespace Installer
                 InstallRootLayout layout = InstallRootLayout.FromLocalAppData(GetLocalAppDataDirectory());
                 InstallerLogger.Info("Uninstalling Kino from " + layout.RootPath);
 
-                WaitForProcessesToExit(layout, TimeSpan.FromSeconds(8), TimeSpan.FromSeconds(60));
+                WaitForProcessesToExit(layout, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(60));
                 DeleteShortcuts();
                 DeleteRegistryKeyTree(Registry.CurrentUser, UninstallKeyPath);
                 DeleteRegistryKeyTree(Registry.CurrentUser, InstallLocationKeyPath);
