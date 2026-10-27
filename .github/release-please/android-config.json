@@ -1,0 +1,34 @@
+{
+  "bootstrap-sha": "f2156ebb53023db4fd0a16119f85097efad364e6",
+  "bump-minor-pre-major": true,
+  "include-component-in-tag": true,
+  "packages": {
+    ".": {
+      "component": "android",
+      "changelog-path": "CHANGELOG-android.md",
+      "exclude-paths": [
+        ".github",
+        "Docs",
+        "MPVKit",
+        "desktop",
+        "iosApp",
+        "composeApp/src/desktopMain",
+        "composeApp/src/desktopTest",
+        "composeApp/src/iosAppStore",
+        "composeApp/src/iosFull",
+        "composeApp/src/iosMain",
+        "composeApp/src/iosTest",
+        "composeApp/src/nativeInterop",
+        "release/versions/desktop.properties",
+        "release/versions/desktop.version",
+        "release/versions/ios.xcconfig",
+        "CHANGELOG.md"
+      ],
+      "extra-files": [
+        "release/versions/android.properties"
+      ],
+      "release-type": "simple",
+      "version-file": "release/versions/android.version"
+    }
+  }
+}
