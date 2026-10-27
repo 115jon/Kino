@@ -8,6 +8,7 @@ import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import co.touchlab.kermit.Logger
 import com.nuvio.app.core.logging.initializeDesktopAppLogging
+import com.nuvio.app.core.ui.DesktopKeyCommands
 import com.nuvio.app.features.player.prewarmDesktopPlaybackBackend
 import com.nuvio.app.features.player.compose.configureWindowsComposeVideoRenderApi
 import com.nuvio.app.features.player.compose.configureWindowsVideoSurfaceSelection
@@ -106,6 +107,7 @@ fun main() {
                 onCloseRequest = ::exitApplication,
                 title = "Kino",
                 icon = painterResource(Res.drawable.app_logo),
+                onKeyEvent = DesktopKeyCommands::dispatchUnconsumed,
             ) {
                 LaunchedEffect(window) {
                     if (!isWindowsPlatform()) return@LaunchedEffect
