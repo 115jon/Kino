@@ -444,7 +444,7 @@ namespace Installer
             Process.Start(new ProcessStartInfo
             {
                 FileName = "cmd.exe",
-                Arguments = "/c timeout /t 2 /nobreak >nul & if exist \"" + path + "\" rmdir /s /q \"" + path + "\"",
+                Arguments = "/c timeout /t 2 /nobreak >nul & if exist \"" + path + "\" attrib -r /s /d \"" + path + "\\*\" & if exist \"" + path + "\" rmdir /s /q \"" + path + "\"",
                 CreateNoWindow = true,
                 UseShellExecute = false
             });
@@ -457,7 +457,7 @@ namespace Installer
 
         private static void DeleteDirectoryIfExists(string path)
         {
-            try { if (Directory.Exists(path)) Directory.Delete(path, true); } catch (Exception exception) { InstallerLogger.Warn("Could not delete " + path + ": " + exception.Message); }
+            try { DirectoryRemoval.DeleteRecursive(path); } catch (Exception exception) { InstallerLogger.Warn("Could not delete " + path + ": " + exception.Message); }
         }
 
         private static void LaunchApplication(string executablePath, string arguments, string workingDirectory)
