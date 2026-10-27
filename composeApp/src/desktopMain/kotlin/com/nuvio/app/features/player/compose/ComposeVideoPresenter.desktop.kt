@@ -47,6 +47,7 @@ internal class ComposeVideoPresenter(
 
     fun onPlaybackRestart(generation: Long) {
         restartAtNs = System.nanoTime()
+        ring?.keepNewestPending()
         tracker.onPlaybackRestart(generation)
         renderThread?.requestRender(force = true)
     }
@@ -63,7 +64,10 @@ internal class ComposeVideoPresenter(
         if (released) return null
         val shared = contexts ?: return null
         if (!shared.ensureSkikoCurrent()) return null
-        return ring?.acquireImage()
+        val frames = ring ?: return null
+        val image = frames.acquireImage()
+        if (frames.hasPendingFrames()) SwingUtilities.invokeLater { frameSerial.intValue += 1 }
+        return image
     }
 
     fun release() {

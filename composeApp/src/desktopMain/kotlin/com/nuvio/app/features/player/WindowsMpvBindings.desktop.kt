@@ -32,6 +32,7 @@ internal interface WindowsMpvLibrary : Library {
     fun mpv_render_context_create(res: PointerByReference, ctx: Pointer, params: Pointer): Int
     fun mpv_render_context_set_update_callback(ctx: Pointer, callback: MpvRenderUpdateCallback?, callbackCtx: Pointer?)
     fun mpv_render_context_update(ctx: Pointer): Long
+    fun mpv_render_context_get_info(ctx: Pointer, param: MpvRenderParam.ByValue): Int
     fun mpv_render_context_render(ctx: Pointer, params: Pointer): Int
     fun mpv_render_context_free(ctx: Pointer)
     fun mpv_render_context_report_swap(ctx: Pointer)
@@ -42,8 +43,11 @@ internal const val MPV_RENDER_PARAM_API_TYPE = 1
 internal const val MPV_RENDER_PARAM_OPENGL_INIT_PARAMS = 2
 internal const val MPV_RENDER_PARAM_OPENGL_FBO = 3
 internal const val MPV_RENDER_PARAM_FLIP_Y = 4
+internal const val MPV_RENDER_PARAM_NEXT_FRAME_INFO = 11
 internal const val MPV_RENDER_PARAM_BLOCK_FOR_TARGET_TIME = 12
 internal const val MPV_RENDER_UPDATE_FRAME = 1L
+internal const val MPV_RENDER_FRAME_INFO_PRESENT = 1L
+internal const val MPV_RENDER_FRAME_INFO_REDRAW = 2L
 internal const val MPV_RENDER_API_TYPE_OPENGL = "opengl"
 
 internal const val MPV_EVENT_NONE = 0
@@ -78,6 +82,17 @@ open class MpvRenderParam : Structure() {
 
     @JvmField
     var data: Pointer? = null
+
+    class ByValue : MpvRenderParam(), Structure.ByValue
+}
+
+@Structure.FieldOrder("flags", "target_time")
+open class MpvRenderFrameInfo : Structure() {
+    @JvmField
+    var flags: Long = 0L
+
+    @JvmField
+    var target_time: Long = 0L
 }
 
 @Structure.FieldOrder("get_proc_address", "get_proc_address_ctx")

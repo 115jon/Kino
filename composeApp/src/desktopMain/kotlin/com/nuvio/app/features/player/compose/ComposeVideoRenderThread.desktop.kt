@@ -111,9 +111,10 @@ internal class ComposeVideoRenderThread(
             return
         }
         callbacks.onBeforeRender()
+        val redraw = output.nextFrameIsRedraw()
         val startNs = System.nanoTime()
         val result = output.render(slot.framebuffer, slot.width, slot.height, GL_RGBA8) ?: return
-        ring.publish(slot)
+        ring.publish(slot, redraw)
         if (reportSwap) output.reportSwap()
         stats.recordRender(System.nanoTime() - startNs, startNs - queuedNs)
         if (result < 0) {

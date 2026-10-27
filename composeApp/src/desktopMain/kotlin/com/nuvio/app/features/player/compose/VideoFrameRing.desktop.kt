@@ -7,7 +7,8 @@ import org.jetbrains.skia.ColorType
 import org.jetbrains.skia.Image
 import org.jetbrains.skia.SurfaceOrigin
 
-private const val VideoFrameSlotCount = 3
+private const val VideoFrameSlotCount = 4
+private const val MaxPendingFrames = 2
 private const val FenceTimeoutNs = 100_000_000L
 
 internal class VideoFrameSlot(
@@ -27,7 +28,7 @@ internal class VideoFrameRing(
 ) {
     private val lock = Any()
     private var slots: List<VideoFrameSlot> = emptyList()
-    private var latest: VideoFrameSlot? = null
+    private val pending = VideoFrameQueue<VideoFrameSlot>(MaxPendingFrames)
     private var displayed: VideoFrameSlot? = null
     private val retired = ArrayList<VideoFrameSlot>()
     private var closed = false
@@ -54,6 +55,7 @@ internal class VideoFrameRing(
                 retired += old
             }
             slots = created
+            pending.clear()
         }
         composeVideoTrace("compose video ring allocated size=${width}x$height slots=$VideoFrameSlotCount")
         return true
@@ -62,7 +64,7 @@ internal class VideoFrameRing(
     fun beginWrite(): VideoFrameSlot? {
         var readFence: Pointer? = null
         val slot = synchronized(lock) {
-            slots.firstOrNull { it !== latest && it !== displayed }?.also { slot ->
+            slots.firstOrNull { it !== displayed && it !in pending }?.also { slot ->
                 readFence = slot.readFence
                 slot.readFence = null
             }
@@ -71,23 +73,31 @@ internal class VideoFrameRing(
         return slot
     }
 
-    fun publish(slot: VideoFrameSlot) {
+    fun publish(slot: VideoFrameSlot, redraw: Boolean) {
         if (!contexts.sync.awaitAndDelete(contexts.sync.fence(), FenceTimeoutNs)) {
             composeVideoTrace("compose video frame fence timed out")
         }
         synchronized(lock) {
-            if (latest != null && latest !== displayed && isPresenting()) stats.recordUnshownFrame()
-            latest = slot
+            val presenting = isPresenting()
+            val dropped = pending.push(slot, redraw, presenting)
+            if (presenting) repeat(dropped) { stats.recordUnshownFrame() }
             publishedFrames += 1
         }
     }
+
+    fun keepNewestPending() {
+        synchronized(lock) { pending.keepNewest() }
+    }
+
+    fun hasPendingFrames(): Boolean = synchronized(lock) { pending.size > 0 }
 
     fun acquireImage(): Image? {
         val disposals: List<VideoFrameSlot>
         val slot = synchronized(lock) {
             if (closed) return null
-            val next = latest
-            if (next != null && next !== displayed) {
+            stats.recordPendingDepth(pending.size)
+            val next = pending.take()
+            if (next != null) {
                 displayed?.takeIf { it in slots }?.let { previous ->
                     contexts.sync.delete(previous.readFence)
                     previous.readFence = contexts.sync.fence()
@@ -114,7 +124,7 @@ internal class VideoFrameRing(
             val everything = slots + retired
             slots = emptyList()
             retired.clear()
-            latest = null
+            pending.clear()
             displayed = null
             everything
         }

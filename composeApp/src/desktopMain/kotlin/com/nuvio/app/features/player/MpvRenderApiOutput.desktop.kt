@@ -20,6 +20,11 @@ internal class RenderApiOutput(
         MPV_RENDER_PARAM_FLIP_Y to renderFlipY,
         MPV_RENDER_PARAM_BLOCK_FOR_TARGET_TIME to renderBlock,
     )
+    private val frameInfo = MpvRenderFrameInfo()
+    private val frameInfoParam = MpvRenderParam.ByValue().apply {
+        type = MPV_RENDER_PARAM_NEXT_FRAME_INFO
+        data = frameInfo.pointer
+    }
 
     @Volatile
     var renderContext: Pointer? = null
@@ -83,6 +88,15 @@ internal class RenderApiOutput(
         val renderPtr = renderContext ?: return false
         val library = lib ?: return false
         return (library.mpv_render_context_update(renderPtr) and MPV_RENDER_UPDATE_FRAME) != 0L
+    }
+
+    fun nextFrameIsRedraw(): Boolean {
+        val renderPtr = renderContext ?: return false
+        val library = lib ?: return false
+        if (library.mpv_render_context_get_info(renderPtr, frameInfoParam) < 0) return false
+        frameInfo.read()
+        val flags = frameInfo.flags
+        return flags and MPV_RENDER_FRAME_INFO_PRESENT == 0L || flags and MPV_RENDER_FRAME_INFO_REDRAW != 0L
     }
 
     fun reportSwap() {
