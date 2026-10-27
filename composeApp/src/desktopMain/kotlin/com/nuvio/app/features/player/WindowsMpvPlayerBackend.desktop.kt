@@ -81,6 +81,11 @@ internal class WindowsMpvPlayerBackend(
                         else -> "embedded panel"
                     },
                     clientFactory = ::createJnaMpvClient,
+                    videoOutputTarget = if (useNativeVideoSurface) {
+                        WindowsVideoOutputTarget.Display
+                    } else {
+                        WindowsVideoOutputTarget.SdrTexture
+                    },
                     urlResolver = urlResolver,
                 ).apply { perfCollector = backendPerfStats },
             )

@@ -105,7 +105,7 @@ internal fun MpvEngine.pollPlayback(
         eofReached = eofReached,
     )
     val videoPipelineLog = if (isPlayerLoading || positionMs == 0L) {
-        configureWindowsVideoPipeline(client, state, "poll")
+        configureWindowsVideoPipeline(client, state, videoOutputTarget, "poll")
     } else {
         null
     }

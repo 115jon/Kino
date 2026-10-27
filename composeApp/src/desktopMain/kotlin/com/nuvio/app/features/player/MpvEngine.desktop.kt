@@ -25,6 +25,7 @@ internal class MpvEngine(
     private val tracePrefix: String,
     private val clientFactory: () -> MpvClient,
     private val dispatcher: MpvEngineDispatcher = MpvCommandThread(),
+    val videoOutputTarget: WindowsVideoOutputTarget = WindowsVideoOutputTarget.Display,
     urlResolver: MpvUrlResolver = defaultMpvUrlResolver,
     resolutionContext: CoroutineContext = Dispatchers.IO,
 ) {
@@ -423,7 +424,7 @@ internal class MpvEngine(
                         if (event.id == MPV_EVENT_FILE_LOADED) {
                             desktopPlayerTrace("mpv event id=${event.id} error=${event.error} applying subtitle style")
                             applyWindowsMpvSubtitleStyle(current, playback.subtitleStyle)
-                            configureWindowsVideoPipeline(current, playback, "file-loaded")
+                            configureWindowsVideoPipeline(current, playback, videoOutputTarget, "file-loaded")
                         }
                         hasUpdates = true
                         eventCount += 1

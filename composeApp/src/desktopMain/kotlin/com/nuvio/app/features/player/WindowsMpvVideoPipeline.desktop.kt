@@ -3,6 +3,13 @@ package com.nuvio.app.features.player
 internal const val WindowsHdrCompatibilityFilter = "libplacebo=apply_filmgrain=1:peak_detect=1:tonemapping=auto"
 internal const val WindowsFilterCopyHwdec = "nvdec-copy,d3d11va-copy,dxva2-copy"
 internal const val WindowsDolbyVisionCompatibilityFilter = "libplacebo=apply_dolbyvision=1:apply_filmgrain=1:peak_detect=1:tonemapping=auto"
+internal const val WindowsDolbyVisionSdrFilter =
+    "$WindowsDolbyVisionCompatibilityFilter:colorspace=bt709:color_primaries=bt709:color_trc=bt709:range=tv:format=yuv420p"
+
+internal enum class WindowsVideoOutputTarget {
+    Display,
+    SdrTexture,
+}
 
 internal data class WindowsVideoPipelinePlan(
     val decision: DesktopVideoPipelineDecision,
@@ -10,15 +17,21 @@ internal data class WindowsVideoPipelinePlan(
     val signature: String,
 )
 
-internal fun windowsVideoPipelineFilter(mode: DesktopVideoPipelineMode): String = when (mode) {
+internal fun windowsVideoPipelineFilter(
+    mode: DesktopVideoPipelineMode,
+    target: WindowsVideoOutputTarget,
+): String = when (mode) {
     DesktopVideoPipelineMode.Standard -> ""
-    DesktopVideoPipelineMode.HdrCompatibility -> WindowsHdrCompatibilityFilter
-    DesktopVideoPipelineMode.DolbyVisionCompatibility -> WindowsDolbyVisionCompatibilityFilter
+    DesktopVideoPipelineMode.HdrCompatibility ->
+        if (target == WindowsVideoOutputTarget.SdrTexture) "" else WindowsHdrCompatibilityFilter
+    DesktopVideoPipelineMode.DolbyVisionCompatibility ->
+        if (target == WindowsVideoOutputTarget.SdrTexture) WindowsDolbyVisionSdrFilter else WindowsDolbyVisionCompatibilityFilter
 }
 
 internal fun planWindowsVideoPipeline(
     diagnostics: MpvVideoDiagnostics,
     state: MpvPlaybackState,
+    target: WindowsVideoOutputTarget,
 ): WindowsVideoPipelinePlan? {
     if (diagnostics.pixelFormat.isNullOrBlank()) return null
     val signature = diagnostics.signature()
@@ -26,7 +39,7 @@ internal fun planWindowsVideoPipeline(
     val decision = selectDesktopVideoPipeline(diagnostics.toMetadata(state))
     return WindowsVideoPipelinePlan(
         decision = decision,
-        filterSpec = windowsVideoPipelineFilter(decision.mode),
+        filterSpec = windowsVideoPipelineFilter(decision.mode, target),
         signature = signature,
     )
 }
@@ -34,10 +47,11 @@ internal fun planWindowsVideoPipeline(
 internal fun configureWindowsVideoPipeline(
     client: MpvClient,
     state: MpvPlaybackState,
+    target: WindowsVideoOutputTarget,
     trigger: String,
 ): String? {
     val diagnostics = readMpvVideoDiagnostics(client)
-    val plan = planWindowsVideoPipeline(diagnostics, state) ?: return null
+    val plan = planWindowsVideoPipeline(diagnostics, state, target) ?: return null
     val forceCopy = shouldForceWindowsCopyHwdec(plan.filterSpec, diagnostics.hardwarePixelFormat, state.hwdecCopyForced)
     if (forceCopy) {
         state.hwdecCopyForced = true
