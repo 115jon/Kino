@@ -633,6 +633,7 @@ kotlin {
             implementation(libs.compose.materialRipple)
             implementation(compose.materialIconsExtended)
             implementation(libs.compose.ui)
+            implementation(libs.compose.uiBackhandler)
             implementation(libs.compose.components.resources)
             implementation(libs.compose.uiToolingPreview)
             implementation(libs.androidx.lifecycle.viewmodelCompose)
