@@ -24,8 +24,6 @@ internal class ComposeVideoRenderThread(
 
     private val output = RenderApiOutput(
         extraOptions = composeVideoMpvOptions(),
-        flipY = false,
-        blockForTargetTime = true,
         logLevel = "info",
     ) {
         stats.recordUpdateCallback()

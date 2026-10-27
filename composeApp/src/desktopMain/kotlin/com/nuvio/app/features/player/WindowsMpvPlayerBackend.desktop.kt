@@ -57,7 +57,6 @@ internal class WindowsMpvPlayerBackend(
         val overlayAppTheme = MaterialTheme.appTheme
         val overlayRippleConfiguration = LocalRippleConfiguration.current
         val useComposeVideoSurface = remember { isComposeWindowsVideoSurfaceSelected() }
-        val useNativeVideoSurface = !useComposeVideoSurface && windowsVideoSurface() == WindowsVideoSurface.Native
         val currentOnSnapshot = rememberUpdatedState(onSnapshot)
         val currentOnError = rememberUpdatedState(onError)
         val currentOverlayContent = rememberUpdatedState(overlayContent)
@@ -75,16 +74,12 @@ internal class WindowsMpvPlayerBackend(
         val windowState = remember {
             WindowsPlayerWindowState(
                 MpvEngine(
-                    tracePrefix = when {
-                        useComposeVideoSurface -> "compose panel"
-                        useNativeVideoSurface -> "native panel"
-                        else -> "embedded panel"
-                    },
+                    tracePrefix = if (useComposeVideoSurface) "compose panel" else "native panel",
                     clientFactory = ::createJnaMpvClient,
-                    videoOutputTarget = if (useNativeVideoSurface) {
-                        WindowsVideoOutputTarget.Display
-                    } else {
+                    videoOutputTarget = if (useComposeVideoSurface) {
                         WindowsVideoOutputTarget.SdrTexture
+                    } else {
+                        WindowsVideoOutputTarget.Display
                     },
                     urlResolver = urlResolver,
                 ).apply { perfCollector = backendPerfStats },
@@ -111,51 +106,33 @@ internal class WindowsMpvPlayerBackend(
             background = ComposeColor(windowsPlayerInteropBackgroundArgb()),
             factory = {
                 desktopPlayerTrace(
-                    "windows presentation surface=${if (useNativeVideoSurface) "native-d3d11" else "embedded-opengl"} " +
+                    "windows presentation surface=native-d3d11 " +
                         "composeInteropBlending=${System.getProperty("compose.interop.blending")} " +
                         "nativeControls=false overlayWindow=true",
                 )
-                if (useNativeVideoSurface) {
-                    desktopPlayerTrace("native panel factory start")
-                    WindowsPlayerPanel(
-                        panelBackground = panelBackground,
-                        overlayColorScheme = colorScheme,
-                        overlayTypography = overlayTypography,
-                        overlayNuvioTokens = overlayNuvioTokens,
-                        overlayTypeScale = overlayTypeScale,
-                        overlayAppTheme = overlayAppTheme,
-                        overlayRippleConfiguration = overlayRippleConfiguration,
-                        state = windowState,
-                        onClose = {
-                            windowState.isClosed = true
-                            callbacks.onClose?.invoke()
-                        },
-                        onInitializationError = { message -> currentOnError.value(message) },
-                        onPlayerStateChanged = {
-                            playerStateSignals.tryEmit(Unit)
-                        },
-                        onSurfaceInteraction = onSurfaceInteraction,
-                        onSurfaceExit = onSurfaceExit,
-                        onWindowFocusChanged = onWindowFocusChanged,
-                        overlayContent = { currentOverlayContent.value() },
-                    )
-                } else {
-                    EmbeddedWindowsPlayerPanel(
-                        state = windowState,
-                        onClose = {
-                            windowState.isClosed = true
-                            callbacks.onClose?.invoke()
-                        },
-                        onInitializationError = { message -> currentOnError.value(message) },
-                        onPlayerStateChanged = {
-                            playerStateSignals.tryEmit(Unit)
-                        },
-                        onSurfaceInteraction = onSurfaceInteraction,
-                        onSurfaceExit = onSurfaceExit,
-                        onWindowFocusChanged = onWindowFocusChanged,
-                        perfCollector = backendPerfStats,
-                    )
-                }
+                desktopPlayerTrace("native panel factory start")
+                WindowsPlayerPanel(
+                    panelBackground = panelBackground,
+                    overlayColorScheme = colorScheme,
+                    overlayTypography = overlayTypography,
+                    overlayNuvioTokens = overlayNuvioTokens,
+                    overlayTypeScale = overlayTypeScale,
+                    overlayAppTheme = overlayAppTheme,
+                    overlayRippleConfiguration = overlayRippleConfiguration,
+                    state = windowState,
+                    onClose = {
+                        windowState.isClosed = true
+                        callbacks.onClose?.invoke()
+                    },
+                    onInitializationError = { message -> currentOnError.value(message) },
+                    onPlayerStateChanged = {
+                        playerStateSignals.tryEmit(Unit)
+                    },
+                    onSurfaceInteraction = onSurfaceInteraction,
+                    onSurfaceExit = onSurfaceExit,
+                    onWindowFocusChanged = onWindowFocusChanged,
+                    overlayContent = { currentOverlayContent.value() },
+                )
             },
             modifier = modifier,
             update = {},
@@ -251,7 +228,6 @@ internal class WindowsMpvPlayerBackend(
                 applyWindowsPlaybackPoll(
                     windowState = windowState,
                     outcome = outcome,
-                    useNativeVideoSurface = useNativeVideoSurface,
                     onSnapshot = currentOnSnapshot.value,
                     onError = currentOnError.value,
                     perfStats = backendPerfStats,
@@ -264,7 +240,6 @@ internal class WindowsMpvPlayerBackend(
 private fun applyWindowsPlaybackPoll(
     windowState: WindowsPlayerWindowState,
     outcome: MpvPollOutcome,
-    useNativeVideoSurface: Boolean,
     onSnapshot: (PlayerPlaybackSnapshot) -> Unit,
     onError: (String?) -> Unit,
     perfStats: DesktopBackendPerfCollector,
@@ -281,9 +256,7 @@ private fun applyWindowsPlaybackPoll(
     playback.audioTracks = pollPayload.audioTracks
     playback.subtitleTracks = pollPayload.subtitleTracks
     playback.volumeLevel = pollPayload.volumeLevel
-    if (useNativeVideoSurface) {
-        (windowState.panelRef as? WindowsPlayerPanel)?.updateVideoOutputReady(pollPayload.videoOutputReady)
-    }
+    (windowState.panelRef as? WindowsPlayerPanel)?.updateVideoOutputReady(pollPayload.videoOutputReady)
     onSnapshot(pollPayload.snapshot)
     val playbackError = selectWindowsPlaybackError(
         mpvErrorMessage = pollPayload.errorMessage,

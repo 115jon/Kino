@@ -317,26 +317,6 @@ val copyWindowsMediaArtwork = if (isWindowsHost) {
 } else {
     null
 }
-val joglVersion = libs.versions.jogl.get()
-val windowsJoglCore = configurations.detachedConfiguration(
-    dependencies.create("org.jogamp.jogl:jogl-all:$joglVersion")
-)
-val stripWindowsJoglJar = tasks.register<Zip>("stripWindowsJoglJar") {
-    destinationDirectory.set(layout.buildDirectory.dir("stripped-jars"))
-    archiveFileName.set("jogl-all-$joglVersion-windows.jar")
-    archiveExtension.set("jar")
-    duplicatesStrategy = org.gradle.api.file.DuplicatesStrategy.EXCLUDE
-    from({ zipTree(windowsJoglCore.singleFile) })
-    exclude(
-        "com/jogamp/nativewindow/javafx/**",
-        "com/jogamp/nativewindow/swt/**",
-        "com/jogamp/newt/javafx/**",
-        "com/jogamp/newt/swt/**",
-        "com/jogamp/opengl/swt/**",
-        "jogamp/newt/javafx/**",
-        "jogamp/newt/swt/**",
-    )
-}
 val requestedReleasePlatform = providers.gradleProperty("kino.release.platform").orNull?.trim()?.lowercase()
 val inferredReleasePlatform = when {
     gradle.startParameter.taskNames.any { taskName -> taskName.contains("ios", ignoreCase = true) } -> "ios"
@@ -577,15 +557,6 @@ kotlin {
                 implementation(libs.ktor.client.java)
                 implementation(libs.kotlinx.coroutines.swing)
                 implementation(libs.jna)
-                if (isWindowsHost) {
-                    implementation(files(stripWindowsJoglJar.flatMap { it.archiveFile }))
-                    implementation("org.jogamp.gluegen:gluegen-rt:$joglVersion")
-                    implementation("org.jogamp.jogl:jogl-all:$joglVersion:natives-windows-amd64")
-                    implementation("org.jogamp.gluegen:gluegen-rt:$joglVersion:natives-windows-amd64")
-                } else {
-                    implementation(libs.jogl.all)
-                    implementation(libs.gluegen.rt)
-                }
             }
         }
         androidMain {

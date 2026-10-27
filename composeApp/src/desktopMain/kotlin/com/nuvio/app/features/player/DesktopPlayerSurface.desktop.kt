@@ -75,11 +75,8 @@ actual fun PlatformPlayerSurface(
 internal actual val supportsValidatedStartupFallback: Boolean =
     isValidatedStartupFallbackOs(System.getProperty("os.name").orEmpty())
 
-internal actual fun platformPlayerSurfaceOwnsOverlay(): Boolean {
-    val osName = System.getProperty("os.name").orEmpty().lowercase()
-    val surface = System.getProperty("kino.windows.video-surface")
-    return osName.contains("win") && shouldUseNativeWindowsVideoSurface(surface)
-}
+internal actual fun platformPlayerSurfaceOwnsOverlay(): Boolean =
+    System.getProperty("os.name").orEmpty().lowercase().contains("win")
 
 internal interface DesktopPlaybackBackend {
     @Composable

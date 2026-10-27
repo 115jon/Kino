@@ -5,8 +5,6 @@ import com.sun.jna.ptr.PointerByReference
 
 internal class RenderApiOutput(
     private val extraOptions: List<MpvOption> = emptyList(),
-    flipY: Boolean = true,
-    blockForTargetTime: Boolean = true,
     override val logLevel: String = "warn",
     private val onRenderUpdate: () -> Unit,
 ) : MpvVideoOutput {
@@ -15,8 +13,8 @@ internal class RenderApiOutput(
     private var glProcAddressCallback: MpvOpenGlGetProcAddressCallback? = null
     private var glInitParams: MpvOpenGlInitParams? = null
     private val renderFbo = MpvOpenGlFbo()
-    private val renderFlipY = intMemory(if (flipY) 1 else 0)
-    private val renderBlock = intMemory(if (blockForTargetTime) 1 else 0)
+    private val renderFlipY = intMemory(0)
+    private val renderBlock = intMemory(1)
     private val renderParams = createRenderParams(
         MPV_RENDER_PARAM_OPENGL_FBO to renderFbo.pointer,
         MPV_RENDER_PARAM_FLIP_Y to renderFlipY,
