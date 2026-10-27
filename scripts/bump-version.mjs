@@ -27,8 +27,8 @@ function hasTag(tag) {
 }
 
 function getBaselineTag(platform, version) {
-  const candidates = [getPlatformTag(platform, version), `v${version}`];
-  return candidates.find(hasTag) ?? null;
+  const tag = getPlatformTag(platform, version);
+  return hasTag(tag) ? tag : null;
 }
 
 function getCommitsSinceCurrentVersion(tag) {
@@ -46,7 +46,7 @@ function getCommitsSinceCurrentVersion(tag) {
 }
 
 const platform = process.argv.find((arg) => arg.startsWith("--platform="))?.split("=")[1] ?? "android";
-const { file } = getReleaseFile(platform);
+const { file, canonicalFile } = getReleaseFile(platform);
 const content = fs.readFileSync(file, "utf8");
 const { version, build } = readReleaseState(platform, content);
 
@@ -70,4 +70,5 @@ console.log(`Next tag: ${getPlatformTag(platform, nextVersion)}`);
 if (process.argv.includes("--dry-run") || bump === "none") process.exit(0);
 
 fs.writeFileSync(file, writeReleaseState(platform, content, { version: nextVersion, build: build + 1 }));
+if (canonicalFile) fs.writeFileSync(canonicalFile, `${nextVersion}\n`);
 console.log(`Updated ${file} to ${nextVersion} (build ${build + 1}).`);

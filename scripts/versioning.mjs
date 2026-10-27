@@ -29,6 +29,7 @@ const propertiesVersionPatterns = {
 const releaseFiles = {
   android: {
     file: "release/versions/android.properties",
+    canonicalFile: "release/versions/android.version",
     ...propertiesVersionPatterns,
   },
   desktop: {
