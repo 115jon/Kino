@@ -175,9 +175,7 @@ internal class WindowsMpvPlayerBackend(
                     "audioHost=${playbackUrlForLog(sourceAudioUrl)} " +
                     "playerReady=${engine.isReady} closed=${windowState.isClosed}"
             )
-            while (!engine.isReady && !windowState.isClosed) {
-                delay(50)
-            }
+            engine.awaitStartedOrClosed()
             if (windowState.isClosed) {
                 desktopPlayerTrace("source load effect aborted reason=window-closed host=${playbackUrlForLog(sourceUrl)}")
             } else if (!engine.isReady) {
@@ -210,16 +208,12 @@ internal class WindowsMpvPlayerBackend(
         }
 
         LaunchedEffect(playWhenReady) {
-            while (!engine.isReady && !windowState.isClosed) {
-                delay(50)
-            }
+            engine.awaitStartedOrClosed()
             engine.setPaused(!playWhenReady)
         }
 
         LaunchedEffect(resizeMode) {
-            while (!engine.isReady && !windowState.isClosed) {
-                delay(50)
-            }
+            engine.awaitStartedOrClosed()
             if (engine.isReady) {
                 SwingUtilities.invokeLater {
                     windowState.panelRef?.applyResizeMode(resizeMode)

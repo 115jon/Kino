@@ -1,6 +1,8 @@
 package com.nuvio.app.features.player
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import java.util.concurrent.locks.ReentrantLock
@@ -34,8 +36,14 @@ internal class MpvEngine(
     val playback = MpvPlaybackState()
     val properties = MpvPropertyCache()
 
+    private val settled = MutableStateFlow(false)
+
     @Volatile
     var isClosed = false
+        set(value) {
+            field = value
+            if (value) settled.value = true
+        }
 
     @Volatile
     var perfCollector: DesktopBackendPerfCollector? = null
@@ -89,6 +97,7 @@ internal class MpvEngine(
             created.setWakeupListener { pump.request() }
             this.output = output
             client = created
+            settled.value = true
             pump.request()
         } catch (error: Throwable) {
             eventPump?.closeAndAwait()
@@ -98,6 +107,10 @@ internal class MpvEngine(
             dispatcher.shutdown()
             throw error
         }
+    }
+
+    suspend fun awaitStartedOrClosed() {
+        settled.first { it }
     }
 
     fun closeEvents() {
