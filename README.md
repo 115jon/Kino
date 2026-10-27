@@ -20,7 +20,7 @@
 
 ## About
 
-Kino is an independent rebrand and community fork of [Nuvio Mobile](https://github.com/NuvioMedia/NuvioMobile). It keeps the shared Compose experience for browsing metadata, managing collections, tracking watch progress, downloading content, and using the Stremio addon ecosystem while extending the product with a dedicated desktop shell and Windows installer.
+Kino is an independent fork of [Nuvio Mobile](https://github.com/NuvioMedia/NuvioMobile). It keeps the shared Compose experience for browsing metadata, managing collections, tracking watch progress, downloading content, and using the Stremio addon ecosystem while extending the product with a dedicated desktop shell and Windows installer.
 
 The application is built from a shared Kotlin Multiplatform codebase in [composeApp](./composeApp), with native platform entry points for Android, iOS, and desktop.
 
@@ -52,14 +52,14 @@ cd Kino
 
 Kino maintains independent release tracks for each platform. Android releases use `android-vX.Y.Z` tags and desktop releases use `desktop-vX.Y.Z` tags. Version metadata is stored in `release/versions/` and is not inherited from the upstream version file.
 
+Release Please opens a release PR per platform from conventional commits. Merging it creates the tag, and the tag builds the signed APK or the Windows installer and attaches it, with a `release-manifest.json` holding compatibility and checksum metadata, to the GitHub release.
+
 ```bash
 node scripts/bump-version.mjs --platform=android --dry-run
-node scripts/bump-version.mjs --platform=android
-git tag android-v<version>
-git push origin android-v<version>
+node scripts/verify-release-state.mjs --platform=android
 ```
 
-Use `--platform=desktop` for Windows releases. Each release publishes only the platform's distributable and a `release-manifest.json` containing compatibility and checksum metadata.
+Use `--platform=desktop` for Windows. See [Android releases](./Docs/operations/kino-android-releases.md) and [desktop releases](./desktop/RELEASES.md).
 
 ### Project Structure
 

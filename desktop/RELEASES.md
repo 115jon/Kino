@@ -1,6 +1,6 @@
 # Desktop Releases
 
-Desktop releases use Release Please on the `desktop` branch. Conventional commits determine the next semantic version:
+Desktop releases use Release Please on `main`, as the `desktop` component. Android is a separate component, see `Docs/operations/kino-android-releases.md`; each ignores commits that only touch the other platform. Conventional commits determine the next semantic version:
 
 - `fix`, `perf`, `refactor`, `build`, `ci`, `chore`, and `docs` produce a patch release.
 - `feat` produces a minor release while the app remains below `1.0.0`.
