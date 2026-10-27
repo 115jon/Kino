@@ -284,3 +284,98 @@ Discord window capture is not fixed by this branch (see 2.3).
    - Expected: no old-stream frames while the new one resolves.
    - Log: after `native video canvas visible=false`, the next `native video canvas visible=true` must come **after** `native panel loadFile …` and `mpv event id=6 … generation=N` for the new generation, not about 40 ms after the hide.
 5. **New playback after exiting.** Back out to details, then start a different title. Expected: black or the opening overlay, then the new video, with no frame from the previous title. If a stale frame still appears here, note the timestamps of `native panel factory start` and `native video canvas visible=true` and report them. That would be the residual redirection-surface case in 2.2.
+
+## 7. Performance pass
+
+Date: 2026-10-27. Branch: `t3/optimize-video-playback`.
+
+### Measurement setup
+
+- `./gradlew :composeApp:runPlayerHarness` (`composeApp/src/desktopTest/.../player/harness/PlayerHarness.kt`) plays local files through `WindowsMpvPlayerBackend` without the app shell, account or single-instance lock. Properties: `kino.harness.surface` (`compose` or `native`), `kino.harness.media` (`;`-separated paths), `kino.harness.script` (`wait<s>`, `reset`, `cpu`, `seek<ms>`, `seekby<ms>`, `next`, `pause`, `play`, `shot<name>`, `exit`). `-Pkino.harness.jvmArgs=...` passes JVM flags. It enables `kino.player.perf-log` at 1 s.
+- CPU is process CPU time over wall time, as % of one core, over a 40 s window after a 10 s warm-up. The window is 1280x800 and topmost.
+- Test media were synthetic (testsrc2 plus noise): 1080p23.976 H.264, 4K23.976 HEVC SDR, 4K60 HEVC Main10 PQ (HDR10), 4K60 Dolby Vision Profile 8.1 (dovi_tool RPU, x265), 1080p Dolby Vision Profile 5, and a 1080p file with 3 audio and 20 subtitle tracks.
+- The machine was busy with other work during the runs, so single runs vary by about ±10%.
+
+### Results
+
+Before is commit `44d7e7d98` with only the harness applied. After is this branch. Each pair of runs alternated between the two builds.
+
+CPU, % of one core:
+
+| Case | Before | After |
+|---|---|---|
+| Compose 1080p24 | 26.9, 24.8 | 23.6, 24.7 |
+| Compose 4K24 SDR | 25.6, 24.3 | 22.4, 22.7 |
+| Compose 4K60 Dolby Vision 8.1 | 126.3, 117.0 (5 and 0 drops) | 84.4, 81.6 (0 drops) |
+| Compose 4K60 HDR10 | 122.3, 126.7 | 37.1, 37.6 |
+| Compose 1080p24, 3 audio + 20 subtitle tracks | 23.1, 25.7 | 28.3, 23.3 |
+| Same file, only the track refresh changed (1 s vs 10 s plus change-driven) | 27.7, 26.2, 25.0 | 23.2, 25.7, 22.0 |
+| Native 1080p24 | 29.3 | 27.8 |
+| Native 4K24 SDR | 46.9 | 45.4 |
+| Native 4K60 Dolby Vision 8.1 (5 runs each) | 83.0 average, drops 27/33/54/57/85 | 82.7 average, drops 55/56/58/63/286 |
+
+Native 4K60 Dolby Vision drops mostly at startup in both builds. The 286 came from one 15 s burst in an otherwise clean run.
+
+Latency on the compose surface, one sequential run per build (load, then Next to the next file):
+
+| Step | Before | After |
+|---|---|---|
+| Seek in 1080p24 | 32 ms, 67 ms | 26 ms, 67 ms |
+| Next to 4K24 | 291 ms | 265 ms |
+| Seek in 4K24 (long GOP) | 667 ms | 657 ms |
+| Next to 4K60 Dolby Vision | 741 ms | 866 ms |
+| Seek in Dolby Vision | 1186 ms | 1113 ms |
+| Next from Dolby Vision to HDR10 | 2533 ms | 323 ms |
+| Seek in HDR10 | 1126 ms | 141 ms |
+| Next from HDR10 to 1080p24 | 1583 ms | 183 ms |
+| First `loadFile` to first frame | 103 ms | 182 ms |
+
+The first-load row is a single noisy sample; earlier runs of the new build measured 96-141 ms. Before, the HDR10 file inherited the previous file's Dolby Vision filter and copy decoder, which is why its seek and the following Next were slow.
+
+### Dolby Vision and HDR on the compose surface
+
+- The render API renderer (`vo=libmpv`, which is `vo_gpu`) does not apply Dolby Vision RPU reshaping. A Profile 5 sample rendered without the libplacebo filter shows completely wrong colors (IPT treated as YCbCr). This mpv build has no `gpu-next` backend for the render API. So the libplacebo `vf` is still required for Dolby Vision.
+- A GPU-only Dolby Vision chain does not work with the bundled mpv/FFmpeg:
+  - `lavfi=[hwupload=derive_device=vulkan,libplacebo=...]:hwdec_interop=cuda` fails with "A hardware device reference is required". mpv parses the graph before it attaches the interop device, and FFmpeg 8 `hwupload` checks for the device during parsing.
+  - `hwmap=derive_device=vulkan` (with or without `reverse=1`) derives the device but fails with ENOSYS, because FFmpeg cannot map CUDA frames into Vulkan.
+  - Both would need a patched mpv or FFmpeg runtime.
+- What changed instead:
+  - Copy decoding for the filter prefers `nvdec-copy` (CUDA DMA) over `auto-copy-safe`, which picked `d3d11va-copy` and its CPU readback.
+  - On SDR texture surfaces (compose), libplacebo tone-maps Dolby Vision straight to 8-bit BT.709 `yuv420p`. That halves the download and the GL upload. Tone mapping moves from `vo_gpu` to libplacebo, so very bright saturated highlights look more saturated than before.
+  - HDR10 no longer goes through libplacebo on SDR texture surfaces. `vo_gpu` already tone-maps it, so it stays on zero-copy `nvdec`. The output matches the old path to within about 9% brightness (peak detection differs).
+  - The native surface keeps the previous filters, because it can pass HDR through to the display.
+- Pipeline correctness:
+  - `video-params/dolby-vision` does not exist in mpv, so Dolby Vision used to be detected only from `colormatrix=dolbyvision` after the first decoded frame. The poll only reconfigured at position 0 or while loading, so a Dolby Vision file could play its whole run on zero-copy `nvdec` with no reshaping. Detection now reads `current-tracks/video/dolby-vision-profile` from the container at `file-loaded`, so the filter and the copy decoder are in place before the first frame.
+  - `hwdec` and `vf` are now set through `file-local-options/`. mpv restores them when the file ends. Previously the reset re-initialized the outgoing file's decoder, and the next file started with the previous file's filter. Next Episode from Dolby Vision to HDR10 took 1.6-2.5 s; it now takes about 0.3 s.
+  - An unchanged filter is not written again, so SDR loads no longer rebuild an empty filter chain.
+
+### About 330-470 ms present stalls about once a minute
+
+Not caused by Kino. Evidence from harness runs with GC and safepoint logging and JFR (10 ms Java samples, 20 ms native samples):
+
+- During a gap, mpv keeps rendering. The render thread publishes 8-12 frames that are never shown (`unshown`), and `frame-drop-count` stays 0.
+- The EDT is idle (parked in `EventQueue`). The Skiko present thread `skiko-dispatcher-to-block-on` sits in `DwmFlush()` for the whole gap. The desktop compositor is not composing.
+- No JVM safepoint near a gap is longer than 1 ms.
+- Gaps cluster 1-3 s after each wall-clock minute (for example 08:36:01, 08:37:02, 08:38:01). Two separate harness JVMs that happened to run at the same time showed gaps at the same moments (08:43:45, 08:44:01, 08:45:01-08:45:08).
+- The native path stalls too because its D3D11 presents also go through DWM.
+- A likely trigger on the test machine is NVIDIA Overlay (5 processes running), which is known to hitch DWM periodically. To confirm, turn off the NVIDIA overlay or Instant Replay, then run the harness for 3 minutes and look for `maxPresentGapMs` above 100.
+
+A separate, smaller per-minute hitch was in Kino's process. Skiko's `FrameWatcher` calls `System.gc()` every 30 s once more than 1000 frames have rendered (once a minute at 24 fps), and each call was a G1 Full GC: 28-35 ms in the harness, 64-93 ms in earlier app recordings. The app now runs with `-XX:+ExplicitGCInvokesConcurrent`, which turns that call into a concurrent cycle with 1-2 ms pauses. `-Dskiko.gc.auto=false` also removes the pauses, but it would stop Skiko from reclaiming native Skia memory, so it was not used.
+
+### Startup and switching
+
+- The source-load, play-state and resize effects wait for the engine through a state flow instead of polling every 50 ms. In one run, loading started 97 ms after the engine became ready.
+- Dolby Vision first frame takes about 1.2-1.3 s because libplacebo creates a Vulkan device per file and the copy decoder starts. The old path showed the first frame sooner only because it skipped Dolby Vision processing.
+- Rejected: turning off mpv's built-in scripts (`ytdl`, `load-stats-overlay`, `load-console`, `load-auto-profiles`, `load-select`, `load-positioning`, `load-commands`, `osc`, ...). Over 5 runs each, Next Episode averaged 188.8 ms stock and 195.2 ms lean.
+
+### Cleanup
+
+- Removed the embedded JOGL surface (`EmbeddedWindowsPlayerPanel`, `WindowsJoglNativeLoader`, the JOGL and gluegen dependencies, the repacked JOGL jar task and its ProGuard rules). `-Dkino.windows.video-surface=embedded` now falls back to the native surface.
+- `mpv.dll` was a byte-identical copy of `libmpv-2.dll`. It is no longer downloaded, packaged (45 MB in the app jar) or extracted. The extraction cache also kept a 240 MB directory per build or update (115 directories, 26 GB, on the test machine). The loader now prunes directories unused for 7 days and skips any directory another running copy still has loaded.
+- Track and audio diagnostics are re-read when `track-list/count`, `aid` or `sid` change, with a 10 s safety refresh, instead of every second. `sid` is now observed.
+- Removed unused bindings and EDT hops for engine-only calls.
+
+### Open items
+
+- On 60 fps content, about a third of the frames mpv renders are replaced before Compose draws them (`unshown` about 20 per second). mpv renders with `BLOCK_FOR_TARGET_TIME` on its own clock, and Compose presents on vsync, so two frames can land inside one vsync. A small FIFO (two pending frames, one more ring slot) would trade one frame of latency for even pacing. 24 fps content is not affected.
+- Dolby Vision cost is now dominated by the CUDA copy and the GL upload of the 8-bit result. Removing them needs a render API with libplacebo (`gpu-next`) or an FFmpeg that can import CUDA frames into Vulkan inside mpv's filter graph.
