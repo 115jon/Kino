@@ -5,27 +5,10 @@ import {
   compareVersions,
   getPlatformTag,
   getPlatformTagPrefix,
+  getReleaseFile,
   isReleaseStateAtLeast,
+  readReleaseState,
 } from "./versioning.mjs";
-
-const platformFiles = {
-  android: {
-    file: "release/versions/android.properties",
-    versionPattern: /^(versionName=)(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/m,
-    buildPattern: /^(versionCode=)(\d+)$/m,
-  },
-  desktop: {
-    file: "release/versions/desktop.properties",
-    canonicalFile: "release/versions/desktop.version",
-    versionPattern: /^(versionName=)(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/m,
-    buildPattern: /^(versionCode=)(\d+)$/m,
-  },
-  ios: {
-    file: "release/versions/ios.xcconfig",
-    versionPattern: /^(MARKETING_VERSION=)(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/m,
-    buildPattern: /^(CURRENT_PROJECT_VERSION=)(\d+)$/m,
-  },
-};
 
 function runGit(args) {
   return execFileSync("git", args, {
@@ -39,27 +22,16 @@ function getArgument(name) {
 }
 
 function readVersion(platform) {
-  const config = platformFiles[platform];
-  if (!config) throw new Error(`Invalid release platform: ${platform}`);
-  const content = fs.readFileSync(config.file, "utf8");
-  return readVersionContent(platform, content, config.file);
-}
-
-function readVersionContent(platform, content, file) {
-  const config = platformFiles[platform];
-  const version = content.match(config.versionPattern)?.[2];
-  const build = Number(content.match(config.buildPattern)?.[2]);
-  if (!version || !Number.isInteger(build)) throw new Error(`Invalid version file: ${file}`);
-  return { version, build };
+  const { file } = getReleaseFile(platform);
+  return readReleaseState(platform, fs.readFileSync(file, "utf8"));
 }
 
 function readVersionAtRef(platform, ref, allowMissing) {
-  const config = platformFiles[platform];
+  const { file } = getReleaseFile(platform);
   try {
-    const content = runGit(["show", `${ref}:${config.file}`]);
-    return readVersionContent(platform, content, `${ref}:${config.file}`);
+    return readReleaseState(platform, runGit(["show", `${ref}:${file}`]), `${ref}:${file}`);
   } catch {
-    if (!allowMissing) throw new Error(`Missing release file at ${ref}:${config.file}`);
+    if (!allowMissing) throw new Error(`Missing release file at ${ref}:${file}`);
     return null;
   }
 }
@@ -86,7 +58,7 @@ function getLatestTaggedVersion(platform) {
 function verify() {
   const platform = getArgument("platform") ?? "android";
   const current = readVersion(platform);
-  const canonicalFile = platformFiles[platform].canonicalFile;
+  const { canonicalFile } = getReleaseFile(platform);
   if (canonicalFile) {
     if (!fs.existsSync(canonicalFile)) throw new Error(`Missing canonical version file: ${canonicalFile}`);
     const canonicalVersion = fs.readFileSync(canonicalFile, "utf8").trim();
