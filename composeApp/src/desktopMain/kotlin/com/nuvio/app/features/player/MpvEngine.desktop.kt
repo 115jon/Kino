@@ -267,10 +267,6 @@ internal class MpvEngine(
         }
     }
 
-    fun setAudioDelayMs(delayMs: Long) {
-        setProperty("audio-delay", (delayMs / 1000.0).toString())
-    }
-
     fun setSubtitleDelayMs(delayMs: Long) {
         setProperty("sub-delay", (delayMs / 1000.0).toString())
     }

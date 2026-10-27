@@ -195,17 +195,6 @@ internal fun cStringMemory(value: String): Memory {
     }
 }
 
-private fun intPairMemory(first: Int, second: Int): Memory =
-    Memory(8L).apply {
-        setInt(0L, first)
-        setInt(4L, second)
-    }
-
-private fun longMemory(value: Long): Memory =
-    Memory(8L).apply {
-        setLong(0L, value)
-    }
-
 internal fun intMemory(value: Int): Memory =
     Memory(4L).apply {
         setInt(0L, value)

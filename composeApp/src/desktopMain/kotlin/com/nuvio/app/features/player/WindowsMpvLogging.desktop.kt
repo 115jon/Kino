@@ -6,7 +6,6 @@ import java.net.URI
 private val desktopPlayerLog = Logger.withTag("DesktopPlayerTrace")
 internal const val MaxWindowsMpvMetadataFieldLength = 96
 internal const val MaxWindowsMpvLogMessageLength = 4_096
-private const val MaxWindowsMpvTrackIdLength = 16
 private const val MaxWindowsMpvTrackTitleLength = 256
 private const val MaxWindowsMpvTrackLanguageLength = 64
 private const val MaxWindowsMpvTrackCodecLength = 128
