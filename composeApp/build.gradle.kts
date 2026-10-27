@@ -567,6 +567,7 @@ kotlin {
             kotlin.srcDir(generatedRuntimeConfigDir)
         }
         val desktopMain by getting {
+            resources.exclude("win32-x86-64/mpv.dll")
             if (isWindowsHost) {
                 resources.srcDir(layout.buildDirectory.dir("generated/windows-media-session"))
                 resources.srcDir(layout.buildDirectory.dir("generated/windows-media-artwork"))
