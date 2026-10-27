@@ -84,7 +84,7 @@ object NetworkStatusRepository {
         backgroundRefreshJob = scope.launch {
             while (isActive) {
                 delay(BACKGROUND_REFRESH_INTERVAL_MS)
-                requestRefresh()
+                requestRefresh(confirmFailures = true)
             }
         }
     }
