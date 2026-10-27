@@ -132,6 +132,7 @@ fun main() {
                         activateDesktopWindow(window)
                     }
                     val vrrCompatibility = installWindowsVrrCompatibility(window)
+                    val compositorClockPacing = installWindowsCompositorClockPacing(window)
                     window.minimumSize = Dimension(960, 640)
                     window.background = DesktopWindowBackground
                     window.contentPane.background = DesktopWindowBackground
@@ -139,6 +140,7 @@ fun main() {
                     onDispose {
                         activationSubscription.close()
                         vrrCompatibility?.close()
+                        compositorClockPacing?.close()
                     }
                 }
 

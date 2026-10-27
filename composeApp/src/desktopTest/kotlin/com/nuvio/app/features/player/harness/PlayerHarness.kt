@@ -3,6 +3,7 @@ package com.nuvio.app.features.player.harness
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -17,6 +18,7 @@ import androidx.compose.ui.window.rememberWindowState
 import co.touchlab.kermit.LogWriter
 import co.touchlab.kermit.Logger
 import co.touchlab.kermit.Severity
+import com.nuvio.app.installWindowsCompositorClockPacing
 import com.nuvio.app.features.player.PlayerEngineController
 import com.nuvio.app.features.player.PlayerResizeMode
 import com.nuvio.app.features.player.MpvUrlResolver
@@ -85,6 +87,10 @@ fun main() {
             alwaysOnTop = true,
             state = rememberWindowState(width = 1280.dp, height = 800.dp),
         ) {
+            DisposableEffect(window) {
+                val pacing = installWindowsCompositorClockPacing(window)
+                onDispose { pacing?.close() }
+            }
             val backend = remember { WindowsMpvPlayerBackend(localFileResolver) }
             var index by remember { mutableIntStateOf(0) }
             var controller by remember { mutableStateOf<PlayerEngineController?>(null) }

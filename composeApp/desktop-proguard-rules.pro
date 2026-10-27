@@ -43,4 +43,5 @@
 -keep enum com.typesafe.config.** { *; }
 
 -keep class org.jetbrains.skiko.SkiaLayer { *; }
+-keep class org.jetbrains.skiko.SkiaLayerProperties { *; }
 -keep class org.jetbrains.skiko.renderer.** { *; }

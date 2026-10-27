@@ -69,7 +69,7 @@ internal fun installWindowsVrrCompatibility(window: Window): AutoCloseable? {
     return WindowsVrrCompatibility(layer)
 }
 
-private fun findSkiaLayer(container: Container): SkiaLayer? {
+internal fun findSkiaLayer(container: Container): SkiaLayer? {
     container.components.forEach { component ->
         if (component is SkiaLayer) return component
         if (component is Container) {
