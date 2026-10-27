@@ -476,6 +476,7 @@ private fun PlaybackSettingsSection(
                         onCheckedChange = PlayerSettingsRepository::setExternalPlayerSendSkipSegments,
                     )
                 }
+                HdrPassthroughSettingRow(isTablet = isTablet)
                 SettingsGroupDivider(isTablet = isTablet)
                 SettingsSwitchRow(
                     title = stringResource(Res.string.settings_playback_touch_gestures),
