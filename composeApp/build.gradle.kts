@@ -715,23 +715,13 @@ compose.desktop {
             description = "Kino desktop streaming app"
             vendor = "Kino"
             modules("java.net.http")
-            targetFormats(
-                org.jetbrains.compose.desktop.application.dsl.TargetFormat.Dmg,
-                org.jetbrains.compose.desktop.application.dsl.TargetFormat.Msi,
-                org.jetbrains.compose.desktop.application.dsl.TargetFormat.Exe,
-            )
+            targetFormats(org.jetbrains.compose.desktop.application.dsl.TargetFormat.Dmg)
             macOS {
                 dockName = "Kino"
                 iconFile.set(project.file("desktop-icons/kino.icns"))
             }
             windows {
                 iconFile.set(project.file("desktop-icons/kino.ico"))
-                menu = true
-                menuGroup = "Kino"
-                dirChooser = true
-                perUserInstall = true
-                shortcut = true
-                upgradeUuid = "e4d85c1d-4bb0-4ed2-9a02-dfa497317d20"
             }
         }
     }
