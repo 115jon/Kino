@@ -200,11 +200,11 @@ fun NuvioTheme(
     customThemeColors: CustomThemeColors = CustomThemeColors.Default,
     content: @Composable () -> Unit,
 ) {
-    val palette = remember(appTheme, customThemeColors) {
-        ThemeColors.getColorPalette(appTheme, customThemeColors)
+    val palette = remember(appTheme, customThemeColors, darkTheme) {
+        resolveNuvioPalette(appTheme, customThemeColors, darkTheme)
     }
-    val colorScheme = buildColorScheme(palette, amoled = amoled)
-    val tokens = defaultNuvioThemeTokens(palette, amoled = amoled, colorScheme = colorScheme)
+    val colorScheme = if (darkTheme) buildColorScheme(palette, amoled = amoled) else lightNuvioColorScheme(palette)
+    val tokens = defaultNuvioThemeTokens(palette, amoled = amoled && darkTheme, colorScheme = colorScheme, darkTheme = darkTheme)
 
     val density = LocalDensity.current
     CompositionLocalProvider(
@@ -217,6 +217,8 @@ fun NuvioTheme(
         LocalRippleConfiguration provides NuvioRippleConfiguration,
         LocalAppTheme provides appTheme,
         LocalThemePalette provides palette,
+        LocalNuvioDarkTheme provides darkTheme,
+        LocalNuvioThemeSource provides NuvioThemeSource(appTheme, amoled, customThemeColors),
     ) {
         MaterialTheme(
             colorScheme = colorScheme,
