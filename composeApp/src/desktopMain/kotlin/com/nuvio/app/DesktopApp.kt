@@ -49,12 +49,10 @@ private fun configureMacOsNativeAppearance() {
 }
 
 private fun configureComposeInterop() {
-    val windowsVideoSurface = System.getProperty("kino.windows.video-surface")?.trim()?.lowercase()
-    val usesNativeWindowsVideo = isWindowsPlatform() && windowsVideoSurface !in setOf("embedded", "gl", "opengl")
     val blendingOverride = System.getProperty("kino.compose-interop-blending")
     System.setProperty(
         "compose.interop.blending",
-        blendingOverride ?: (!usesNativeWindowsVideo).toString(),
+        blendingOverride ?: (!isWindowsPlatform()).toString(),
     )
 }
 

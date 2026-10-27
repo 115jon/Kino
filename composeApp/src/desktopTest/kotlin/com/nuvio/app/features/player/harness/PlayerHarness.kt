@@ -67,7 +67,7 @@ fun main() {
     val script = System.getProperty("kino.harness.script").orEmpty().split(',').map { it.trim() }.filter { it.isNotEmpty() }
     require(media.isNotEmpty()) { "kino.harness.media is required" }
     System.setProperty("kino.windows.video-surface", surface)
-    System.setProperty("compose.interop.blending", (surface in setOf("embedded", "gl", "opengl")).toString())
+    System.setProperty("compose.interop.blending", "false")
     if (System.getProperty("skiko.vsync.enabled") == null) System.setProperty("skiko.vsync.enabled", "true")
     if (System.getProperty("skiko.rendering.windows.waitForFrameVsyncOnRedrawImmediately") == null) {
         System.setProperty("skiko.rendering.windows.waitForFrameVsyncOnRedrawImmediately", "true")
