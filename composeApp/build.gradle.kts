@@ -719,6 +719,19 @@ tasks.register<JavaExec>("runPlayerHarness") {
     )
 }
 
+tasks.register<JavaExec>("runScrollHarness") {
+    description = "Scrolls a home-like screen and reports frame times."
+    dependsOn(desktopTestCompilation.compileAllTaskName)
+    classpath(desktopTestCompilation.output.allOutputs, desktopTestCompilation.runtimeDependencyFiles)
+    mainClass.set("com.nuvio.app.harness.ScrollHarnessKt")
+    jvmArgs(providers.gradleProperty("kino.harness.jvmArgs").orNull?.split(' ')?.filter(String::isNotBlank).orEmpty())
+    systemProperties(
+        System.getProperties().stringPropertyNames()
+            .filter { it.startsWith("kino.") || it.startsWith("skiko.") }
+            .associateWith(System::getProperty),
+    )
+}
+
 val bootIosTestSimulator by tasks.registering(Exec::class) {
     val device = tasks.named<KotlinNativeSimulatorTest>("iosSimulatorArm64Test").flatMap { it.device }
     commandLine("xcrun", "simctl", "boot")
