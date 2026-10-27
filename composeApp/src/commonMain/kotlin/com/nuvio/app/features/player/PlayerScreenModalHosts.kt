@@ -25,7 +25,6 @@ internal fun PlayerScreenModalHosts(
     onAudioTrackSelected: (Int) -> Unit,
     onAudioModalDismissed: () -> Unit,
     showSubtitleModal: Boolean,
-    activeSubtitleTab: SubtitleTab,
     subtitleTracks: List<SubtitleTrack>,
     selectedSubtitleIndex: Int,
     addonSubtitles: List<AddonSubtitle>,
@@ -35,7 +34,6 @@ internal fun PlayerScreenModalHosts(
     subtitleDelayMs: Int,
     selectedAddonSubtitle: AddonSubtitle?,
     subtitleAutoSyncState: SubtitleAutoSyncUiState,
-    onSubtitleTabSelected: (SubtitleTab) -> Unit,
     onBuiltInSubtitleTrackSelected: (Int) -> Unit,
     onAddonSubtitleSelected: (AddonSubtitle) -> Unit,
     onFetchAddonSubtitles: () -> Unit,
@@ -52,13 +50,14 @@ internal fun PlayerScreenModalHosts(
     onVideoSettingsModalDismissed: () -> Unit,
     showSourcesPanel: Boolean,
     sourceStreamsState: StreamsUiState,
+    contentTitle: String,
+    activeEpisodeTitle: String?,
     activeSourceUrl: String,
     activeStreamTitle: String,
     onSourceFilterSelected: (String?) -> Unit,
     onSourceStreamSelected: (StreamItem) -> Unit,
     onReloadSources: () -> Unit,
     onSourcesPanelDismissed: () -> Unit,
-    desktopLayout: Boolean,
     isSeries: Boolean,
     showEpisodesPanel: Boolean,
     allEpisodes: List<MetaVideo>,
@@ -125,17 +124,17 @@ internal fun PlayerScreenModalHosts(
 
     SubtitleModal(
         visible = showSubtitleModal,
-        activeTab = activeSubtitleTab,
         subtitleTracks = subtitleTracks,
         selectedSubtitleIndex = selectedSubtitleIndex,
         addonSubtitles = addonSubtitles,
         selectedAddonSubtitleId = selectedAddonSubtitleId,
         isLoadingAddonSubtitles = isLoadingAddonSubtitles,
+        preferredSubtitleLanguage = playerSettings.preferredSubtitleLanguage,
+        secondaryPreferredSubtitleLanguage = playerSettings.secondaryPreferredSubtitleLanguage,
         subtitleStyle = subtitleStyle,
         subtitleDelayMs = subtitleDelayMs,
         selectedAddonSubtitle = selectedAddonSubtitle,
         subtitleAutoSyncState = subtitleAutoSyncState,
-        onTabSelected = onSubtitleTabSelected,
         onBuiltInTrackSelected = onBuiltInSubtitleTrackSelected,
         onAddonSubtitleSelected = onAddonSubtitleSelected,
         onFetchAddonSubtitles = onFetchAddonSubtitles,
@@ -158,13 +157,16 @@ internal fun PlayerScreenModalHosts(
     PlayerSourcesPanel(
         visible = showSourcesPanel,
         streamsUiState = sourceStreamsState,
+        contentTitle = contentTitle,
+        currentSeason = activeSeasonNumber,
+        currentEpisode = activeEpisodeNumber,
+        currentEpisodeTitle = activeEpisodeTitle,
         currentStreamUrl = activeSourceUrl,
         currentStreamName = activeStreamTitle,
         onFilterSelected = onSourceFilterSelected,
         onStreamSelected = onSourceStreamSelected,
         onReload = onReloadSources,
         onDismiss = onSourcesPanelDismissed,
-        desktopLayout = desktopLayout,
     )
 
     if (isSeries) {
@@ -192,7 +194,6 @@ internal fun PlayerScreenModalHosts(
             onBackToEpisodes = onBackToEpisodes,
             onReloadEpisodeStreams = onReloadEpisodeStreams,
             onDismiss = onEpisodesPanelDismissed,
-            desktopLayout = desktopLayout,
         )
     }
 

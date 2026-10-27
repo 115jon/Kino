@@ -1,9 +1,13 @@
 package com.nuvio.app
 
 import java.awt.Frame
+import java.nio.channels.FileChannel
 import java.nio.file.Files
+import java.nio.file.Path
+import java.nio.file.StandardOpenOption
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import kotlin.concurrent.thread
 import kotlin.io.path.createTempDirectory
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -83,5 +87,47 @@ class DesktopSingleInstanceTest {
             Files.deleteIfExists(directory.resolve("instance.lock"))
             Files.deleteIfExists(directory)
         }
+    }
+
+    @Test
+    fun `instance takes ownership once an unreachable previous owner releases the lock`() {
+        val directory = createTempDirectory("kino-single-instance-takeover")
+        val lockPath = directory.resolve("instance.lock")
+        val staleChannel = FileChannel.open(lockPath, StandardOpenOption.CREATE, StandardOpenOption.WRITE)
+        val staleLock = staleChannel.lock()
+        Files.writeString(directory.resolve("instance.endpoint"), "KINO/1 1 ${"0".repeat(64)}\n")
+        val releaser = thread {
+            Thread.sleep(300)
+            staleLock.release()
+            staleChannel.close()
+        }
+
+        val launch = DesktopSingleInstanceCoordinator.acquire(directory, takeoverTimeoutMillis = 10_000) {}
+        releaser.join()
+        val primary = assertIs<DesktopInstanceLaunch.Primary>(launch)
+        primary.coordinator.close()
+        deleteInstanceDirectory(directory)
+    }
+
+    @Test
+    fun `instance gives up when an unreachable owner keeps the lock`() {
+        val directory = createTempDirectory("kino-single-instance-held")
+        val staleChannel = FileChannel.open(directory.resolve("instance.lock"), StandardOpenOption.CREATE, StandardOpenOption.WRITE)
+        val staleLock = staleChannel.lock()
+        try {
+            val launch = DesktopSingleInstanceCoordinator.acquire(directory, takeoverTimeoutMillis = 200) {}
+
+            assertEquals(DesktopInstanceLaunch.Secondary(activationDelivered = false), launch)
+        } finally {
+            staleLock.release()
+            staleChannel.close()
+            deleteInstanceDirectory(directory)
+        }
+    }
+
+    private fun deleteInstanceDirectory(directory: Path) {
+        Files.deleteIfExists(directory.resolve("instance.endpoint"))
+        Files.deleteIfExists(directory.resolve("instance.lock"))
+        Files.deleteIfExists(directory)
     }
 }

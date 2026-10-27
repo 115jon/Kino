@@ -3,46 +3,43 @@ package com.nuvio.app.features.updater
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import co.touchlab.kermit.Logger
 import com.nuvio.app.core.build.AppFeaturePolicy
 import com.nuvio.app.core.build.AppVersionConfig
 import com.nuvio.app.core.i18n.localizedByteUnit
 import com.nuvio.app.core.ui.NuvioToastController
-import com.nuvio.app.features.addons.httpRequestRaw
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
-import kotlinx.serialization.SerialName
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.decodeFromString
-import kotlinx.serialization.json.Json
 import nuvio.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.getString
 
-private const val gitHubOwner = "115jon"
-private const val gitHubRepo = "Kino"
-private const val gitHubApiBase = "https://api.github.com"
-private const val releaseChannel = "stable"
-private const val releaseManifestName = "release-manifest.json"
+private val updaterLogger = Logger.withTag("AppUpdater")
 
 data class AppUpdate(
     val tag: String,
-    val version: String,
-    val versionCode: Int?,
-    val mandatory: Boolean,
+    val version: String = tag,
+    val versionCode: Int? = null,
+    val mandatory: Boolean = false,
     val title: String,
     val notes: String,
     val releaseUrl: String?,
     val assetName: String,
     val assetUrl: String,
-    val assetSha256: String,
+    val assetSha256: String = "",
     val assetSizeBytes: Long?,
 )
 
 data class AppUpdaterUiState(
+    val updateChannel: UpdateChannel = UpdateChannel.STABLE,
     val isChecking: Boolean = false,
     val update: AppUpdate? = null,
     val isUpdateAvailable: Boolean = false,
@@ -52,6 +49,7 @@ data class AppUpdaterUiState(
     val showDialog: Boolean = false,
     val showUnknownSourcesDialog: Boolean = false,
     val errorMessage: String? = null,
+    val isDebugTest: Boolean = false,
 )
 
 internal fun AppUpdaterUiState.dismissed(): AppUpdaterUiState = copy(
@@ -68,123 +66,38 @@ internal fun AppUpdaterUiState.downloadFailed(message: String): AppUpdaterUiStat
     showDialog = true,
 )
 
-@Serializable
-private data class GitHubReleaseDto(
-    @SerialName("tag_name") val tagName: String? = null,
-    val name: String? = null,
-    val body: String? = null,
-    val draft: Boolean = false,
-    val prerelease: Boolean = false,
-    @SerialName("html_url") val htmlUrl: String? = null,
-    val assets: List<GitHubAssetDto> = emptyList(),
-)
-
-@Serializable
-private data class GitHubAssetDto(
-    val name: String,
-    @SerialName("browser_download_url") val browserDownloadUrl: String,
-    val size: Long? = null,
-)
-
-private val appUpdaterJson = Json {
-    ignoreUnknownKeys = true
-    isLenient = true
-}
-
-private class NoChannelReleaseException : IllegalStateException(
-    runBlocking { getString(Res.string.updates_no_channel_release) },
-)
-
-private object AppUpdaterRepository {
-    suspend fun getLatestChannelUpdate(): Result<AppUpdate> = runCatching {
-        val response = httpRequestRaw(
-            method = "GET",
-            url = "$gitHubApiBase/repos/$gitHubOwner/$gitHubRepo/releases?per_page=100",
-            headers = mapOf(
-                "Accept" to "application/vnd.github+json",
-                "User-Agent" to "Kino",
-            ),
-            body = "",
-        )
-        if (response.status !in 200..299) {
-            error(getString(Res.string.updates_github_api_error, response.status))
-        }
-
-        val releases = appUpdaterJson.decodeFromString<List<GitHubReleaseDto>>(response.body)
-        val release = releases.firstOrNull { it.matchesRequestedPlatform() && !it.draft && !it.prerelease }
-            ?: throw NoChannelReleaseException()
-
-        val manifestAsset = release.assets.firstOrNull { it.name == releaseManifestName }
-            ?: error(getString(Res.string.updates_release_missing_manifest))
-        val manifestResponse = httpRequestRaw(
-            method = "GET",
-            url = manifestAsset.browserDownloadUrl,
-            headers = mapOf(
-                "Accept" to "application/json",
-                "User-Agent" to "Kino",
-            ),
-            body = "",
-        )
-        if (manifestResponse.status !in 200..299) {
-            error(getString(Res.string.updates_github_api_error, manifestResponse.status))
-        }
-
-        val manifest = appUpdaterJson.decodeFromString<ReleaseManifest>(manifestResponse.body)
-        if (!manifest.appliesTo(AppUpdaterPlatform.platform, releaseChannel)) {
-            throw NoChannelReleaseException()
-        }
-
-        val tag = release.tagName?.takeIf { it.isNotBlank() }
-            ?: release.name?.takeIf { it.isNotBlank() }
-            ?: error(getString(Res.string.updates_release_missing_title))
-        val expectedVersion = tag.removePrefix("${AppUpdaterPlatform.platform}-v")
-        check(manifest.version == expectedVersion) { "Release manifest version does not match its tag." }
-
-        val asset = manifest.selectAsset(
-            candidates = release.assets
-                .filterNot { it.name == releaseManifestName }
-                .map { candidate ->
-                    ReleaseAssetCandidate(
-                        name = candidate.name,
-                        url = candidate.browserDownloadUrl,
-                        sizeBytes = candidate.size,
-                    )
-                },
-            supportedAbis = AppUpdaterPlatform.getSupportedAbis(),
-        )
-            ?: error(getString(Res.string.updates_apk_asset_missing))
-
-        AppUpdate(
-            tag = tag,
-            version = manifest.version,
-            versionCode = manifest.versionCode,
-            mandatory = manifest.mandatory || manifest.isMandatoryFor(AppVersionConfig.VERSION_CODE),
-            title = release.name?.takeIf { it.isNotBlank() } ?: tag,
-            notes = release.body.orEmpty(),
-            releaseUrl = release.htmlUrl,
-            assetName = asset.name,
-            assetUrl = asset.url,
-            assetSha256 = manifest.assets.first { it.name == asset.name }.sha256,
-            assetSizeBytes = asset.sizeBytes,
-        )
-    }
-
-    private fun GitHubReleaseDto.matchesRequestedPlatform(): Boolean {
-        val prefix = "${AppUpdaterPlatform.platform}-v"
-        return tagName?.startsWith(prefix, ignoreCase = true) == true
-    }
-}
-
 class AppUpdaterController internal constructor(
     private val scope: CoroutineScope,
+    private val preferences: UpdatePreferences = UpdatePreferences.shared,
+    private val fetchUpdate: suspend (UpdateChannel) -> Result<AppUpdate> = AppUpdaterRepository::getLatestChannelUpdate,
 ) {
-    private val _uiState = MutableStateFlow(AppUpdaterUiState())
+    private val _uiState = MutableStateFlow(AppUpdaterUiState(updateChannel = preferences.channel.value))
     val uiState: StateFlow<AppUpdaterUiState> = _uiState.asStateFlow()
 
     private var autoCheckStarted = false
+    private var updateCheckJob: Job? = null
+    private var downloadJob: Job? = null
+
+    init {
+        scope.launch(start = CoroutineStart.UNDISPATCHED) {
+            preferences.channel.collect { channel ->
+                if (channel != _uiState.value.updateChannel) {
+                    updateCheckJob?.cancel()
+                    downloadJob?.cancel()
+                    _uiState.value.downloadedApkPath?.let(AppUpdaterPlatform::deleteDownloadedApk)
+                    _uiState.value = AppUpdaterUiState(updateChannel = channel)
+                    if (!AppUpdaterPlatform.isDebugBuild) {
+                        checkForUpdates(force = true, showNoUpdateFeedback = false)
+                    }
+                }
+            }
+        }
+    }
 
     fun ensureAutoCheckStarted() {
-        if (autoCheckStarted || !AppFeaturePolicy.inAppUpdaterEnabled || !AppUpdaterPlatform.isSupported) {
+        if (autoCheckStarted || !AppFeaturePolicy.inAppUpdaterEnabled ||
+            !AppUpdaterPlatform.isSupported || AppUpdaterPlatform.isDebugBuild
+        ) {
             return
         }
         autoCheckStarted = true
@@ -201,22 +114,31 @@ class AppUpdaterController internal constructor(
             return
         }
 
-        scope.launch {
+        if (_uiState.value.isDownloading) return
+        updateCheckJob?.cancel()
+        val channel = preferences.channel.value
+        updateCheckJob = scope.launch {
             _uiState.update { state ->
                 state.copy(
                     isChecking = true,
                     errorMessage = null,
                     showUnknownSourcesDialog = false,
+                    isDebugTest = false,
                 )
             }
 
             val ignoredTag = AppUpdaterPlatform.getIgnoredTag()
-            val result = AppUpdaterRepository.getLatestChannelUpdate()
+            val result = fetchUpdate(channel)
+            currentCoroutineContext().ensureActive()
+            if (channel != preferences.channel.value) return@launch
 
             result.onSuccess { update ->
                 val remoteNewer = update.isNewerThanCurrent()
+                updaterLogger.i {
+                    "Update check channel=${channel.storedValue} current=${AppVersionConfig.VERSION_NAME} latest=${update.version} asset=${update.assetName} newer=$remoteNewer"
+                }
                 val ignored = ignoredTag != null && ignoredTag == update.tag
-                val shouldShowDialog = force || update.mandatory || (remoteNewer && !ignored)
+                val shouldShowDialog = remoteNewer && (force || update.mandatory || !ignored)
 
                 _uiState.update { state ->
                     state.copy(
@@ -225,7 +147,9 @@ class AppUpdaterController internal constructor(
                         isUpdateAvailable = remoteNewer,
                         isDownloading = false,
                         downloadProgress = null,
-                        downloadedApkPath = state.downloadedApkPath.takeIf { remoteNewer },
+                        downloadedApkPath = state.downloadedApkPath.takeIf {
+                            remoteNewer && state.update?.tag == update.tag
+                        },
                         showDialog = shouldShowDialog,
                         showUnknownSourcesDialog = false,
                         errorMessage = null,
@@ -233,9 +157,14 @@ class AppUpdaterController internal constructor(
                 }
 
                 if (showNoUpdateFeedback && !remoteNewer) {
-                    NuvioToastController.show(getString(Res.string.updates_latest_version))
+                    NuvioToastController.show(noUpdateMessage(channel))
                 }
             }.onFailure { error ->
+                if (error is NoChannelReleaseException) {
+                    updaterLogger.i { "No ${channel.storedValue} release is available for ${AppUpdaterPlatform.platform}" }
+                } else {
+                    updaterLogger.w(error) { "Update check failed" }
+                }
                 _uiState.update { state ->
                     state.copy(
                         isChecking = false,
@@ -254,8 +183,11 @@ class AppUpdaterController internal constructor(
                     )
                 }
 
-                if (showNoUpdateFeedback || error is NoChannelReleaseException) {
-                    NuvioToastController.show(error.message ?: getString(Res.string.updates_check_failed))
+                if (showNoUpdateFeedback) {
+                    NuvioToastController.show(
+                        if (error is NoChannelReleaseException) noUpdateMessage(channel)
+                        else error.message ?: getString(Res.string.updates_check_failed),
+                    )
                 }
             }
         }
@@ -264,13 +196,20 @@ class AppUpdaterController internal constructor(
     private fun AppUpdate.isNewerThanCurrent(): Boolean =
         ReleaseManifest(
             platform = AppUpdaterPlatform.platform,
-            channel = releaseChannel,
             version = version,
             versionCode = versionCode,
         ).isNewerThan(
             currentVersion = AppVersionConfig.VERSION_NAME,
             currentVersionCode = AppVersionConfig.VERSION_CODE,
         )
+
+    private suspend fun noUpdateMessage(channel: UpdateChannel): String = getString(
+        if (channel == UpdateChannel.STABLE && VersionUtils.isPrerelease(AppVersionConfig.VERSION_NAME)) {
+            Res.string.updates_waiting_for_stable
+        } else {
+            Res.string.updates_latest_version
+        },
+    )
 
     fun dismissDialog() {
         _uiState.update(AppUpdaterUiState::dismissed)
@@ -283,9 +222,19 @@ class AppUpdaterController internal constructor(
     }
 
     fun downloadUpdate() {
+        if (_uiState.value.isDownloading) return
         val update = _uiState.value.update ?: return
+        if (_uiState.value.isDebugTest) {
+            runDebugDownloadTest()
+            return
+        }
 
-        scope.launch {
+        val previousDownload = downloadJob
+        previousDownload?.cancel()
+        val channel = preferences.channel.value
+        downloadJob = scope.launch {
+            previousDownload?.join()
+            val downloadContext = currentCoroutineContext()
             _uiState.update { state ->
                 state.copy(
                     isDownloading = true,
@@ -294,28 +243,35 @@ class AppUpdaterController internal constructor(
                 )
             }
 
-            AppUpdaterPlatform.downloadApk(
+            val result = AppUpdaterPlatform.downloadApk(
                 assetUrl = update.assetUrl,
                 assetName = update.assetName,
                 expectedSha256 = update.assetSha256,
             ) { downloadedBytes, totalBytes ->
+                downloadContext.ensureActive()
                 val progress = if (totalBytes != null && totalBytes > 0L) {
                     (downloadedBytes.toFloat() / totalBytes.toFloat()).coerceIn(0f, 1f)
                 } else {
                     null
                 }
-                _uiState.update { state -> state.copy(downloadProgress = progress) }
-            }.onSuccess { path ->
+                _uiState.update { state ->
+                    if (state.updateChannel == channel) state.copy(downloadProgress = progress) else state
+                }
+            }
+            currentCoroutineContext().ensureActive()
+            if (channel != preferences.channel.value) return@launch
+            result.onSuccess { path ->
                 _uiState.update { state ->
                     state.copy(
                         isDownloading = false,
                         downloadProgress = null,
                         downloadedApkPath = path,
                         errorMessage = null,
+                        showDialog = true,
                     )
                 }
-                installDownloadedUpdate()
             }.onFailure { error ->
+                updaterLogger.w(error) { "Update download failed for ${update.assetName}" }
                 _uiState.update {
                     it.downloadFailed(error.message ?: getString(Res.string.updates_download_failed))
                 }
@@ -333,6 +289,7 @@ class AppUpdaterController internal constructor(
         AppUpdaterPlatform.installDownloadedApk(apkPath).onSuccess {
             _uiState.update { state -> state.copy(showUnknownSourcesDialog = false) }
         }.onFailure { error ->
+            updaterLogger.w(error) { "Update installer launch failed" }
             scope.launch {
                 val fallbackMessage = error.message ?: getString(Res.string.updates_install_failed)
                 _uiState.update { state ->
@@ -350,6 +307,63 @@ class AppUpdaterController internal constructor(
             installDownloadedUpdate()
         } else {
             AppUpdaterPlatform.openUnknownSourcesSettings()
+        }
+    }
+
+    fun showDebugTestUpdate() {
+        if (!AppUpdaterPlatform.isDebugBuild || !AppUpdaterPlatform.isSupported) return
+
+        updateCheckJob?.cancel()
+        downloadJob?.cancel()
+        _uiState.value = AppUpdaterUiState(
+            updateChannel = preferences.channel.value,
+            update = AppUpdate(
+                tag = "9.9.9",
+                version = "9.9.9",
+                versionCode = null,
+                mandatory = false,
+                title = "Kino 9.9.9",
+                notes = """
+                    A local preview of the new update experience.
+
+                    - The banner pushes the app content down.
+                    - Download progress fills the banner with the primary accent.
+                    - Release notes live behind the info button.
+                """.trimIndent(),
+                releaseUrl = null,
+                assetName = "Kino-debug-preview.apk",
+                assetUrl = "debug://update-preview",
+                assetSha256 = "",
+                assetSizeBytes = 185L * 1024L * 1024L,
+            ),
+            isUpdateAvailable = true,
+            showDialog = true,
+            isDebugTest = true,
+        )
+    }
+
+    private fun runDebugDownloadTest() {
+        downloadJob = scope.launch {
+            _uiState.update { state ->
+                state.copy(
+                    isDownloading = true,
+                    downloadProgress = 0f,
+                    errorMessage = null,
+                )
+            }
+
+            for (step in 1..100) {
+                delay(35)
+                _uiState.update { state -> state.copy(downloadProgress = step / 100f) }
+            }
+
+            _uiState.update { state ->
+                state.copy(
+                    isDownloading = false,
+                    isUpdateAvailable = false,
+                    downloadProgress = 1f,
+                )
+            }
         }
     }
 }

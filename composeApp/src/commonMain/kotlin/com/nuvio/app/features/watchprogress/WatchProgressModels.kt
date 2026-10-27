@@ -1,17 +1,21 @@
 package com.nuvio.app.features.watchprogress
 
+import com.nuvio.app.core.i18n.localizedSeasonEpisodeCode
+import com.nuvio.app.core.i18n.localizedEpisodeTitle
 import com.nuvio.app.features.cloud.CloudLibraryContentType
 import com.nuvio.app.features.cloud.cloudLibraryProviderPosterUrl
 import com.nuvio.app.features.details.MetaVideo
+import com.nuvio.app.features.tracking.TrackingAttributedItem
+import com.nuvio.app.features.tracking.WatchProgressSource
 import com.nuvio.app.features.watching.domain.WatchingContentRef
 import kotlinx.serialization.Serializable
 
 internal const val WatchProgressCompletionPercentThreshold = 90f
-internal const val WatchProgressTraktPlaybackNextUpSeedPercentThreshold = 95f
 internal const val WatchProgressSourceLocal = "local"
 internal const val WatchProgressSourceTraktPlayback = "trakt_playback"
 internal const val WatchProgressSourceTraktHistory = "trakt_history"
 internal const val WatchProgressSourceTraktShowProgress = "trakt_show_progress"
+internal const val WatchProgressSourceSimklPlayback = "simkl_playback"
 
 @Serializable
 enum class ContinueWatchingSectionStyle {
@@ -24,6 +28,7 @@ enum class ContinueWatchingSectionStyle {
 enum class ContinueWatchingSortMode {
     DEFAULT,
     STREAMING_STYLE,
+    SPLIT_UPCOMING,
 }
 
 @Serializable
@@ -52,9 +57,16 @@ data class WatchProgressEntry(
     val isCompleted: Boolean = false,
     val progressPercent: Float? = null,
     val source: String = WatchProgressSourceLocal,
+    override val trackingProviderId: String? = null,
+    override val trackingProviderItemId: String? = null,
+    override val trackingSourceUrl: String? = null,
     /** Stable server/storage identity. [videoId] remains the playback identity. */
     val progressKey: String? = null,
-) {
+    val excludedNextUpSeasons: Set<Int> = emptySet(),
+) : TrackingAttributedItem {
+    override val trackingContentId: String
+        get() = parentMetaId
+
     val normalizedProgressPercent: Float?
         get() = progressPercent?.coerceIn(0f, 100f)
 
@@ -123,7 +135,9 @@ data class WatchProgressEntry(
 }
 
 data class WatchProgressUiState(
+    val source: WatchProgressSource = WatchProgressSource.NUVIO_SYNC,
     val entries: List<WatchProgressEntry> = emptyList(),
+    val hiddenContentIds: Set<String> = emptySet(),
     val hasLoadedRemoteProgress: Boolean = false,
 ) {
     val byProgressKey: Map<String, WatchProgressEntry>
@@ -160,6 +174,7 @@ data class WatchProgressUiState(
         get() = entries.continueWatchingEntries(limit = ContinueWatchingLimit)
 }
 
+@Serializable
 data class WatchProgressPlaybackSession(
     val profileId: Int,
     val contentType: String,
@@ -207,7 +222,17 @@ data class ContinueWatchingItem(
     val progressFraction: Float,
     val isReleaseAlert: Boolean = false,
     val isNewSeasonRelease: Boolean = false,
+    val rawPosterUrl: String? = null,
+    val rawBackgroundUrl: String? = null,
+    val shufflePlayback: Boolean = false,
+    val isWatched: Boolean = false,
 )
+
+internal fun continueWatchingItemKey(item: ContinueWatchingItem): String {
+    val season = item.seasonNumber ?: -1
+    val episode = item.episodeNumber ?: -1
+    return "${item.parentMetaId}:$season:$episode"
+}
 
 data class ContinueWatchingPreferencesUiState(
     val isVisible: Boolean = true,
@@ -345,13 +370,9 @@ internal fun buildContinueWatchingEpisodeSubtitle(
     episodeNumber: Int?,
     episodeTitle: String?,
 ): String {
-    val episodeCode = when {
-        seasonNumber != null && episodeNumber != null -> "S${seasonNumber}E${episodeNumber}"
-        episodeNumber != null -> "E${episodeNumber}"
-        else -> null
-    }
-    val title = episodeTitle.orEmpty()
-    return listOfNotNull(episodeCode, title.takeIf { it.isNotBlank() }).joinToString(" • ")
+    val episodeCode = localizedSeasonEpisodeCode(seasonNumber, episodeNumber)
+    val title = localizedEpisodeTitle(episodeTitle, episodeNumber)
+    return listOfNotNull(episodeCode, title).joinToString(" • ")
 }
 
 fun buildPlaybackVideoId(

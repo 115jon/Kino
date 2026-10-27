@@ -12,12 +12,6 @@ class WindowsPlayerInteractionPolicyTest {
     }
 
     @Test
-    fun `controls hide only after pointer leaves the full player surface`() {
-        assertEquals(false, shouldHideWindowsPlayerControls(pointerInside = true))
-        assertEquals(true, shouldHideWindowsPlayerControls(pointerInside = false))
-    }
-
-    @Test
     fun `overlay clicks do not toggle the player surface controls`() {
         assertEquals(true, shouldForwardWindowsPlayerClick(WindowsPlayerPointerTarget.Video))
         assertEquals(false, shouldForwardWindowsPlayerClick(WindowsPlayerPointerTarget.Overlay))
@@ -43,15 +37,6 @@ class WindowsPlayerInteractionPolicyTest {
     fun `normal control exit keeps playback controls mounted during the shared fade`() {
         assertEquals(true, shouldRenderPlayerPlaybackControls(controlsVisible = false, showParentalGuide = false))
         assertEquals(false, shouldRenderPlayerPlaybackControls(controlsVisible = false, showParentalGuide = true))
-    }
-
-    @Test
-    fun `native DirectX surface is the default and embedded surface is explicit`() {
-        assertEquals(true, shouldUseNativeWindowsVideoSurface(null))
-        assertEquals(false, shouldUseNativeWindowsVideoSurface("embedded"))
-        assertEquals(false, shouldUseNativeWindowsVideoSurface("opengl"))
-        assertEquals(true, shouldUseNativeWindowsVideoSurface("native"))
-        assertEquals(true, shouldUseNativeWindowsVideoSurface("d3d11"))
     }
 
     @Test

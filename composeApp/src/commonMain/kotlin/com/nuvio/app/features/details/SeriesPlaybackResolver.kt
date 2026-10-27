@@ -2,6 +2,8 @@ package com.nuvio.app.features.details
 
 import com.nuvio.app.features.watched.WatchedItem
 import com.nuvio.app.features.watched.normalizeWatchedMarkedAtEpochMs
+import com.nuvio.app.features.watched.watchedItemKey
+import com.nuvio.app.features.watching.application.WatchingState
 import com.nuvio.app.features.watchprogress.WatchProgressEntry
 import com.nuvio.app.features.watching.domain.WatchingCompletedEpisode
 import com.nuvio.app.features.watching.domain.WatchingContentRef
@@ -144,15 +146,35 @@ internal fun MetaDetails.seriesPrimaryAction(
     todayIsoDate: String,
     preferFurthestEpisode: Boolean = true,
     showUnairedNextUp: Boolean = false,
-): SeriesPrimaryAction? =
-    seriesPrimaryAction(
-        content = WatchingContentRef(type = type, id = id),
+    watchedKeys: Set<String> = emptySet(),
+    allowRewatch: Boolean = false,
+): SeriesPrimaryAction? {
+    val content = WatchingContentRef(type = type, id = id)
+    val effectiveWatchedItems = buildList {
+        addAll(watchedItems.filter { it.type.equals(type, ignoreCase = true) && it.id.equals(id, ignoreCase = true) })
+        if (watchedKeys.isNotEmpty()) {
+            val existingKeys = mapTo(mutableSetOf()) { watchedItemKey(it.type, it.id, it.season, it.episode) }
+            videos.forEach { video ->
+                val season = video.season ?: return@forEach
+                val episode = video.episode ?: return@forEach
+                val key = watchedItemKey(type, id, season, episode)
+                if (key in existingKeys) return@forEach
+                if (WatchingState.isEpisodeWatched(watchedKeys, type, id, video)) {
+                    add(WatchedItem(id = id, type = type, season = season, episode = episode, name = "", markedAtEpochMs = 0L))
+                }
+            }
+        }
+    }
+    return seriesPrimaryAction(
+        content = content,
         entries = entries,
-        watchedItems = watchedItems,
+        watchedItems = effectiveWatchedItems,
         todayIsoDate = todayIsoDate,
         preferFurthestEpisode = preferFurthestEpisode,
         showUnairedNextUp = showUnairedNextUp,
+        allowRewatch = allowRewatch,
     )
+}
 
 internal fun MetaDetails.seriesPrimaryAction(
     content: WatchingContentRef,
@@ -161,15 +183,21 @@ internal fun MetaDetails.seriesPrimaryAction(
     todayIsoDate: String,
     preferFurthestEpisode: Boolean = true,
     showUnairedNextUp: Boolean = false,
+    allowRewatch: Boolean = false,
 ): SeriesPrimaryAction? =
     decideSeriesPrimaryAction(
         content = content,
-        episodes = videos.map(MetaVideo::toDomainReleasedEpisode),
+        episodes = videos.filterNot { video ->
+            entries.any { entry -> entry.parentMetaId == content.id && entry.parentMetaType.equals(content.type, true) &&
+                video.season in entry.excludedNextUpSeasons }
+        }.map(MetaVideo::toDomainReleasedEpisode),
         progressRecords = entries.map(WatchProgressEntry::toDomainProgressRecord),
         watchedRecords = watchedItems.map(WatchedItem::toDomainWatchedRecord),
         todayIsoDate = todayIsoDate,
         preferFurthestEpisode = preferFurthestEpisode,
         showUnairedNextUp = showUnairedNextUp,
+        defaultVideoId = defaultVideoId,
+        allowRewatch = allowRewatch,
     )?.toLegacySeriesPrimaryAction()
 
 internal fun MetaVideo.playLabel(): String =

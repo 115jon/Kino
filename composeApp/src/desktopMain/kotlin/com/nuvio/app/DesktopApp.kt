@@ -6,8 +6,11 @@ import androidx.compose.ui.awt.ComposeWindow
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
+import co.touchlab.kermit.Logger
 import com.nuvio.app.core.logging.initializeDesktopAppLogging
 import com.nuvio.app.features.player.prewarmDesktopPlaybackBackend
+import com.nuvio.app.features.player.compose.configureWindowsComposeVideoRenderApi
+import com.nuvio.app.features.player.compose.configureWindowsVideoSurfaceSelection
 import nuvio.composeapp.generated.resources.Res
 import nuvio.composeapp.generated.resources.app_logo
 import org.jetbrains.compose.resources.painterResource
@@ -21,6 +24,7 @@ import java.awt.Color as AwtColor
 import java.awt.EventQueue
 
 private val DesktopWindowBackground = AwtColor(0x0C, 0x0C, 0x0C)
+private val singleInstanceLogger = Logger.withTag("DesktopSingleInstance")
 
 internal fun restoredDesktopWindowState(extendedState: Int): Int =
     extendedState and Frame.ICONIFIED.inv()
@@ -45,19 +49,15 @@ private fun configureMacOsNativeAppearance() {
 }
 
 private fun configureComposeInterop() {
-    val osName = System.getProperty("os.name")?.lowercase().orEmpty()
-    val windowsVideoSurface = System.getProperty("kino.windows.video-surface")?.trim()?.lowercase()
-    val usesNativeWindowsVideo = osName.contains("win") && windowsVideoSurface !in setOf("embedded", "gl", "opengl")
     val blendingOverride = System.getProperty("kino.compose-interop-blending")
     System.setProperty(
         "compose.interop.blending",
-        blendingOverride ?: (!usesNativeWindowsVideo).toString(),
+        blendingOverride ?: (!isWindowsPlatform()).toString(),
     )
 }
 
 private fun configureWindowsPresentationCompatibility() {
-    val osName = System.getProperty("os.name")?.lowercase().orEmpty()
-    if (!osName.contains("win")) return
+    if (!isWindowsPlatform()) return
     if (System.getProperty("skiko.vsync.enabled") == null) {
         System.setProperty("skiko.vsync.enabled", "true")
     }
@@ -71,8 +71,10 @@ fun main() {
     configureWindowsCaptureCompatibility()
     configureMacOsNativeAppearance()
     System.setProperty("java.net.preferIPv4Stack", "true")
+    configureWindowsVideoSurfaceSelection()
     configureComposeInterop()
     configureWindowsPresentationCompatibility()
+    configureWindowsComposeVideoRenderApi()
     initializeDesktopAppLogging()
     val activationRelay = DesktopActivationRelay()
     val instanceLaunch = if (isWindowsPlatform()) {
@@ -82,12 +84,14 @@ fun main() {
     }
     when (instanceLaunch) {
         is DesktopInstanceLaunch.Secondary -> {
-            if (!instanceLaunch.activationDelivered) {
-                System.err.println("Kino is already running, but its window could not be activated.")
+            if (instanceLaunch.activationDelivered) {
+                singleInstanceLogger.i { "Kino is already running; activated the existing window" }
+            } else {
+                singleInstanceLogger.w { "Kino is already running, but its window could not be activated" }
             }
         }
         is DesktopInstanceLaunch.Unavailable -> {
-            System.err.println("Single-instance coordination is unavailable: ${instanceLaunch.reason}")
+            singleInstanceLogger.e { "Single-instance coordination is unavailable: ${instanceLaunch.reason}" }
         }
         else -> Unit
     }
@@ -128,6 +132,7 @@ fun main() {
                         activateDesktopWindow(window)
                     }
                     val vrrCompatibility = installWindowsVrrCompatibility(window)
+                    val compositorClockPacing = installWindowsCompositorClockPacing(window)
                     window.minimumSize = Dimension(960, 640)
                     window.background = DesktopWindowBackground
                     window.contentPane.background = DesktopWindowBackground
@@ -135,6 +140,7 @@ fun main() {
                     onDispose {
                         activationSubscription.close()
                         vrrCompatibility?.close()
+                        compositorClockPacing?.close()
                     }
                 }
 

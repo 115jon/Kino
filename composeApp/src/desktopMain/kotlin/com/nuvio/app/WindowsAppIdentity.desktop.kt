@@ -11,7 +11,7 @@ private interface WindowsShellLibrary : Library {
 }
 
 internal fun configureWindowsAppUserModelId() {
-    if (!System.getProperty("os.name").orEmpty().contains("win", ignoreCase = true)) return
+    if (!isWindowsPlatform()) return
     runCatching {
         Native.load("shell32", WindowsShellLibrary::class.java)
             .SetCurrentProcessExplicitAppUserModelID(WString(KINO_WINDOWS_APP_USER_MODEL_ID))

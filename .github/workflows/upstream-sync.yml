@@ -8,15 +8,28 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  issues: write
+
+concurrency:
+  group: upstream-sync
+  cancel-in-progress: false
+
+env:
+  UPSTREAM_URL: https://github.com/NuvioMedia/NuvioMobile.git
+  UPSTREAM_BRANCH: cmp-rewrite
+  ISSUE_TITLE: Upstream sync needs a manual merge
 
 jobs:
   propose-sync:
     runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
     steps:
-      - name: Checkout Kino desktop branch
+      - name: Checkout Kino main branch
         uses: actions/checkout@v4
         with:
-          ref: desktop
+          ref: main
           fetch-depth: 0
           persist-credentials: false
 
@@ -25,45 +38,113 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Preserve trusted release verifier
+      - name: Preserve trusted Kino tools
         run: |
-          mkdir -p "$RUNNER_TEMP/kino-release-tools"
-          git show HEAD:scripts/versioning.mjs > "$RUNNER_TEMP/kino-release-tools/versioning.mjs"
-          git show HEAD:scripts/verify-release-state.mjs > "$RUNNER_TEMP/kino-release-tools/verify-release-state.mjs"
-          git rev-parse HEAD > "$RUNNER_TEMP/kino-release-tools/baseline-sha"
+          tools="$RUNNER_TEMP/kino-tools"
+          mkdir -p "$tools"
+          git show HEAD:scripts/versioning.mjs > "$tools/versioning.mjs"
+          git show HEAD:scripts/verify-release-state.mjs > "$tools/verify-release-state.mjs"
+          git show HEAD:scripts/kino/rebrand.mjs > "$tools/rebrand.mjs"
+          git rev-parse HEAD > "$tools/baseline-sha"
 
       - name: Fetch upstream
+        id: upstream
         run: |
-          git remote add upstream https://github.com/NuvioMedia/NuvioMobile.git
-          git fetch upstream cmp-rewrite
+          git remote add upstream "$UPSTREAM_URL"
+          git fetch --no-tags upstream "$UPSTREAM_BRANCH"
+          behind=$(git rev-list --count HEAD..FETCH_HEAD)
+          echo "behind=$behind" >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse FETCH_HEAD)" >> "$GITHUB_OUTPUT"
+          if [ "$behind" -eq 0 ]; then
+            echo "main already contains upstream $UPSTREAM_BRANCH"
+          fi
 
-      - name: Create synchronization branch
-        id: sync
+      - name: Merge upstream into a sync branch
+        id: merge
+        if: steps.upstream.outputs.behind != '0'
+        env:
+          UPSTREAM_SHA: ${{ steps.upstream.outputs.sha }}
         run: |
-          branch="sync/upstream-cmp-rewrite-$(date -u +%Y%m%d-%H%M%S)"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898299+github-actions[bot]@users.noreply.github.com"
+          git config rerere.enabled true
+          branch="sync/upstream-$(date -u +%Y%m%d)"
+          if git ls-remote --exit-code --heads origin "$branch" > /dev/null; then
+            branch="$branch-$(date -u +%H%M%S)"
+          fi
           git switch -c "$branch"
-          if git diff --quiet HEAD upstream/cmp-rewrite; then
-            echo "changed=false" >> "$GITHUB_OUTPUT"
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+          if git merge --no-ff --no-commit "$UPSTREAM_SHA"; then
+            git commit --no-edit
+            echo "clean=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          git merge --no-edit upstream/cmp-rewrite
-          baseline_sha=$(cat "$RUNNER_TEMP/kino-release-tools/baseline-sha")
-          node "$RUNNER_TEMP/kino-release-tools/verify-release-state.mjs" --platform=android --baseline-ref="$baseline_sha"
-          node "$RUNNER_TEMP/kino-release-tools/verify-release-state.mjs" --platform=desktop --baseline-ref="$baseline_sha"
-          node "$RUNNER_TEMP/kino-release-tools/verify-release-state.mjs" --platform=ios --baseline-ref="$baseline_sha"
-          git -c http.extraheader="AUTHORIZATION: bearer $GH_TOKEN" push origin "$branch"
-          echo "branch=$branch" >> "$GITHUB_OUTPUT"
-          echo "changed=true" >> "$GITHUB_OUTPUT"
-        env:
-          GH_TOKEN: ${{ github.token }}
+          git diff --name-only --diff-filter=U > "$RUNNER_TEMP/conflicts.txt"
+          git merge --abort
+          if [ ! -s "$RUNNER_TEMP/conflicts.txt" ]; then
+            echo "merge failed without conflicted paths" >&2
+            exit 1
+          fi
+          echo "clean=false" >> "$GITHUB_OUTPUT"
 
-      - name: Open synchronization pull request
-        if: steps.sync.outputs.changed == 'true'
+      - name: Report conflicts in the sync issue
+        if: steps.merge.outputs.clean == 'false'
         env:
-          GH_TOKEN: ${{ github.token }}
+          BEHIND: ${{ steps.upstream.outputs.behind }}
+          UPSTREAM_SHA: ${{ steps.upstream.outputs.sha }}
         run: |
+          body="$RUNNER_TEMP/issue.md"
+          {
+            echo "The weekly sync could not merge \`$UPSTREAM_BRANCH\` into \`main\` automatically."
+            echo
+            echo "- Upstream commits behind: **$BEHIND**"
+            echo "- Upstream head: \`$UPSTREAM_SHA\`"
+            echo "- Checked: $(date -u +%Y-%m-%dT%H:%MZ) ([run]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID))"
+            echo
+            echo "Conflicted paths:"
+            echo
+            sed 's/^/- `/; s/$/`/' "$RUNNER_TEMP/conflicts.txt"
+            echo
+            echo "Follow Docs/operations/kino-upstream-sync.md to merge by hand."
+          } > "$body"
+          number=$(gh issue list --state open --search "\"$ISSUE_TITLE\" in:title" --json number,title \
+            --jq '.[] | select(.title == env.ISSUE_TITLE) | .number' | head -n 1)
+          if [ -n "$number" ]; then
+            gh issue edit "$number" --body-file "$body"
+          else
+            gh issue create --title "$ISSUE_TITLE" --body-file "$body"
+          fi
+
+      - name: Rebrand and verify release state
+        if: steps.merge.outputs.clean == 'true'
+        run: |
+          tools="$RUNNER_TEMP/kino-tools"
+          node "$tools/rebrand.mjs"
+          if ! git diff --quiet; then
+            git commit -am "fix(i18n): rebrand new upstream strings"
+          fi
+          node "$tools/rebrand.mjs" --check
+          baseline_sha=$(cat "$tools/baseline-sha")
+          for platform in android desktop ios; do
+            node "$tools/verify-release-state.mjs" --platform="$platform" --baseline-ref="$baseline_sha"
+          done
+
+      - name: Push the sync branch and open a pull request
+        if: steps.merge.outputs.clean == 'true'
+        env:
+          BRANCH: ${{ steps.merge.outputs.branch }}
+          BEHIND: ${{ steps.upstream.outputs.behind }}
+          UPSTREAM_SHA: ${{ steps.upstream.outputs.sha }}
+        run: |
+          auth=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)
+          git -c http.https://github.com/.extraheader="AUTHORIZATION: basic $auth" push origin "$BRANCH"
           gh pr create \
-            --base desktop \
-            --head "${{ steps.sync.outputs.branch }}" \
-            --title "chore: sync upstream cmp-rewrite" \
-            --body "This pull request proposes the latest upstream cmp-rewrite changes for review. Resolve conflicts manually if the merge cannot be completed automatically."
+            --base main \
+            --head "$BRANCH" \
+            --title "chore(sync): merge upstream $UPSTREAM_BRANCH" \
+            --body "Merges $BEHIND upstream commits up to \`$UPSTREAM_SHA\` without conflicts. Run the verify steps in Docs/operations/kino-upstream-sync.md before merging."
+          number=$(gh issue list --state open --search "\"$ISSUE_TITLE\" in:title" --json number,title \
+            --jq '.[] | select(.title == env.ISSUE_TITLE) | .number' | head -n 1)
+          if [ -n "$number" ]; then
+            gh issue close "$number" --comment "Upstream merged cleanly into $BRANCH."
+          fi

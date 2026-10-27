@@ -53,6 +53,8 @@ import org.jetbrains.compose.resources.stringResource
 import com.nuvio.app.core.ui.landscapePosterHeightForWidth
 import com.nuvio.app.core.ui.landscapePosterWidth
 import com.nuvio.app.core.ui.rememberPosterCardStyleUiState
+import com.nuvio.app.features.home.components.HomeSkeletonRow
+import com.nuvio.app.core.ui.skeleton
 import com.nuvio.app.features.details.components.DetailPosterRailSection
 import com.nuvio.app.features.home.MetaPreview
 import com.nuvio.app.features.tmdb.TmdbEntityBrowseData
@@ -60,6 +62,7 @@ import com.nuvio.app.features.tmdb.TmdbEntityKind
 import com.nuvio.app.features.tmdb.TmdbEntityMediaType
 import com.nuvio.app.features.tmdb.TmdbEntityRailType
 import com.nuvio.app.features.tmdb.TmdbMetadataService
+import com.nuvio.app.core.poster.withCustomPosterUrls
 import com.nuvio.app.features.watched.WatchedRepository
 import com.nuvio.app.navigation.LocalUseNativeNavigation
 
@@ -89,6 +92,7 @@ fun TmdbEntityBrowseScreen(
         WatchedRepository.ensureLoaded()
         WatchedRepository.uiState
     }.collectAsStateWithLifecycle()
+    val fullyWatchedSeriesKeys by WatchedRepository.fullyWatchedSeriesKeys.collectAsStateWithLifecycle()
     val loadFailedMessage = stringResource(Res.string.details_browse_load_failed, entityName)
 
     LaunchedEffect(entityKind, entityId) {
@@ -100,7 +104,11 @@ fun TmdbEntityBrowseScreen(
             fallbackName = entityName,
         )
         uiState = if (data != null) {
-            EntityBrowseUiState.Success(data)
+            val pattern = com.nuvio.app.core.poster.CustomPosterUrlRepository.let { repo ->
+                repo.ensureLoaded()
+                repo.patternForScreen(com.nuvio.app.core.poster.CustomPosterScreen.DETAILS)
+            }
+            EntityBrowseUiState.Success(data.withCustomPosterUrls(pattern))
         } else {
             EntityBrowseUiState.Error(loadFailedMessage)
         }
@@ -121,6 +129,7 @@ fun TmdbEntityBrowseScreen(
                     data = state.data,
                     sourceType = sourceType,
                     watchedKeys = watchedUiState.watchedKeys,
+                    fullyWatchedSeriesKeys = fullyWatchedSeriesKeys,
                     onOpenMeta = onOpenMeta,
                 )
             }
@@ -149,6 +158,7 @@ private fun EntityBrowseContent(
     data: TmdbEntityBrowseData,
     sourceType: String,
     watchedKeys: Set<String>,
+    fullyWatchedSeriesKeys: Set<String>,
     onOpenMeta: (MetaPreview) -> Unit,
 ) {
     val backgroundUrl = remember(data.rails, sourceType) {
@@ -191,6 +201,7 @@ private fun EntityBrowseContent(
                 WideEntityBrowseContent(
                     data = data,
                     watchedKeys = watchedKeys,
+                    fullyWatchedSeriesKeys = fullyWatchedSeriesKeys,
                     onOpenMeta = onOpenMeta,
                 )
             } else if (data.rails.isEmpty()) {
@@ -224,6 +235,7 @@ private fun EntityBrowseContent(
                             title = entityRailTitle(rail),
                             items = rail.items,
                             watchedKeys = watchedKeys,
+                            fullyWatchedSeriesKeys = fullyWatchedSeriesKeys,
                             headerHorizontalPadding = 20.dp,
                             onPosterClick = onOpenMeta,
                         )
@@ -241,6 +253,7 @@ private fun EntityBrowseContent(
 private fun WideEntityBrowseContent(
     data: TmdbEntityBrowseData,
     watchedKeys: Set<String>,
+    fullyWatchedSeriesKeys: Set<String>,
     onOpenMeta: (MetaPreview) -> Unit,
 ) {
     Row(
@@ -291,6 +304,7 @@ private fun WideEntityBrowseContent(
                         title = entityRailTitle(rail),
                         items = rail.items,
                         watchedKeys = watchedKeys,
+                        fullyWatchedSeriesKeys = fullyWatchedSeriesKeys,
                         headerHorizontalPadding = 0.dp,
                         onPosterClick = onOpenMeta,
                     )
@@ -573,23 +587,11 @@ private fun EntityHeroSection(
 
 @Composable
 private fun EntityBrowseSkeleton() {
-    val posterCardStyle = rememberPosterCardStyleUiState()
-    val isLandscapeShelfMode = posterCardStyle.catalogLandscapeModeEnabled
-    val skeletonPosterWidth = if (isLandscapeShelfMode) {
-        landscapePosterWidth(posterCardStyle.widthDp)
-    } else {
-        posterCardStyle.widthDp.dp
-    }
-    val skeletonPosterHeight = if (isLandscapeShelfMode) {
-        landscapePosterHeightForWidth(skeletonPosterWidth)
-    } else {
-        posterCardStyle.heightDp.dp
-    }
-
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
+            .verticalScroll(rememberScrollState())
             .windowInsetsPadding(WindowInsets.statusBars)
             .padding(top = 56.dp),
     ) {
@@ -598,57 +600,31 @@ private fun EntityBrowseSkeleton() {
                 modifier = Modifier
                     .width(120.dp)
                     .height(14.dp)
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+                    .skeleton(RoundedCornerShape(4.dp)),
             )
             Spacer(modifier = Modifier.height(12.dp))
             Box(
                 modifier = Modifier
                     .width(200.dp)
                     .height(28.dp)
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+                    .skeleton(RoundedCornerShape(6.dp)),
             )
             Spacer(modifier = Modifier.height(10.dp))
             Box(
                 modifier = Modifier
                     .width(140.dp)
                     .height(14.dp)
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)),
+                    .skeleton(RoundedCornerShape(4.dp)),
             )
         }
 
         Spacer(modifier = Modifier.height(28.dp))
 
         repeat(3) {
-            Column(modifier = Modifier.padding(bottom = 20.dp)) {
-                Box(
-                    modifier = Modifier
-                        .padding(horizontal = 20.dp)
-                        .width(160.dp)
-                        .height(16.dp)
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
-                )
-                Spacer(modifier = Modifier.height(10.dp))
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 20.dp),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    repeat(4) {
-                        Box(
-                            modifier = Modifier
-                                .width(skeletonPosterWidth)
-                                .height(skeletonPosterHeight)
-                                .clip(RoundedCornerShape(posterCardStyle.cornerRadiusDp.dp))
-                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)),
-                        )
-                    }
-                }
-            }
+            HomeSkeletonRow(
+                modifier = Modifier.padding(bottom = 20.dp),
+                horizontalPadding = 20.dp,
+            )
         }
     }
 }

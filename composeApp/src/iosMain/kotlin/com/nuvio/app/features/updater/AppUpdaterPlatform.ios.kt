@@ -8,12 +8,19 @@ import org.jetbrains.compose.resources.getString
 actual object AppUpdaterPlatform {
     actual val isSupported: Boolean = false
     actual val platform: String = "ios"
+    actual val isDebugBuild: Boolean = false
 
     actual fun getSupportedAbis(): List<String> = emptyList()
 
     actual fun getIgnoredTag(): String? = null
 
     actual fun setIgnoredTag(tag: String?) = Unit
+
+    actual fun getUpdateChannel(): String? = null
+
+    actual fun setUpdateChannel(channel: String) = Unit
+
+    actual fun deleteDownloadedApk(path: String) = Unit
 
     actual suspend fun downloadApk(
         assetUrl: String,

@@ -12,7 +12,10 @@ import org.gradle.api.tasks.TaskAction
 import org.gradle.api.tasks.bundling.Zip
 import org.gradle.process.ExecOperations
 import org.gradle.process.ExecSpec
+import org.gradle.process.CommandLineArgumentProvider
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import org.jetbrains.kotlin.gradle.plugin.mpp.TestExecutable
+import org.jetbrains.kotlin.gradle.targets.native.tasks.KotlinNativeSimulatorTest
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompilationTask
 import java.util.Properties
 
@@ -46,7 +49,7 @@ abstract class GenerateRuntimeConfigsTask : DefaultTask() {
     abstract val sentryEnvironment: Property<String>
 
     @get:Input
-    abstract val realtimeSyncEnabled: Property<Boolean>
+    abstract val tmdbApiKey: Property<String>
 
     @TaskAction
     fun generate() {
@@ -83,20 +86,18 @@ abstract class GenerateRuntimeConfigsTask : DefaultTask() {
             )
         }
 
-        outDir.resolve("com/nuvio/app/core/sync").apply {
+        outDir.resolve("com/nuvio/app/features/tmdb").apply {
             mkdirs()
-            resolve("RealtimeSyncConfig.kt").writeText(
+            resolve("TmdbConfig.kt").writeText(
                 """
-                |package com.nuvio.app.core.sync
+                |package com.nuvio.app.features.tmdb
                 |
-                |object RealtimeSyncConfig {
-                |    const val ENABLED = ${realtimeSyncEnabled.get()}
+                |object TmdbConfig {
+                |    const val API_KEY = "${tmdbApiKey.get()}"
                 |}
                 """.trimMargin()
             )
         }
-
-        outDir.resolve("com/nuvio/app/features/tmdb/TmdbConfig.kt").delete()
 
         outDir.resolve("com/nuvio/app/features/trakt").apply {
             mkdirs()
@@ -108,6 +109,34 @@ abstract class GenerateRuntimeConfigsTask : DefaultTask() {
                 |    const val CLIENT_ID = "${props.getProperty("TRAKT_CLIENT_ID", "")}" 
                 |    const val CLIENT_SECRET = "${props.getProperty("TRAKT_CLIENT_SECRET", "")}" 
                 |    const val REDIRECT_URI = "${props.getProperty("TRAKT_REDIRECT_URI", "nuvio://auth/trakt")}" 
+                |}
+                """.trimMargin()
+            )
+        }
+
+        outDir.resolve("com/nuvio/app/features/simkl").apply {
+            mkdirs()
+            resolve("SimklConfig.kt").writeText(
+                """
+                |package com.nuvio.app.features.simkl
+                |
+                |object SimklConfig {
+                |    const val CLIENT_ID = "${props.getProperty("SIMKL_CLIENT_ID", "")}"
+                |    const val REDIRECT_URI = "${props.getProperty("SIMKL_REDIRECT_URI", "nuvio://auth/simkl")}"
+                |    const val APP_NAME = "${props.getProperty("SIMKL_APP_NAME", "nuvio")}"
+                |}
+                """.trimMargin()
+            )
+        }
+
+        outDir.resolve("com/nuvio/app/features/mdblist").apply {
+            mkdirs()
+            resolve("MdbListConfig.kt").writeText(
+                """
+                |package com.nuvio.app.features.mdblist
+                |
+                |object MdbListConfig {
+                |    const val CLIENT_ID = "${props.getProperty("MDBLIST_CLIENT_ID", "")}"
                 |}
                 """.trimMargin()
             )
@@ -175,6 +204,7 @@ abstract class GenerateRuntimeConfigsTask : DefaultTask() {
                 |
                 |object CommunityConfig {
                 |    const val CONTRIBUTIONS_URL = "${props.getProperty("CONTRIBUTIONS_URL", "")}" 
+                |    const val SUPPORTERS_WALL_URL = "${props.getProperty("SUPPORTERS_WALL_URL", "https://nuvio.tv/api/supporters/wall")}"
                 |    const val DONATIONS_BASE_URL = "${props.getProperty("DONATIONS_BASE_URL", "")}" 
                 |    const val DONATIONS_DONATE_URL = "${props.getProperty("DONATIONS_DONATE_URL", "")}" 
                 |}
@@ -287,26 +317,6 @@ val copyWindowsMediaArtwork = if (isWindowsHost) {
 } else {
     null
 }
-val joglVersion = libs.versions.jogl.get()
-val windowsJoglCore = configurations.detachedConfiguration(
-    dependencies.create("org.jogamp.jogl:jogl-all:$joglVersion")
-)
-val stripWindowsJoglJar = tasks.register<Zip>("stripWindowsJoglJar") {
-    destinationDirectory.set(layout.buildDirectory.dir("stripped-jars"))
-    archiveFileName.set("jogl-all-$joglVersion-windows.jar")
-    archiveExtension.set("jar")
-    duplicatesStrategy = org.gradle.api.file.DuplicatesStrategy.EXCLUDE
-    from({ zipTree(windowsJoglCore.singleFile) })
-    exclude(
-        "com/jogamp/nativewindow/javafx/**",
-        "com/jogamp/nativewindow/swt/**",
-        "com/jogamp/newt/javafx/**",
-        "com/jogamp/newt/swt/**",
-        "com/jogamp/opengl/swt/**",
-        "jogamp/newt/javafx/**",
-        "jogamp/newt/swt/**",
-    )
-}
 val requestedReleasePlatform = providers.gradleProperty("kino.release.platform").orNull?.trim()?.lowercase()
 val inferredReleasePlatform = when {
     gradle.startParameter.taskNames.any { taskName -> taskName.contains("ios", ignoreCase = true) } -> "ios"
@@ -352,6 +362,7 @@ val iosDistributionSourceDir = if (iosDistribution == "full") {
     "src/iosAppStore/kotlin"
 }
 val iosFrameworkBundleId = "com.nuvio.media"
+val nuvioEngineAppleFramework = rootProject.file("../nuvio-engine/platform/apple/NuvioEngine.xcframework")
 val fullCommonSourceDir = project.file("src/fullCommonMain/kotlin")
 val generatedRuntimeConfigDir = layout.buildDirectory.dir("generated/runtime-config/kotlin")
 val requestedGradleTasks = gradle.startParameter.taskNames.map { taskName ->
@@ -421,6 +432,7 @@ val generateRuntimeConfigs = tasks.register<GenerateRuntimeConfigsTask>("generat
     supabaseAnonKey.set(runtimeConfigValueFromKey("NUVIO_SUPABASE_ANON_KEY", fallbackKey = "SUPABASE_ANON_KEY"))
     supabaseFallbackUrl.set(runtimeConfigValue("NUVIO_SUPABASE_FALLBACK_URL"))
     sentryDsn.set(runtimeConfigValue("SENTRY_DSN"))
+    tmdbApiKey.set(runtimeConfigValue("TMDB_API_KEY"))
     sentryEnvironment.set(
         when {
             requestedGradleTasks.any { "benchmark" in it } -> "benchmark"
@@ -428,7 +440,6 @@ val generateRuntimeConfigs = tasks.register<GenerateRuntimeConfigsTask>("generat
             else -> "production"
         }
     )
-    realtimeSyncEnabled.set(runtimeConfigBoolean("NUVIO_REALTIME_SYNC_ENABLED", true))
 }
 
 tasks.withType<KotlinCompilationTask<*>>().configureEach {
@@ -445,7 +456,7 @@ kotlin {
         }
         minSdk = libs.versions.android.minSdk.get().toInt()
         androidResources.enable = true
-        withHostTest {}
+        withHostTest { isIncludeAndroidResources = true }
 
         compilerOptions {
             jvmTarget.set(JvmTarget.JVM_11)
@@ -464,11 +475,34 @@ kotlin {
     )
 
     iosTargets.forEach { iosTarget ->
+        val nuvioEngineSlice = if (iosTarget.name == "iosArm64") {
+            "ios-arm64"
+        } else {
+            "ios-arm64_x86_64-simulator"
+        }
+        val nuvioEngineSliceDirectory = nuvioEngineAppleFramework.resolve(nuvioEngineSlice)
         iosTarget.compilations.getByName("main") {
             cinterops {
                 create("commoncrypto") {
                     defFile(project.file("src/nativeInterop/cinterop/commoncrypto.def"))
                     compilerOpts("-I${project.projectDir}/src/nativeInterop/cinterop")
+                }
+                create("appicon") {
+                    defFile(project.file("src/nativeInterop/cinterop/appicon.def"))
+                    compilerOpts("-I${project.projectDir}/src/nativeInterop/cinterop")
+                }
+                if (iosDistribution == "full") {
+                    check(nuvioEngineSliceDirectory.resolve("libCNuvioEngine.a").isFile) {
+                        "Build the local Nuvio Engine Apple XCFramework before compiling iOS Full."
+                    }
+                    create("nuvioengine") {
+                        defFile(project.file("src/nativeInterop/cinterop/nuvioengine.def"))
+                        compilerOpts("-I${nuvioEngineSliceDirectory.resolve("Headers").absolutePath}")
+                        extraOpts("-libraryPath", nuvioEngineSliceDirectory.absolutePath)
+                    }
+                }
+                configureEach {
+                    extraOpts("-Xccall-mode", "direct")
                 }
             }
 
@@ -489,6 +523,22 @@ kotlin {
             baseName = "ComposeApp"
             isStatic = true
             freeCompilerArgs += listOf("-Xbinary=bundleId=$iosFrameworkBundleId")
+            if (iosDistribution == "full") {
+                linkerOpts(
+                    "-lc++",
+                    "-framework", "Security",
+                    "-framework", "SystemConfiguration",
+                    "-framework", "CoreFoundation",
+                )
+            }
+        }
+
+        if (iosTarget.name == "iosSimulatorArm64") {
+            val testEntitlements = project.file("src/iosTest/resources/keychain-test.entitlements")
+            iosTarget.binaries.withType<TestExecutable>().configureEach {
+                linkerOpts("-sectcreate", "__TEXT", "__entitlements", testEntitlements.absolutePath)
+                linkTaskProvider.configure { inputs.file(testEntitlements) }
+            }
         }
     }
     
@@ -497,6 +547,7 @@ kotlin {
             kotlin.srcDir(generatedRuntimeConfigDir)
         }
         val desktopMain by getting {
+            resources.exclude("win32-x86-64/mpv.dll")
             if (isWindowsHost) {
                 resources.srcDir(layout.buildDirectory.dir("generated/windows-media-session"))
                 resources.srcDir(layout.buildDirectory.dir("generated/windows-media-artwork"))
@@ -506,15 +557,6 @@ kotlin {
                 implementation(libs.ktor.client.java)
                 implementation(libs.kotlinx.coroutines.swing)
                 implementation(libs.jna)
-                if (isWindowsHost) {
-                    implementation(files(stripWindowsJoglJar.flatMap { it.archiveFile }))
-                    implementation("org.jogamp.gluegen:gluegen-rt:$joglVersion")
-                    implementation("org.jogamp.jogl:jogl-all:$joglVersion:natives-windows-amd64")
-                    implementation("org.jogamp.gluegen:gluegen-rt:$joglVersion:natives-windows-amd64")
-                } else {
-                    implementation(libs.jogl.all)
-                    implementation(libs.gluegen.rt)
-                }
             }
         }
         androidMain {
@@ -533,7 +575,8 @@ kotlin {
                 implementation("androidx.recyclerview:recyclerview:1.4.0")
                 implementation("com.squareup.okhttp3:okhttp:4.12.0")
                 implementation("com.google.code.gson:gson:2.11.0")
-                implementation("io.github.peerless2012:ass-media:0.4.0-beta01")
+                // libass - atlas-based subtitle rendering (from NuvioMedia/nuvio-libass)
+                implementation(files("libs/nuvio-libass-release.aar"))
                 implementation(libs.ktor.client.okhttp)
                 implementation(libs.sentry.android)
                 implementation(libs.androidx.media3.exoplayer.hls)
@@ -547,12 +590,27 @@ kotlin {
                 implementation(libs.androidx.media3.common)
                 implementation(libs.androidx.media3.container)
                 implementation(libs.androidx.media3.extractor)
+                implementation("com.google.guava:guava:33.3.1-android")
+                implementation("androidx.media3:media3-database:1.8.0")
+                implementation("androidx.annotation:annotation-experimental:1.3.1")
                 implementation(libs.mpv.android.lib)
                 implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("lib-*.aar"))))
                 if (androidDistribution == "full") {
                     implementation(files("libs/quickjs-kt-android-1.0.5-nuvio.aar"))
                     implementation(libs.ksoup)
                 }
+            }
+        }
+        val androidHostTest by getting {
+            dependencies {
+                implementation("org.robolectric:robolectric:4.16")
+                implementation("androidx.compose.ui:ui-test-junit4:${libs.versions.composeMultiplatform.get()}")
+                implementation("androidx.compose.ui:ui-test-manifest:${libs.versions.composeMultiplatform.get()}")
+                implementation("androidx.work:work-testing:${libs.versions.androidx.work.get()}")
+                implementation("com.squareup.okhttp3:mockwebserver:5.3.2")
+            }
+            if (androidDistribution == "full") {
+                kotlin.srcDir(project.file("src/androidFullHostTest/kotlin"))
             }
         }
         commonMain.dependencies {
@@ -562,20 +620,26 @@ kotlin {
             implementation("io.coil-kt.coil3:coil-network-ktor3:${libs.versions.coil.get()}") {
                 exclude(group = "org.jetbrains.skiko", module = "skiko")
             }
+            implementation("io.coil-kt.coil3:coil-network-cache-control:${libs.versions.coil.get()}") {
+                exclude(group = "org.jetbrains.skiko", module = "skiko")
+            }
             implementation("io.coil-kt.coil3:coil-svg:${libs.versions.coil.get()}") {
                 exclude(group = "org.jetbrains.skiko", module = "skiko")
             }
-            implementation("dev.chrisbanes.haze:haze:1.7.2")
+            implementation("dev.chrisbanes.haze:haze:1.7.3")
             implementation(libs.compose.runtime)
             implementation(libs.compose.foundation)
             implementation(libs.compose.material3)
+            implementation(libs.compose.materialRipple)
             implementation(compose.materialIconsExtended)
             implementation(libs.compose.ui)
             implementation(libs.compose.components.resources)
             implementation(libs.compose.uiToolingPreview)
-            implementation(libs.compottie)
             implementation(libs.androidx.lifecycle.viewmodelCompose)
             implementation(libs.androidx.lifecycle.runtimeCompose)
+            implementation(libs.androidx.savedstate)
+            implementation(libs.androidx.savedstate.compose)
+            implementation(libs.kotlinx.coroutines.core)
             implementation(libs.kotlinx.serialization.json)
             implementation(libs.kotlinx.atomicfu)
             implementation(libs.kmpalette.core)
@@ -584,11 +648,14 @@ kotlin {
             implementation(libs.supabase.postgrest)
             implementation(libs.supabase.auth)
             implementation(libs.supabase.functions)
+            implementation(libs.supabase.storage)
             implementation(libs.supabase.realtime)
             implementation(libs.reorderable)
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
+            implementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:${libs.versions.kotlinx.coroutines.get()}")
+            implementation("io.ktor:ktor-client-mock:${libs.versions.ktor.get()}")
         }
     }
 }
@@ -607,11 +674,15 @@ copyWindowsMediaArtwork?.let { task ->
 compose.desktop {
     application {
         mainClass = "com.nuvio.app.DesktopAppKt"
+        jvmArgs += listOf("-XX:ErrorFile=\$APPDIR/../../logs/hs_err_pid%p.log", "-XX:+ExplicitGCInvokesConcurrent")
         buildTypes.release.proguard {
             isEnabled.set(true)
             optimize.set(false)
             obfuscate.set(false)
             configurationFiles.from(project.file("desktop-proguard-rules.pro"))
+        }
+        buildTypes.release.aot {
+            mode = org.jetbrains.compose.desktop.application.dsl.AotMode.AppCdsAuto
         }
         nativeDistributions {
             packageName = "Kino"
@@ -619,26 +690,58 @@ compose.desktop {
             description = "Kino desktop streaming app"
             vendor = "Kino"
             modules("java.net.http")
-            targetFormats(
-                org.jetbrains.compose.desktop.application.dsl.TargetFormat.Dmg,
-                org.jetbrains.compose.desktop.application.dsl.TargetFormat.Msi,
-                org.jetbrains.compose.desktop.application.dsl.TargetFormat.Exe,
-            )
+            targetFormats(org.jetbrains.compose.desktop.application.dsl.TargetFormat.Dmg)
             macOS {
                 dockName = "Kino"
                 iconFile.set(project.file("desktop-icons/kino.icns"))
             }
             windows {
                 iconFile.set(project.file("desktop-icons/kino.ico"))
-                menu = true
-                menuGroup = "Kino"
-                dirChooser = true
-                perUserInstall = true
-                shortcut = true
-                upgradeUuid = "e4d85c1d-4bb0-4ed2-9a02-dfa497317d20"
             }
         }
     }
+}
+
+apply(from = "desktop-release-bytecode.gradle.kts")
+
+val desktopTestCompilation = kotlin.targets.getByName("desktop").compilations.getByName("test")
+
+tasks.register<JavaExec>("runPlayerHarness") {
+    description = "Plays local media through the Windows player without the app shell."
+    dependsOn(desktopTestCompilation.compileAllTaskName)
+    classpath(desktopTestCompilation.output.allOutputs, desktopTestCompilation.runtimeDependencyFiles)
+    mainClass.set("com.nuvio.app.features.player.harness.PlayerHarnessKt")
+    jvmArgs(providers.gradleProperty("kino.harness.jvmArgs").orNull?.split(' ')?.filter(String::isNotBlank).orEmpty())
+    systemProperties(
+        System.getProperties().stringPropertyNames()
+            .filter { it.startsWith("kino.") || it.startsWith("skiko.") }
+            .associateWith(System::getProperty),
+    )
+}
+
+tasks.register<JavaExec>("runScrollHarness") {
+    description = "Scrolls a home-like screen and reports frame times."
+    dependsOn(desktopTestCompilation.compileAllTaskName)
+    classpath(desktopTestCompilation.output.allOutputs, desktopTestCompilation.runtimeDependencyFiles)
+    mainClass.set("com.nuvio.app.harness.ScrollHarnessKt")
+    jvmArgs(providers.gradleProperty("kino.harness.jvmArgs").orNull?.split(' ')?.filter(String::isNotBlank).orEmpty())
+    systemProperties(
+        System.getProperties().stringPropertyNames()
+            .filter { it.startsWith("kino.") || it.startsWith("skiko.") }
+            .associateWith(System::getProperty),
+    )
+}
+
+val bootIosTestSimulator by tasks.registering(Exec::class) {
+    val device = tasks.named<KotlinNativeSimulatorTest>("iosSimulatorArm64Test").flatMap { it.device }
+    commandLine("xcrun", "simctl", "boot")
+    argumentProviders.add(CommandLineArgumentProvider { listOf(device.get()) })
+    isIgnoreExitValue = true
+}
+
+tasks.withType<KotlinNativeSimulatorTest>().configureEach {
+    standalone.set(false)
+    dependsOn(bootIosTestSimulator)
 }
 
 configurations.matching { it.name == "iosMainImplementation" }.configureEach {
@@ -647,5 +750,10 @@ configurations.matching { it.name == "iosMainImplementation" }.configureEach {
 
 configurations.all {
     exclude(group = "androidx.media3", module = "media3-exoplayer")
+    exclude(group = "androidx.media3", module = "media3-exoplayer-hls")
     exclude(group = "androidx.media3", module = "media3-ui")
+    exclude(group = "androidx.media3", module = "media3-common")
+    exclude(group = "androidx.media3", module = "media3-datasource")
+    exclude(group = "androidx.media3", module = "media3-datasource-okhttp")
+    exclude(group = "androidx.media3", module = "media3-extractor")
 }

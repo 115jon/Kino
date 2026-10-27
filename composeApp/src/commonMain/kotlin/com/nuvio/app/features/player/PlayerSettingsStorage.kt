@@ -3,8 +3,18 @@ package com.nuvio.app.features.player
 import kotlinx.serialization.json.JsonObject
 
 internal expect object PlayerSettingsStorage {
+    fun loadPendingExternalPlayback(): String?
+    fun savePendingExternalPlayback(value: String?)
+    fun loadPlaybackBrightness(): Float?
+    fun savePlaybackBrightness(level: Float)
+    fun loadUseLegacyPlayerLayout(): Boolean?
+    fun saveUseLegacyPlayerLayout(enabled: Boolean)
     fun loadShowLoadingOverlay(): Boolean?
     fun saveShowLoadingOverlay(enabled: Boolean)
+    fun loadShowPlayerLoadingStatus(): Boolean?
+    fun saveShowPlayerLoadingStatus(enabled: Boolean)
+    fun loadPauseOverlayEnabled(): Boolean?
+    fun savePauseOverlayEnabled(enabled: Boolean)
     fun loadShowParentalGuide(): Boolean?
     fun saveShowParentalGuide(enabled: Boolean)
     fun loadResizeMode(): String?
@@ -47,12 +57,12 @@ internal expect object PlayerSettingsStorage {
     fun saveSubtitleFontSizeSp(fontSizeSp: Int)
     fun loadSubtitleBottomOffset(): Int?
     fun saveSubtitleBottomOffset(bottomOffset: Int)
+    fun loadSubtitleStripSdh(): Boolean?
+    fun saveSubtitleStripSdh(enabled: Boolean)
     fun loadSubtitleUseForcedSubtitles(): Boolean?
     fun saveSubtitleUseForcedSubtitles(enabled: Boolean)
     fun loadSubtitleShowOnlyPreferredLanguages(): Boolean?
     fun saveSubtitleShowOnlyPreferredLanguages(enabled: Boolean)
-    fun loadAddonSubtitleStartupMode(): String?
-    fun saveAddonSubtitleStartupMode(mode: String)
     fun loadStreamReuseLastLinkEnabled(): Boolean?
     fun saveStreamReuseLastLinkEnabled(enabled: Boolean)
     fun loadStreamReuseLastLinkCacheHours(): Int?
@@ -71,6 +81,28 @@ internal expect object PlayerSettingsStorage {
     fun saveMapDV7ToHevc(enabled: Boolean)
     fun loadTunnelingEnabled(): Boolean?
     fun saveTunnelingEnabled(enabled: Boolean)
+    fun loadExoNativeMemoryEnabled(): Boolean?
+    fun saveExoNativeMemoryEnabled(enabled: Boolean)
+    fun loadVodCacheEnabled(): Boolean?
+    fun saveVodCacheEnabled(enabled: Boolean)
+    fun loadVodCacheSizeMode(): String?
+    fun saveVodCacheSizeMode(mode: String)
+    fun loadVodCacheSizeMb(): Int?
+    fun saveVodCacheSizeMb(sizeMb: Int)
+    fun loadBufferEngineEnabled(): Boolean?
+    fun saveBufferEngineEnabled(enabled: Boolean)
+    fun loadMinBufferMs(): Int?
+    fun saveMinBufferMs(value: Int)
+    fun loadMaxBufferMs(): Int?
+    fun saveMaxBufferMs(value: Int)
+    fun loadBufferForPlaybackMs(): Int?
+    fun saveBufferForPlaybackMs(value: Int)
+    fun loadBufferForPlaybackAfterRebufferMs(): Int?
+    fun saveBufferForPlaybackAfterRebufferMs(value: Int)
+    fun loadBackBufferDurationMs(): Int?
+    fun saveBackBufferDurationMs(value: Int)
+    fun loadTargetBufferSizeMb(): Int?
+    fun saveTargetBufferSizeMb(value: Int)
     fun loadStreamAutoPlayMode(): String?
     fun saveStreamAutoPlayMode(mode: String)
     fun loadStreamAutoPlaySource(): String?
@@ -84,6 +116,12 @@ internal expect object PlayerSettingsStorage {
     fun loadStreamAutoPlayTimeoutSeconds(): Int?
     fun saveStreamAutoPlayTimeoutSeconds(seconds: Int)
     fun loadSkipIntroEnabled(): Boolean?
+    fun loadAutoSkipMovieCredits(): Boolean?
+    fun loadAutoSkipSegmentTypes(): Set<String>?
+    fun saveAutoSkipSegmentTypes(types: Set<String>)
+    fun saveAutoSkipMovieCredits(enabled: Boolean)
+    fun loadAutoSkipPostCredits(): Boolean?
+    fun saveAutoSkipPostCredits(enabled: Boolean)
     fun saveSkipIntroEnabled(enabled: Boolean)
     fun loadAnimeSkipEnabled(): Boolean?
     fun saveAnimeSkipEnabled(enabled: Boolean)
@@ -96,6 +134,8 @@ internal expect object PlayerSettingsStorage {
     fun saveIntroSubmitEnabled(enabled: Boolean)
     fun loadStreamAutoPlayNextEpisodeEnabled(): Boolean?
     fun saveStreamAutoPlayNextEpisodeEnabled(enabled: Boolean)
+    fun loadStreamAutoPlayNextEpisodeFallbackEnabled(): Boolean?
+    fun saveStreamAutoPlayNextEpisodeFallbackEnabled(enabled: Boolean)
     fun loadStreamAutoPlayPreferBingeGroup(): Boolean?
     fun saveStreamAutoPlayPreferBingeGroup(enabled: Boolean)
     fun loadStreamAutoPlayReuseBingeGroup(): Boolean?
@@ -106,10 +146,14 @@ internal expect object PlayerSettingsStorage {
     fun saveNextEpisodeThresholdPercent(percent: Float)
     fun loadNextEpisodeThresholdMinutesBeforeEnd(): Float?
     fun saveNextEpisodeThresholdMinutesBeforeEnd(minutes: Float)
+    fun loadPreloadNextEpisodeSources(): Boolean?
+    fun savePreloadNextEpisodeSources(enabled: Boolean)
     fun loadUseLibass(): Boolean?
     fun saveUseLibass(enabled: Boolean)
     fun loadLibassRenderType(): String?
     fun saveLibassRenderType(renderType: String)
+    fun loadLibassRenderScale(): String?
+    fun saveLibassRenderScale(scale: String)
     fun loadIosVideoOutputPreset(): String?
     fun saveIosVideoOutputPreset(preset: String)
     fun loadIosToneMappingMode(): String?

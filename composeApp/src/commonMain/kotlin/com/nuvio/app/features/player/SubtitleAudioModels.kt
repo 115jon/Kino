@@ -2,6 +2,7 @@ package com.nuvio.app.features.player
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
+import com.nuvio.app.isIos
 import nuvio.composeapp.generated.resources.Res
 import nuvio.composeapp.generated.resources.compose_player_track_number
 import nuvio.composeapp.generated.resources.subtitle_language_unknown
@@ -39,22 +40,13 @@ data class AddonSubtitle(
     val isSelected: Boolean = false,
 )
 
-enum class SubtitleTab {
-    BuiltIn,
-    Addons,
-    Style,
-}
-
-enum class AddonSubtitleStartupMode {
-    FAST_STARTUP,
-    PREFERRED_ONLY,
-    ALL_SUBTITLES,
-}
-
 const val SUBTITLE_DELAY_MIN_MS = -60_000
 const val SUBTITLE_DELAY_MAX_MS = 60_000
 const val SUBTITLE_DELAY_STEP_MS = 100
 const val SUBTITLE_AUTO_SYNC_REACTION_COMPENSATION_MS = 300L
+
+internal val subtitleFontSizeRangeSp: IntRange
+    get() = if (isIos) 6..40 else 12..40
 
 data class SubtitleStyleState(
     val textColor: Color = Color.White,
@@ -65,6 +57,7 @@ data class SubtitleStyleState(
     val bold: Boolean = false,
     val fontSizeSp: Int = 18,
     val bottomOffset: Int = 10,
+    val stripSdh: Boolean = false,
     val useForcedSubtitles: Boolean = false,
     val showOnlyPreferredLanguages: Boolean = false,
 ) {
@@ -75,6 +68,7 @@ data class SubtitleStyleState(
 
 data class SubtitleSyncCue(
     val startTimeMs: Long,
+    val endTimeMs: Long = startTimeMs + 5_000L,
     val text: String,
 )
 
@@ -155,7 +149,6 @@ data class SubtitleAudioUiState(
     val subtitleStyle: SubtitleStyleState = SubtitleStyleState.DEFAULT,
     val showAudioModal: Boolean = false,
     val showSubtitleModal: Boolean = false,
-    val activeSubtitleTab: SubtitleTab = SubtitleTab.BuiltIn,
 )
 
 private val trackMetadataPlaceholders = setOf(

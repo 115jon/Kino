@@ -1,13 +1,40 @@
 package com.nuvio.app.features.watchprogress
 
 import com.nuvio.app.features.details.MetaDetails
+import com.nuvio.app.features.tracking.TrackingProgressSnapshot
+import com.nuvio.app.features.tracking.WatchProgressSource
 import com.nuvio.app.features.watching.sync.ProgressSyncRecord
 import com.nuvio.app.features.watching.sync.ProgressDeltaEvent
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
 class WatchProgressIdentityTest {
+    @Test
+    fun `provider hidden content changes progress ui state without changing entries`() {
+        val entry = entry(
+            parentMetaId = "show",
+            videoId = "show:1:2",
+            progressKey = "show-episode",
+            lastUpdatedEpochMs = 10L,
+        )
+        val visible = projectWatchProgressUiState(
+            source = WatchProgressSource.SIMKL,
+            entries = listOf(entry),
+            providerSnapshot = TrackingProgressSnapshot(),
+            hasLoadedNuvioRemoteProgress = false,
+        )
+        val hidden = projectWatchProgressUiState(
+            source = WatchProgressSource.SIMKL,
+            entries = listOf(entry),
+            providerSnapshot = TrackingProgressSnapshot(hiddenContentIds = setOf("show")),
+            hasLoadedNuvioRemoteProgress = false,
+        )
+
+        assertEquals(visible.entries, hidden.entries)
+        assertNotEquals(visible, hidden)
+    }
 
     @Test
     fun `provider change during metadata batch schedules one follow up`() {
@@ -62,8 +89,8 @@ class WatchProgressIdentityTest {
                 "title": "Show",
                 "seasonNumber": 1,
                 "episodeNumber": 2,
-                "lastPositionMs": 940,
-                "durationMs": 1000,
+                "lastPositionMs": 940000,
+                "durationMs": 1000000,
                 "lastUpdatedEpochMs": 100
               }]
             }
@@ -71,7 +98,7 @@ class WatchProgressIdentityTest {
         )
 
         assertEquals("show_s1e2", decoded.single().progressKey)
-        assertEquals(940L, decoded.single().lastPositionMs)
+        assertEquals(940_000L, decoded.single().lastPositionMs)
         assertTrue(decoded.single().isCompleted)
     }
 

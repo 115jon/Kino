@@ -27,10 +27,13 @@ internal actual object DownloadsPlatformDownloader {
         onProgress: (downloadedBytes: Long, totalBytes: Long?) -> Unit,
         onSuccess: (localFileUri: String, totalBytes: Long?) -> Unit,
         onFailure: (message: String) -> Unit,
+        onPaused: () -> Unit,
     ): DownloadsTaskHandle {
         onFailure("Downloads are not available on desktop yet.")
         return NoOpDownloadsTaskHandle
     }
+
+    actual fun restoreItem(item: DownloadItem): DownloadItem = item
 
     actual fun removeFile(localFileUri: String?): Boolean = false
 

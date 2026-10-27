@@ -39,149 +39,6 @@ class StreamAutoPlaySelectorTest {
     }
 
     @Test
-    fun `normal autoplay uses ordered ready candidate inside preferred binge group`() {
-        val lossy = stream(
-            addonName = "AddonA",
-            url = "https://example.com/eac3.mkv",
-            name = "1080p E-AC-3",
-            bingeGroup = "same-group",
-            parsed = StreamClientResolveParsed(
-                resolution = "1080p",
-                audio = listOf("E-AC-3"),
-            ),
-        )
-        val lossless = stream(
-            addonName = "AddonA",
-            url = "https://example.com/truehd.mkv",
-            name = "1080p TrueHD",
-            bingeGroup = "same-group",
-            parsed = StreamClientResolveParsed(
-                resolution = "1080p",
-                audio = listOf("TrueHD"),
-            ),
-        )
-
-        val selected = StreamAutoPlaySelector.selectAutoPlayStream(
-            streams = listOf(lossy, lossless),
-            mode = StreamAutoPlayMode.FIRST_STREAM,
-            regexPattern = "",
-            source = StreamAutoPlaySource.ALL_SOURCES,
-            installedAddonNames = setOf("AddonA"),
-            selectedAddons = emptySet(),
-            selectedPlugins = emptySet(),
-            preferredBingeGroup = "same-group",
-            preferBingeGroupInSelection = true,
-        )
-
-        assertEquals(lossless, selected)
-    }
-
-    @Test
-    fun `ordered autoplay ranks explicit video quality above unknown metadata`() {
-        val unknown = stream(
-            addonName = "AddonA",
-            url = "https://example.com/unknown.mkv",
-            name = "Unknown",
-        )
-        val explicit1080 = stream(
-            addonName = "AddonA",
-            url = "https://example.com/1080.mkv",
-            name = "1080p",
-            parsed = StreamClientResolveParsed(resolution = "1080p"),
-        )
-        val explicit2160 = stream(
-            addonName = "AddonA",
-            url = "https://example.com/2160.mkv",
-            name = "2160p",
-            parsed = StreamClientResolveParsed(resolution = "2160p"),
-        )
-
-        val selected = StreamAutoPlaySelector.selectAutoPlayStream(
-            streams = listOf(unknown, explicit1080, explicit2160),
-            mode = StreamAutoPlayMode.FIRST_STREAM,
-            regexPattern = "",
-            source = StreamAutoPlaySource.ALL_SOURCES,
-            installedAddonNames = setOf("AddonA"),
-            selectedAddons = emptySet(),
-            selectedPlugins = emptySet(),
-        )
-
-        assertEquals(explicit2160, selected)
-    }
-
-    @Test
-    fun `autoplay sorts within original addon source groups without cross-addon spoofing`() {
-        val addonAAtmos = stream(
-            addonName = "AddonA",
-            url = "https://example.com/a-atmos.mkv",
-            name = "1080p Atmos",
-            parsed = StreamClientResolveParsed(
-                resolution = "1080p",
-                audio = listOf("Atmos"),
-            ),
-        ).copy(sourceName = "source-a")
-        val addonATrueHd = stream(
-            addonName = "AddonA",
-            url = "https://example.com/a-truehd.mkv",
-            name = "1080p TrueHD",
-            parsed = StreamClientResolveParsed(
-                resolution = "1080p",
-                audio = listOf("TrueHD"),
-            ),
-        ).copy(sourceName = "source-a")
-        val spoofedAddonB = stream(
-            addonName = "AddonB",
-            url = "https://example.com/b-spoofed.mkv",
-            name = "1080p notremux",
-            parsed = StreamClientResolveParsed(
-                resolution = "1080p",
-                quality = "notremux",
-                audio = listOf("AAC"),
-            ),
-        ).copy(sourceName = "source-b")
-
-        val selected = StreamAutoPlaySelector.selectAutoPlayStream(
-            streams = listOf(addonAAtmos, addonATrueHd, spoofedAddonB),
-            mode = StreamAutoPlayMode.FIRST_STREAM,
-            regexPattern = "",
-            source = StreamAutoPlaySource.ALL_SOURCES,
-            installedAddonNames = setOf("AddonA", "AddonB"),
-            selectedAddons = emptySet(),
-            selectedPlugins = emptySet(),
-        )
-
-        assertEquals(addonATrueHd, selected)
-    }
-
-    @Test
-    fun `duplicate addon names do not merge quality groups`() {
-        val firstAddon = stream(
-            addonName = "Same Name",
-            url = "https://example.com/first.mkv",
-            name = "1080p AAC",
-            parsed = StreamClientResolveParsed(resolution = "1080p", audio = listOf("AAC")),
-        ).copy(addonId = "addon:first")
-        val secondAddon = stream(
-            addonName = "Same Name",
-            url = "https://example.com/second.mkv",
-            name = "2160p TrueHD",
-            parsed = StreamClientResolveParsed(resolution = "2160p", audio = listOf("TrueHD")),
-        ).copy(addonId = "addon:second")
-
-        val selected = StreamAutoPlaySelector.selectAutoPlayStream(
-            streams = listOf(firstAddon, secondAddon),
-            mode = StreamAutoPlayMode.FIRST_STREAM,
-            regexPattern = "",
-            source = StreamAutoPlaySource.ALL_SOURCES,
-            installedAddonNames = setOf("Same Name"),
-            selectedAddons = emptySet(),
-            selectedPlugins = emptySet(),
-        )
-
-        assertEquals(firstAddon, selected)
-    }
-
-    @Test
     fun `falls back to normal mode when no bingeGroup match exists`() {
         val first = stream(
             addonName = "AddonA",
@@ -411,6 +268,215 @@ class StreamAutoPlaySelectorTest {
 
         assertNull(evaluation.stream)
         assertFalse(evaluation.hasPendingDebridCandidate)
+    }
+
+    @Test
+    fun `nested exclusions do not crash regex selection`() {
+        val stream = stream(
+            addonName = "Direct Addon",
+            url = "https://example.com/video.mp4",
+            name = "Movie 1080p WEB",
+        )
+
+        val selected = StreamAutoPlaySelector.selectAutoPlayStream(
+            streams = listOf(stream),
+            mode = StreamAutoPlayMode.REGEX_MATCH,
+            regexPattern = "^(?!.*\\b(CAM(?!RIP)|TS)\\b).*1080p",
+            source = StreamAutoPlaySource.ALL_SOURCES,
+            installedAddonNames = setOf("Direct Addon"),
+            selectedAddons = emptySet(),
+            selectedPlugins = emptySet(),
+        )
+
+        assertEquals(stream, selected)
+    }
+
+    private fun stream(
+        addonName: String,
+        url: String? = null,
+        externalUrl: String? = null,
+        name: String? = null,
+        bingeGroup: String? = null,
+        directDebrid: Boolean = false,
+        directDebridService: String = "torbox",
+        infoHash: String? = null,
+        cacheState: StreamDebridCacheState? = null,
+        parsed: StreamClientResolveParsed? = null,
+    ): StreamItem = StreamItem(
+        name = name,
+        url = url,
+        externalUrl = externalUrl,
+        infoHash = infoHash,
+        addonName = addonName,
+        addonId = "addon:$addonName",
+        clientResolve = if (directDebrid || parsed != null) {
+            StreamClientResolve(
+                type = if (directDebrid) "debrid" else null,
+                service = directDebridService.takeIf { directDebrid },
+                isCached = true.takeIf { directDebrid },
+                infoHash = "hash".takeIf { directDebrid },
+                stream = parsed?.let {
+                    StreamClientResolveStream(
+                        raw = StreamClientResolveRaw(parsed = it),
+                    )
+                },
+            )
+        } else {
+            null
+        },
+        debridCacheStatus = cacheState?.let { state ->
+            StreamDebridCacheStatus(
+                providerId = "premiumize",
+                providerName = "Premiumize",
+                state = state,
+            )
+        },
+        behaviorHints = StreamBehaviorHints(
+            bingeGroup = bingeGroup,
+        ),
+    )
+
+    @Test
+    fun `normal autoplay uses ordered ready candidate inside preferred binge group`() {
+        val lossy = stream(
+            addonName = "AddonA",
+            url = "https://example.com/eac3.mkv",
+            name = "1080p E-AC-3",
+            bingeGroup = "same-group",
+            parsed = StreamClientResolveParsed(
+                resolution = "1080p",
+                audio = listOf("E-AC-3"),
+            ),
+        )
+        val lossless = stream(
+            addonName = "AddonA",
+            url = "https://example.com/truehd.mkv",
+            name = "1080p TrueHD",
+            bingeGroup = "same-group",
+            parsed = StreamClientResolveParsed(
+                resolution = "1080p",
+                audio = listOf("TrueHD"),
+            ),
+        )
+
+        val selected = StreamAutoPlaySelector.selectAutoPlayStream(
+            streams = listOf(lossy, lossless),
+            mode = StreamAutoPlayMode.FIRST_STREAM,
+            regexPattern = "",
+            source = StreamAutoPlaySource.ALL_SOURCES,
+            installedAddonNames = setOf("AddonA"),
+            selectedAddons = emptySet(),
+            selectedPlugins = emptySet(),
+            preferredBingeGroup = "same-group",
+            preferBingeGroupInSelection = true,
+        )
+
+        assertEquals(lossless, selected)
+    }
+
+    @Test
+    fun `ordered autoplay ranks explicit video quality above unknown metadata`() {
+        val unknown = stream(
+            addonName = "AddonA",
+            url = "https://example.com/unknown.mkv",
+            name = "Unknown",
+        )
+        val explicit1080 = stream(
+            addonName = "AddonA",
+            url = "https://example.com/1080.mkv",
+            name = "1080p",
+            parsed = StreamClientResolveParsed(resolution = "1080p"),
+        )
+        val explicit2160 = stream(
+            addonName = "AddonA",
+            url = "https://example.com/2160.mkv",
+            name = "2160p",
+            parsed = StreamClientResolveParsed(resolution = "2160p"),
+        )
+
+        val selected = StreamAutoPlaySelector.selectAutoPlayStream(
+            streams = listOf(unknown, explicit1080, explicit2160),
+            mode = StreamAutoPlayMode.FIRST_STREAM,
+            regexPattern = "",
+            source = StreamAutoPlaySource.ALL_SOURCES,
+            installedAddonNames = setOf("AddonA"),
+            selectedAddons = emptySet(),
+            selectedPlugins = emptySet(),
+        )
+
+        assertEquals(explicit2160, selected)
+    }
+
+    @Test
+    fun `autoplay sorts within original addon source groups without cross-addon spoofing`() {
+        val addonAAtmos = stream(
+            addonName = "AddonA",
+            url = "https://example.com/a-atmos.mkv",
+            name = "1080p Atmos",
+            parsed = StreamClientResolveParsed(
+                resolution = "1080p",
+                audio = listOf("Atmos"),
+            ),
+        ).copy(sourceName = "source-a")
+        val addonATrueHd = stream(
+            addonName = "AddonA",
+            url = "https://example.com/a-truehd.mkv",
+            name = "1080p TrueHD",
+            parsed = StreamClientResolveParsed(
+                resolution = "1080p",
+                audio = listOf("TrueHD"),
+            ),
+        ).copy(sourceName = "source-a")
+        val spoofedAddonB = stream(
+            addonName = "AddonB",
+            url = "https://example.com/b-spoofed.mkv",
+            name = "1080p notremux",
+            parsed = StreamClientResolveParsed(
+                resolution = "1080p",
+                quality = "notremux",
+                audio = listOf("AAC"),
+            ),
+        ).copy(sourceName = "source-b")
+
+        val selected = StreamAutoPlaySelector.selectAutoPlayStream(
+            streams = listOf(addonAAtmos, addonATrueHd, spoofedAddonB),
+            mode = StreamAutoPlayMode.FIRST_STREAM,
+            regexPattern = "",
+            source = StreamAutoPlaySource.ALL_SOURCES,
+            installedAddonNames = setOf("AddonA", "AddonB"),
+            selectedAddons = emptySet(),
+            selectedPlugins = emptySet(),
+        )
+
+        assertEquals(addonATrueHd, selected)
+    }
+
+    @Test
+    fun `duplicate addon names do not merge quality groups`() {
+        val firstAddon = stream(
+            addonName = "Same Name",
+            url = "https://example.com/first.mkv",
+            name = "1080p AAC",
+            parsed = StreamClientResolveParsed(resolution = "1080p", audio = listOf("AAC")),
+        ).copy(addonId = "addon:first")
+        val secondAddon = stream(
+            addonName = "Same Name",
+            url = "https://example.com/second.mkv",
+            name = "2160p TrueHD",
+            parsed = StreamClientResolveParsed(resolution = "2160p", audio = listOf("TrueHD")),
+        ).copy(addonId = "addon:second")
+
+        val selected = StreamAutoPlaySelector.selectAutoPlayStream(
+            streams = listOf(firstAddon, secondAddon),
+            mode = StreamAutoPlayMode.FIRST_STREAM,
+            regexPattern = "",
+            source = StreamAutoPlaySource.ALL_SOURCES,
+            installedAddonNames = setOf("Same Name"),
+            selectedAddons = emptySet(),
+            selectedPlugins = emptySet(),
+        )
+
+        assertEquals(firstAddon, selected)
     }
 
     @Test
@@ -658,49 +724,4 @@ class StreamAutoPlaySelectorTest {
 
         assertEquals(lossless, evaluation.stream)
     }
-
-    private fun stream(
-        addonName: String,
-        url: String? = null,
-        externalUrl: String? = null,
-        name: String? = null,
-        bingeGroup: String? = null,
-        directDebrid: Boolean = false,
-        directDebridService: String = "torbox",
-        infoHash: String? = null,
-        cacheState: StreamDebridCacheState? = null,
-        parsed: StreamClientResolveParsed? = null,
-    ): StreamItem = StreamItem(
-        name = name,
-        url = url,
-        externalUrl = externalUrl,
-        infoHash = infoHash,
-        addonName = addonName,
-        addonId = "addon:$addonName",
-        clientResolve = if (directDebrid || parsed != null) {
-            StreamClientResolve(
-                type = if (directDebrid) "debrid" else null,
-                service = directDebridService.takeIf { directDebrid },
-                isCached = true.takeIf { directDebrid },
-                infoHash = "hash".takeIf { directDebrid },
-                stream = parsed?.let {
-                    StreamClientResolveStream(
-                        raw = StreamClientResolveRaw(parsed = it),
-                    )
-                },
-            )
-        } else {
-            null
-        },
-        debridCacheStatus = cacheState?.let { state ->
-            StreamDebridCacheStatus(
-                providerId = "premiumize",
-                providerName = "Premiumize",
-                state = state,
-            )
-        },
-        behaviorHints = StreamBehaviorHints(
-            bingeGroup = bingeGroup,
-        ),
-    )
 }

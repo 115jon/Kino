@@ -2,6 +2,8 @@ package com.nuvio.app.features.player
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.nuvio.app.core.storage.ProfileScopedKey
 import com.nuvio.app.core.sync.decodeSyncBoolean
 import com.nuvio.app.core.sync.decodeSyncFloat
@@ -48,6 +50,7 @@ internal actual object PlayerSettingsStorage {
     private const val subtitleBoldKey = "subtitle_bold"
     private const val subtitleFontSizeSpKey = "subtitle_font_size_sp"
     private const val subtitleBottomOffsetKey = "subtitle_bottom_offset"
+    private const val subtitleStripSdhKey = "subtitle_strip_sdh"
     private const val subtitleUseForcedSubtitlesKey = "subtitle_use_forced_subtitles"
     private const val subtitleShowOnlyPreferredLanguagesKey = "subtitle_show_only_preferred_languages"
     private const val addonSubtitleStartupModeKey = "addon_subtitle_startup_mode"
@@ -72,6 +75,7 @@ internal actual object PlayerSettingsStorage {
     private const val introDbApiKeyKey = "introdb_api_key"
     private const val introSubmitEnabledKey = "intro_submit_enabled"
     private const val streamAutoPlayNextEpisodeEnabledKey = "stream_auto_play_next_episode_enabled"
+    private const val streamAutoPlayNextEpisodeFallbackEnabledKey = "stream_auto_play_next_episode_fallback_enabled"
     private const val streamAutoPlayPreferBingeGroupKey = "stream_auto_play_prefer_binge_group"
     private const val streamAutoPlayReuseBingeGroupKey = "stream_auto_play_reuse_binge_group"
     private const val nextEpisodeThresholdModeKey = "next_episode_threshold_mode"
@@ -117,6 +121,7 @@ internal actual object PlayerSettingsStorage {
         subtitleBoldKey,
         subtitleFontSizeSpKey,
         subtitleBottomOffsetKey,
+        subtitleStripSdhKey,
         subtitleUseForcedSubtitlesKey,
         subtitleShowOnlyPreferredLanguagesKey,
         addonSubtitleStartupModeKey,
@@ -141,6 +146,7 @@ internal actual object PlayerSettingsStorage {
         introDbApiKeyKey,
         introSubmitEnabledKey,
         streamAutoPlayNextEpisodeEnabledKey,
+        streamAutoPlayNextEpisodeFallbackEnabledKey,
         streamAutoPlayPreferBingeGroupKey,
         streamAutoPlayReuseBingeGroupKey,
         nextEpisodeThresholdModeKey,
@@ -297,6 +303,12 @@ internal actual object PlayerSettingsStorage {
         saveInt(subtitleBottomOffsetKey, bottomOffset)
     }
 
+    actual fun loadSubtitleStripSdh(): Boolean? = loadBoolean(subtitleStripSdhKey)
+
+    actual fun saveSubtitleStripSdh(enabled: Boolean) {
+        saveBoolean(subtitleStripSdhKey, enabled)
+    }
+
     actual fun loadSubtitleUseForcedSubtitles(): Boolean? = loadBoolean(subtitleUseForcedSubtitlesKey)
 
     actual fun saveSubtitleUseForcedSubtitles(enabled: Boolean) {
@@ -309,9 +321,9 @@ internal actual object PlayerSettingsStorage {
         saveBoolean(subtitleShowOnlyPreferredLanguagesKey, enabled)
     }
 
-    actual fun loadAddonSubtitleStartupMode(): String? = loadString(addonSubtitleStartupModeKey)
+    fun loadAddonSubtitleStartupMode(): String? = loadString(addonSubtitleStartupModeKey)
 
-    actual fun saveAddonSubtitleStartupMode(mode: String) {
+    fun saveAddonSubtitleStartupMode(mode: String) {
         saveString(addonSubtitleStartupModeKey, mode)
     }
 
@@ -440,6 +452,13 @@ internal actual object PlayerSettingsStorage {
 
     actual fun saveStreamAutoPlayNextEpisodeEnabled(enabled: Boolean) {
         saveBoolean(streamAutoPlayNextEpisodeEnabledKey, enabled)
+    }
+
+    actual fun loadStreamAutoPlayNextEpisodeFallbackEnabled(): Boolean? =
+        loadBoolean(streamAutoPlayNextEpisodeFallbackEnabledKey)
+
+    actual fun saveStreamAutoPlayNextEpisodeFallbackEnabled(enabled: Boolean) {
+        saveBoolean(streamAutoPlayNextEpisodeFallbackEnabledKey, enabled)
     }
 
     actual fun loadStreamAutoPlayPreferBingeGroup(): Boolean? = loadBoolean(streamAutoPlayPreferBingeGroupKey)
@@ -574,6 +593,132 @@ internal actual object PlayerSettingsStorage {
         saveInt(iosGammaKey, value)
     }
 
+    actual fun loadPlaybackBrightness(): Float? = loadFloat("playback_brightness")
+
+    actual fun savePlaybackBrightness(level: Float) {
+        saveFloat("playback_brightness", level)
+    }
+
+    actual fun loadUseLegacyPlayerLayout(): Boolean? = loadBoolean("use_legacy_player_layout")
+
+    actual fun saveUseLegacyPlayerLayout(enabled: Boolean) {
+        saveBoolean("use_legacy_player_layout", enabled)
+    }
+
+    actual fun loadShowPlayerLoadingStatus(): Boolean? = loadBoolean("show_player_loading_status")
+
+    actual fun saveShowPlayerLoadingStatus(enabled: Boolean) {
+        saveBoolean("show_player_loading_status", enabled)
+    }
+
+    actual fun loadPauseOverlayEnabled(): Boolean? = loadBoolean("pause_overlay_enabled")
+
+    actual fun savePauseOverlayEnabled(enabled: Boolean) {
+        saveBoolean("pause_overlay_enabled", enabled)
+    }
+
+    actual fun loadExoNativeMemoryEnabled(): Boolean? = loadBoolean("exo_native_memory_enabled")
+
+    actual fun saveExoNativeMemoryEnabled(enabled: Boolean) {
+        saveBoolean("exo_native_memory_enabled", enabled)
+    }
+
+    actual fun loadVodCacheEnabled(): Boolean? = loadBoolean("vod_cache_enabled")
+
+    actual fun saveVodCacheEnabled(enabled: Boolean) {
+        saveBoolean("vod_cache_enabled", enabled)
+    }
+
+    actual fun loadVodCacheSizeMode(): String? = loadString("vod_cache_size_mode")
+
+    actual fun saveVodCacheSizeMode(mode: String) {
+        saveString("vod_cache_size_mode", mode)
+    }
+
+    actual fun loadVodCacheSizeMb(): Int? = loadInt("vod_cache_size_mb")
+
+    actual fun saveVodCacheSizeMb(sizeMb: Int) {
+        saveInt("vod_cache_size_mb", sizeMb)
+    }
+
+    actual fun loadBufferEngineEnabled(): Boolean? = loadBoolean("buffer_engine_enabled")
+
+    actual fun saveBufferEngineEnabled(enabled: Boolean) {
+        saveBoolean("buffer_engine_enabled", enabled)
+    }
+
+    actual fun loadMinBufferMs(): Int? = loadInt("min_buffer_ms")
+
+    actual fun saveMinBufferMs(value: Int) {
+        saveInt("min_buffer_ms", value)
+    }
+
+    actual fun loadMaxBufferMs(): Int? = loadInt("max_buffer_ms")
+
+    actual fun saveMaxBufferMs(value: Int) {
+        saveInt("max_buffer_ms", value)
+    }
+
+    actual fun loadBufferForPlaybackMs(): Int? = loadInt("buffer_for_playback_ms")
+
+    actual fun saveBufferForPlaybackMs(value: Int) {
+        saveInt("buffer_for_playback_ms", value)
+    }
+
+    actual fun loadBufferForPlaybackAfterRebufferMs(): Int? = loadInt("buffer_for_playback_after_rebuffer_ms")
+
+    actual fun saveBufferForPlaybackAfterRebufferMs(value: Int) {
+        saveInt("buffer_for_playback_after_rebuffer_ms", value)
+    }
+
+    actual fun loadBackBufferDurationMs(): Int? = loadInt("back_buffer_duration_ms")
+
+    actual fun saveBackBufferDurationMs(value: Int) {
+        saveInt("back_buffer_duration_ms", value)
+    }
+
+    actual fun loadTargetBufferSizeMb(): Int? = loadInt("target_buffer_size_mb")
+
+    actual fun saveTargetBufferSizeMb(value: Int) {
+        saveInt("target_buffer_size_mb", value)
+    }
+
+    actual fun loadAutoSkipMovieCredits(): Boolean? = loadBoolean("auto_skip_movie_credits")
+
+    actual fun saveAutoSkipMovieCredits(enabled: Boolean) {
+        saveBoolean("auto_skip_movie_credits", enabled)
+    }
+
+    actual fun loadAutoSkipSegmentTypes(): Set<String>? = loadStringSet("auto_skip_segment_types")
+
+    actual fun saveAutoSkipSegmentTypes(types: Set<String>) {
+        saveStringSet("auto_skip_segment_types", types)
+    }
+
+    actual fun loadAutoSkipPostCredits(): Boolean? = loadBoolean("auto_skip_post_credits")
+
+    actual fun saveAutoSkipPostCredits(enabled: Boolean) {
+        saveBoolean("auto_skip_post_credits", enabled)
+    }
+
+    actual fun loadPreloadNextEpisodeSources(): Boolean? = loadBoolean("preload_next_episode_sources")
+
+    actual fun savePreloadNextEpisodeSources(enabled: Boolean) {
+        saveBoolean("preload_next_episode_sources", enabled)
+    }
+
+    actual fun loadLibassRenderScale(): String? = loadString("libass_render_scale")
+
+    actual fun saveLibassRenderScale(scale: String) {
+        saveString("libass_render_scale", scale)
+    }
+
+    actual fun loadPendingExternalPlayback(): String? = loadString("pending_external_playback")
+
+    actual fun savePendingExternalPlayback(value: String?) {
+        saveNullableString("pending_external_playback", value)
+    }
+
     actual fun exportToSyncPayload(): JsonObject = buildJsonObject {
         loadShowLoadingOverlay()?.let { put(showLoadingOverlayKey, encodeSyncBoolean(it)) }
         loadShowParentalGuide()?.let { put(showParentalGuideKey, encodeSyncBoolean(it)) }
@@ -597,6 +742,7 @@ internal actual object PlayerSettingsStorage {
         loadSubtitleBold()?.let { put(subtitleBoldKey, encodeSyncBoolean(it)) }
         loadSubtitleFontSizeSp()?.let { put(subtitleFontSizeSpKey, encodeSyncInt(it)) }
         loadSubtitleBottomOffset()?.let { put(subtitleBottomOffsetKey, encodeSyncInt(it)) }
+        loadSubtitleStripSdh()?.let { put(subtitleStripSdhKey, encodeSyncBoolean(it)) }
         loadSubtitleUseForcedSubtitles()?.let { put(subtitleUseForcedSubtitlesKey, encodeSyncBoolean(it)) }
         loadSubtitleShowOnlyPreferredLanguages()?.let {
             put(subtitleShowOnlyPreferredLanguagesKey, encodeSyncBoolean(it))
@@ -625,6 +771,7 @@ internal actual object PlayerSettingsStorage {
         loadIntroDbApiKey()?.let { put(introDbApiKeyKey, encodeSyncString(it)) }
         loadIntroSubmitEnabled()?.let { put(introSubmitEnabledKey, encodeSyncBoolean(it)) }
         loadStreamAutoPlayNextEpisodeEnabled()?.let { put(streamAutoPlayNextEpisodeEnabledKey, encodeSyncBoolean(it)) }
+        loadStreamAutoPlayNextEpisodeFallbackEnabled()?.let { put(streamAutoPlayNextEpisodeFallbackEnabledKey, encodeSyncBoolean(it)) }
         loadStreamAutoPlayPreferBingeGroup()?.let { put(streamAutoPlayPreferBingeGroupKey, encodeSyncBoolean(it)) }
         loadStreamAutoPlayReuseBingeGroup()?.let {
             put(streamAutoPlayReuseBingeGroupKey, encodeSyncBoolean(it))
@@ -680,6 +827,7 @@ internal actual object PlayerSettingsStorage {
         payload.decodeSyncBoolean(subtitleBoldKey)?.let(::saveSubtitleBold)
         payload.decodeSyncInt(subtitleFontSizeSpKey)?.let(::saveSubtitleFontSizeSp)
         payload.decodeSyncInt(subtitleBottomOffsetKey)?.let(::saveSubtitleBottomOffset)
+        payload.decodeSyncBoolean(subtitleStripSdhKey)?.let(::saveSubtitleStripSdh)
         payload.decodeSyncBoolean(subtitleUseForcedSubtitlesKey)?.let(::saveSubtitleUseForcedSubtitles)
         payload.decodeSyncBoolean(subtitleShowOnlyPreferredLanguagesKey)
             ?.let(::saveSubtitleShowOnlyPreferredLanguages)
@@ -706,6 +854,8 @@ internal actual object PlayerSettingsStorage {
         payload.decodeSyncString(introDbApiKeyKey)?.let(::saveIntroDbApiKey)
         payload.decodeSyncBoolean(introSubmitEnabledKey)?.let(::saveIntroSubmitEnabled)
         payload.decodeSyncBoolean(streamAutoPlayNextEpisodeEnabledKey)?.let(::saveStreamAutoPlayNextEpisodeEnabled)
+        payload.decodeSyncBoolean(streamAutoPlayNextEpisodeFallbackEnabledKey)?.let(::saveStreamAutoPlayNextEpisodeFallbackEnabled)
+
         payload.decodeSyncBoolean(streamAutoPlayPreferBingeGroupKey)?.let(::saveStreamAutoPlayPreferBingeGroup)
         payload.decodeSyncBoolean(streamAutoPlayReuseBingeGroupKey)?.let(::saveStreamAutoPlayReuseBingeGroup)
         payload.decodeSyncString(nextEpisodeThresholdModeKey)?.let(::saveNextEpisodeThresholdMode)
@@ -793,4 +943,20 @@ actual fun ManagePlayerPictureInPicture(
 actual fun rememberIsInPictureInPicture(): Boolean = false
 
 @Composable
-actual fun rememberPlayerGestureController(): PlayerGestureController? = null
+internal actual fun rememberPlatformPlayerGestureController(): PlayerGestureController? = null
+
+@Composable
+actual fun FullscreenPlayerDialog(
+    onDismiss: () -> Unit,
+    content: @Composable () -> Unit,
+) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        content()
+    }
+}
+
+@Composable
+actual fun HidePlayerSystemBars() = Unit

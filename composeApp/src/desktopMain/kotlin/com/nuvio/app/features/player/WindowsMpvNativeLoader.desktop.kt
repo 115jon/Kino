@@ -5,6 +5,8 @@ import com.sun.jna.Native
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
+import java.util.concurrent.TimeUnit
+import kotlin.concurrent.thread
 
 private val windowsMpvLog = Logger.withTag("DesktopPlayerTrace")
 
@@ -12,10 +14,13 @@ private fun windowsMpvTrace(message: String) {
     windowsMpvLog.d { message }
 }
 
+private const val NativeDirectoryPrefix = "mpv-windows-amd64-"
+private const val PruningDirectoryPrefix = ".pruning-"
+private val StaleNativeDirectoryAgeMs = TimeUnit.DAYS.toMillis(7)
+
 internal object WindowsMpvNativeLoader {
     private val nativeResources = listOf(
         "win32-x86-64/libmpv-2.dll",
-        "win32-x86-64/mpv.dll",
         "win32-x86-64/kino-media-session.dll",
         "app_logo.png",
     )
@@ -38,6 +43,8 @@ internal object WindowsMpvNativeLoader {
                 val library = loadFrom(nativeDirectory)
                 loadedLibrary = library
                 windowsMpvTrace("windows mpv natives prepared at ${nativeDirectory.absolutePath}")
+                nativeDirectory.setLastModified(System.currentTimeMillis())
+                thread(isDaemon = true, name = "Kino-native-prune") { pruneStaleNativeDirectories(nativeDirectory) }
                 library
             } catch (cause: Throwable) {
                 val failure = IllegalStateException("Failed to prepare Windows mpv native libraries", cause)
@@ -80,7 +87,7 @@ internal object WindowsMpvNativeLoader {
             .hashCode()
             .toUInt()
             .toString(16)
-        return "mpv-windows-amd64-$fingerprint"
+        return "$NativeDirectoryPrefix$fingerprint"
     }
 
     private fun resourceFingerprint(resourcePath: String): String {
@@ -111,6 +118,22 @@ internal object WindowsMpvNativeLoader {
         }
     }
 
+    private fun pruneStaleNativeDirectories(current: File) {
+        val cutoff = System.currentTimeMillis() - StaleNativeDirectoryAgeMs
+        current.parentFile?.listFiles()
+            ?.filter { it != current && it.isDirectory }
+            ?.forEach { directory ->
+                val pruning = when {
+                    directory.name.startsWith(PruningDirectoryPrefix) -> directory
+                    directory.name.startsWith(NativeDirectoryPrefix) && directory.lastModified() < cutoff ->
+                        directory.resolveSibling(PruningDirectoryPrefix + directory.name).takeIf(directory::renameTo)
+                    else -> null
+                } ?: return@forEach
+                val removed = runCatching { pruning.deleteRecursively() }.getOrDefault(false)
+                windowsMpvTrace("windows mpv natives pruned ${directory.name} removed=$removed")
+            }
+    }
+
     private fun configureSearchPaths(nativeDirectory: File) {
         System.setProperty("jna.nosys", "true")
         prependDirectoryToProperty("jna.library.path", nativeDirectory)
@@ -134,20 +157,9 @@ internal object WindowsMpvNativeLoader {
 
     private fun loadFrom(nativeDirectory: File): WindowsMpvLibrary {
         val failures = mutableListOf<Throwable>()
-        listOf("libmpv-2.dll", "mpv.dll").forEach { libraryName ->
-            val libraryFile = nativeDirectory.resolve(libraryName)
-            if (!libraryFile.exists()) {
-                return@forEach
-            }
+        listOf(nativeDirectory.resolve("libmpv-2.dll").absolutePath, "libmpv-2").forEach { library ->
             try {
-                return Native.load(libraryFile.absolutePath, WindowsMpvLibrary::class.java)
-            } catch (cause: Throwable) {
-                failures += cause
-            }
-        }
-        listOf("libmpv-2", "mpv").forEach { libraryName ->
-            try {
-                return Native.load(libraryName, WindowsMpvLibrary::class.java)
+                return Native.load(library, WindowsMpvLibrary::class.java)
             } catch (cause: Throwable) {
                 failures += cause
             }

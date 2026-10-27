@@ -9,21 +9,6 @@
 -dontwarn javafx.**
 -dontwarn org.eclipse.swt.**
 -dontwarn com.sun.javafx.**
--dontwarn com.jogamp.nativewindow.javafx.**
--dontwarn com.jogamp.nativewindow.swt.**
--dontwarn com.jogamp.newt.javafx.**
--dontwarn com.jogamp.newt.swt.**
--dontwarn com.jogamp.opengl.swt.**
--dontwarn jogamp.newt.javafx.**
--dontwarn jogamp.newt.swt.**
-
--keep class com.jogamp.** { *; }
--keep interface com.jogamp.** { *; }
--keep enum com.jogamp.** { *; }
-
--keep class jogamp.** { *; }
--keep interface jogamp.** { *; }
--keep enum jogamp.** { *; }
 
 -keep class com.nuvio.app.** { *; }
 -keep interface com.nuvio.app.** { *; }
@@ -45,6 +30,10 @@
 -keep interface dev.whyoleg.** { *; }
 -keep enum dev.whyoleg.** { *; }
 
+-keep class kotlinx.coroutines.** { *; }
+-keep interface kotlinx.coroutines.** { *; }
+-keep enum kotlinx.coroutines.** { *; }
+
 -keep class com.sun.jna.** { *; }
 -keep interface com.sun.jna.** { *; }
 -keep enum com.sun.jna.** { *; }
@@ -53,8 +42,6 @@
 -keep interface com.typesafe.config.** { *; }
 -keep enum com.typesafe.config.** { *; }
 
--keep class io.ktor.client.engine.java.** { *; }
--keep class io.ktor.serialization.kotlinx.json.** { *; }
--keep class coil3.network.ktor3.internal.** { *; }
--keep class dev.whyoleg.cryptography.providers.jdk.** { *; }
--keep class io.ktor.server.config.** { *; }
+-keep class org.jetbrains.skiko.SkiaLayer { *; }
+-keep class org.jetbrains.skiko.SkiaLayerProperties { *; }
+-keep class org.jetbrains.skiko.renderer.** { *; }

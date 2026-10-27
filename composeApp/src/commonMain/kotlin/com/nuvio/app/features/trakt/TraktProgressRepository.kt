@@ -1,6 +1,7 @@
 package com.nuvio.app.features.trakt
 
 import co.touchlab.kermit.Logger
+import com.nuvio.app.features.addons.RawHttpResponse
 import com.nuvio.app.features.addons.httpGetTextWithHeaders
 import com.nuvio.app.features.addons.httpRequestRaw
 import com.nuvio.app.features.details.MetaDetails
@@ -48,9 +49,6 @@ private const val TRAKT_COMPLETION_PERCENT_THRESHOLD = 90f
 private const val HISTORY_PAGE_LIMIT = 1000
 private const val HISTORY_MAX_PAGES = 5
 private const val HISTORY_MAX_PAGES_ALL = 20
-private const val WATCHED_PAGE_LIMIT = 250
-private const val WATCHED_MAX_PAGES = 1_000
-private const val WATCHED_SHOWS_EXTENDED = "progress"
 private const val MAX_RECENT_EPISODE_HISTORY_ENTRIES = 300
 private const val METADATA_FETCH_TIMEOUT_MS = 3_500L
 private const val METADATA_FETCH_CONCURRENCY = 5
@@ -108,6 +106,8 @@ object TraktProgressRepository {
     private var watchedShowEpisodesById: Map<String, Set<Pair<Int, Int>>> = emptyMap()
     private var showIdToTraktPathId: Map<String, String> = emptyMap()
     private var showIdSiblingsMap: Map<String, Set<String>> = emptyMap()
+
+    fun getShowIdSiblings(): Map<String, Set<String>> = showIdSiblingsMap
 
     init {
         scope.launch {
@@ -349,6 +349,9 @@ object TraktProgressRepository {
 
         if (playbackEntries == null) {
             if (!isLatestRefreshRequest(requestId)) return
+            // The activity fingerprint already counts this change, so without clearing it the next
+            // poll would see nothing new and the last snapshot would stay until the next activity.
+            lastKnownActivityFingerprint = null
             _uiState.value = _uiState.value.copy(
                 isLoading = false,
                 errorMessage = getString(Res.string.trakt_progress_load_failed),
@@ -380,7 +383,7 @@ object TraktProgressRepository {
                 val hiddenShows = async { fetchHiddenShowIds(headers) }
                 
                 val list = history.await() + watchedShowSeeds.await()
-                hiddenProgressShowIds.value = hiddenShows.await()
+                hiddenShows.await()?.let { hiddenProgressShowIds.value = it }
                 list
             }
         }.onFailure { error ->
@@ -655,32 +658,25 @@ object TraktProgressRepository {
         refreshNow()
     }
 
-    private suspend fun fetchHiddenShowIds(headers: Map<String, String>): Set<String> {
-        val allIds = mutableSetOf<String>()
-        var page = 1
-        val limit = 1000
-        while (true) {
-            val endpoint = "$BASE_URL/users/hidden/dropped?type=show&page=$page&limit=$limit"
-            val payload = runCatching {
+    /** Null when a page fails, so the caller keeps the last hidden set instead of a partial one. */
+    private suspend fun fetchHiddenShowIds(headers: Map<String, String>): Set<String>? {
+        val items = readAllTraktPages(
+            pageLimit = 1000,
+            fetchPage = { page, limit ->
                 httpGetTextWithHeaders(
-                    url = endpoint,
+                    url = "$BASE_URL/users/hidden/dropped?type=show&page=$page&limit=$limit",
                     headers = headers,
                 )
-            }.getOrNull() ?: break
+            },
+            decodePage = { payload -> json.decodeFromString<List<TraktHiddenItem>>(payload) },
+        ) ?: return null
 
-            val items = runCatching {
-                json.decodeFromString<List<TraktHiddenItem>>(payload)
-            }.getOrNull() ?: break
-
-            if (items.isEmpty()) break
-            for (item in items) {
-                val ids = item.show?.ids ?: continue
-                ids.imdb?.takeIf { it.isNotBlank() }?.let { allIds.add(it) }
-                ids.tmdb?.let { allIds.add("tmdb:$it") }
-                ids.trakt?.let { allIds.add("trakt:$it") }
-            }
-            if (items.size < limit) break
-            page++
+        val allIds = mutableSetOf<String>()
+        for (item in items) {
+            val ids = item.show?.ids ?: continue
+            ids.imdb?.takeIf { it.isNotBlank() }?.let { allIds.add(it) }
+            ids.tmdb?.let { allIds.add("tmdb:$it") }
+            ids.trakt?.let { allIds.add("trakt:$it") }
         }
         return allIds
     }
@@ -725,7 +721,9 @@ object TraktProgressRepository {
 
     private suspend fun fetchHistoryEntries(headers: Map<String, String>): List<WatchProgressEntry> = withContext(Dispatchers.Default) {
         val (episodeHistory, movieHistory) = coroutineScope {
-            val episodeHistory = async { fetchRecentEpisodeHistoryEntries(headers) }
+            val episodeHistory = async {
+                fetchRecentEpisodeHistoryEntries(headers) ?: error("Trakt episode history request failed")
+            }
             val movieHistory = async { fetchRecentMovieHistoryEntries(headers) }
             episodeHistory.await() to movieHistory.await()
         }
@@ -735,53 +733,26 @@ object TraktProgressRepository {
 
     private suspend fun fetchRecentEpisodeHistoryEntries(
         headers: Map<String, String>,
-    ): List<WatchProgressEntry> {
+    ): List<WatchProgressEntry>? {
         val cutoffMs = recentWatchCutoffMs()
-        val maxPages = if (isAllHistoryWindow()) HISTORY_MAX_PAGES_ALL else HISTORY_MAX_PAGES
-        val resultsByShow = linkedMapOf<String, WatchProgressEntry>()
-        var fallbackIndex = 0
-        var page = 1
-
-        while (page <= maxPages && resultsByShow.size < MAX_RECENT_EPISODE_HISTORY_ENTRIES) {
-            val url = buildString {
-                append("$BASE_URL/sync/history/episodes?page=$page&limit=$HISTORY_PAGE_LIMIT")
-                cutoffMs?.let { append("&start_at=").append(epochMsToTraktIso(it)) }
-            }
-            val response = httpRequestRaw(
-                method = "GET",
-                url = url,
-                headers = headers,
-                body = "",
-            )
-            if (response.status !in 200..299) break
-
-            val items = runCatching {
-                json.decodeFromString<List<TraktHistoryEpisodeItem>>(response.body)
-            }.getOrDefault(emptyList())
-            if (items.isEmpty()) break
-
-            var shouldStop = false
-            for (item in items) {
-                val entry = mapHistoryEpisode(item = item, fallbackIndex = fallbackIndex++) ?: continue
-                if (cutoffMs != null && entry.lastUpdatedEpochMs < cutoffMs) {
-                    shouldStop = true
-                    continue
+        return collectRecentTraktEpisodeHistory(
+            maxPages = if (isAllHistoryWindow()) HISTORY_MAX_PAGES_ALL else HISTORY_MAX_PAGES,
+            cutoffMs = cutoffMs,
+            fetchPage = { page ->
+                val url = buildString {
+                    append("$BASE_URL/sync/history/episodes?page=$page&limit=$HISTORY_PAGE_LIMIT")
+                    cutoffMs?.let { append("&start_at=").append(epochMsToTraktIso(it)) }
                 }
-                if (!resultsByShow.containsKey(entry.parentMetaId)) {
-                    resultsByShow[entry.parentMetaId] = entry
-                }
-                if (resultsByShow.size >= MAX_RECENT_EPISODE_HISTORY_ENTRIES) {
-                    shouldStop = true
-                    break
-                }
-            }
-
-            val pageCount = response.headerInt("x-pagination-page-count")
-            if (items.size < HISTORY_PAGE_LIMIT || shouldStop || (pageCount != null && page >= pageCount)) break
-            page += 1
-        }
-
-        return resultsByShow.values.toList()
+                httpRequestRaw(
+                    method = "GET",
+                    url = url,
+                    headers = headers,
+                    body = "",
+                )
+            },
+            decodePage = { body -> json.decodeFromString<List<TraktHistoryEpisodeItem>>(body) },
+            mapItem = { item, fallbackIndex -> mapHistoryEpisode(item = item, fallbackIndex = fallbackIndex) },
+        )
     }
 
     private suspend fun fetchRecentMovieHistoryEntries(
@@ -805,7 +776,7 @@ object TraktProgressRepository {
     ): List<WatchProgressEntry> = withContext(Dispatchers.Default) {
         ContinueWatchingPreferencesRepository.ensureLoaded()
         val useFurthestEpisode = ContinueWatchingPreferencesRepository.uiState.value.upNextFromFurthestEpisode
-        val watchedShows = fetchWatchedShowPages(headers)
+        val watchedShows = TraktWatchedShowSnapshotRepository.get(headers)
         updateWatchedShowCaches(watchedShows)
         val mapped = fixAmbiguousWatchedShowSeeds(
             watchedShows.mapNotNull { item ->
@@ -819,39 +790,11 @@ object TraktProgressRepository {
         mapped
     }
 
-    private suspend fun fetchWatchedShowPages(
-        headers: Map<String, String>,
-    ): List<TraktWatchedShowItem> {
-        val items = mutableListOf<TraktWatchedShowItem>()
-        var page = 1
-        while (page <= WATCHED_MAX_PAGES) {
-            val response = httpRequestRaw(
-                method = "GET",
-                url = "$BASE_URL/sync/watched/shows?page=$page&limit=$WATCHED_PAGE_LIMIT&extended=$WATCHED_SHOWS_EXTENDED",
-                headers = headers,
-                body = "",
-            )
-            if (response.status !in 200..299) {
-                error("Trakt watched shows request failed: ${response.status}")
-            }
-            val pageItems = json.decodeFromString<List<TraktWatchedShowItem>>(response.body)
-            if (pageItems.isEmpty()) break
-            items.addAll(pageItems)
-            val pageCount = response.headerInt("x-pagination-page-count")
-            if (pageCount != null && page >= pageCount) break
-            page += 1
-        }
-        if (page > WATCHED_MAX_PAGES) {
-            error("Trakt watched shows exceeded max pages")
-        }
-        return items
-    }
-
-    private fun updateWatchedShowCaches(items: List<TraktWatchedShowItem>) {
+    private fun updateWatchedShowCaches(items: List<TraktWatchedShowSnapshotItem>) {
         val siblingsMap = mutableMapOf<String, MutableSet<String>>()
 
         items.forEach { item ->
-            val keys = watchedShowLookupKeys(item.show?.ids)
+            val keys = watchedShowLookupKeys(item.show?.ids?.toExternalIds())
             if (keys.size <= 1) return@forEach
             for (key in keys) {
                 val existing = siblingsMap[key]
@@ -872,7 +815,7 @@ object TraktProgressRepository {
         val pathIdsByKey = mutableMapOf<String, String>()
 
         items.forEach { item ->
-            val ids = item.show?.ids ?: return@forEach
+            val ids = item.show?.ids?.toExternalIds() ?: return@forEach
             val keys = watchedShowLookupKeys(ids).filter { it !in ambiguousIds }
             if (keys.isEmpty()) return@forEach
 
@@ -1437,11 +1380,11 @@ object TraktProgressRepository {
     }
 
     private fun mapWatchedShowSeed(
-        item: TraktWatchedShowItem,
+        item: TraktWatchedShowSnapshotItem,
         useFurthestEpisode: Boolean,
     ): WatchProgressEntry? {
         val show = item.show ?: return null
-        val parentMetaId = normalizeTraktContentId(show.ids, fallback = show.title)
+        val parentMetaId = normalizeTraktContentId(show.ids?.toExternalIds(), fallback = show.title)
         if (parentMetaId.isBlank()) return null
 
         val completedEpisode = item.seasons.orEmpty()
@@ -1563,12 +1506,6 @@ object TraktProgressRepository {
     private fun Int.pad2(): String = if (this < 10) "0$this" else "$this"
     private fun Int.pad4(): String = toString().padStart(4, '0')
 
-    private fun com.nuvio.app.features.addons.RawHttpResponse.headerInt(name: String): Int? =
-        headers[name.lowercase()]
-            ?.substringBefore(',')
-            ?.trim()
-            ?.toIntOrNull()
-
     private fun rankedTimestamp(isoDate: String?, fallbackIndex: Int): Long {
         isoDate
             ?.takeIf { it.isNotBlank() }
@@ -1577,6 +1514,83 @@ object TraktProgressRepository {
         return TraktPlatformClock.nowEpochMs() - (fallbackIndex * 1_000L)
     }
 }
+
+/**
+ * Reads every page of a paged Trakt list. Returns null as soon as a page fails or can't be decoded,
+ * so a partial list is never taken for the full one.
+ */
+internal suspend fun <T> readAllTraktPages(
+    pageLimit: Int,
+    fetchPage: suspend (page: Int, limit: Int) -> String,
+    decodePage: (String) -> List<T>,
+): List<T>? {
+    val items = mutableListOf<T>()
+    var page = 1
+    while (true) {
+        val pageItems = try {
+            decodePage(fetchPage(page, pageLimit))
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: Exception) {
+            return null
+        }
+        items += pageItems
+        if (pageItems.size < pageLimit) return items
+        page++
+    }
+}
+
+/**
+ * Walks the recent episode history pages and keeps the newest entry per show. Returns null when a
+ * page answers with an error or can't be decoded, so a partial history is never taken for the full one.
+ */
+internal suspend fun <T> collectRecentTraktEpisodeHistory(
+    maxPages: Int,
+    cutoffMs: Long?,
+    fetchPage: suspend (page: Int) -> RawHttpResponse,
+    decodePage: (String) -> List<T>,
+    mapItem: (item: T, fallbackIndex: Int) -> WatchProgressEntry?,
+): List<WatchProgressEntry>? {
+    val resultsByShow = linkedMapOf<String, WatchProgressEntry>()
+    var fallbackIndex = 0
+    var page = 1
+
+    while (page <= maxPages && resultsByShow.size < MAX_RECENT_EPISODE_HISTORY_ENTRIES) {
+        val response = fetchPage(page)
+        if (response.status !in 200..299) return null
+
+        val items = runCatching { decodePage(response.body) }.getOrNull() ?: return null
+        if (items.isEmpty()) break
+
+        var shouldStop = false
+        for (item in items) {
+            val entry = mapItem(item, fallbackIndex++) ?: continue
+            if (cutoffMs != null && entry.lastUpdatedEpochMs < cutoffMs) {
+                shouldStop = true
+                continue
+            }
+            if (!resultsByShow.containsKey(entry.parentMetaId)) {
+                resultsByShow[entry.parentMetaId] = entry
+            }
+            if (resultsByShow.size >= MAX_RECENT_EPISODE_HISTORY_ENTRIES) {
+                shouldStop = true
+                break
+            }
+        }
+
+        val pageCount = response.headerInt("x-pagination-page-count")
+        if (items.size < HISTORY_PAGE_LIMIT || shouldStop || (pageCount != null && page >= pageCount)) break
+        page += 1
+    }
+
+    return resultsByShow.values.toList()
+}
+
+private fun RawHttpResponse.headerInt(name: String): Int? =
+    headers[name.lowercase()]
+        ?.substringBefore(',')
+        ?.trim()
+        ?.toIntOrNull()
 
 internal fun hasCompleteTraktEpisodeContext(
     seasonNumber: Int?,
@@ -1631,26 +1645,6 @@ private data class TraktHistoryEpisodeItem(
 private data class TraktHistoryMovieItem(
     @SerialName("watched_at") val watchedAt: String? = null,
     @SerialName("movie") val movie: TraktMedia? = null,
-)
-
-@Serializable
-private data class TraktWatchedShowItem(
-    @SerialName("last_watched_at") val lastWatchedAt: String? = null,
-    @SerialName("show") val show: TraktMedia? = null,
-    @SerialName("seasons") val seasons: List<TraktWatchedShowSeason>? = null,
-)
-
-@Serializable
-private data class TraktWatchedShowSeason(
-    @SerialName("number") val number: Int? = null,
-    @SerialName("episodes") val episodes: List<TraktWatchedShowEpisode>? = null,
-)
-
-@Serializable
-private data class TraktWatchedShowEpisode(
-    @SerialName("number") val number: Int? = null,
-    @SerialName("plays") val plays: Int? = null,
-    @SerialName("last_watched_at") val lastWatchedAt: String? = null,
 )
 
 private data class TraktWatchedShowEpisodeSeed(

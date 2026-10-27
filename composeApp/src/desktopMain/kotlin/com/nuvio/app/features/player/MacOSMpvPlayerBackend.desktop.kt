@@ -32,6 +32,9 @@ internal object MacOSMpvPlayerBackend : DesktopPlaybackBackend {
         playWhenReady: Boolean,
         resizeMode: PlayerResizeMode,
         useNativeController: Boolean,
+        initialPositionMs: Long?,
+        initialPositionRequestKey: String?,
+        onInitialPositionHandled: (key: String, handled: Boolean) -> Unit,
         overlayContent: @Composable () -> Unit,
         onControllerReady: (PlayerEngineController) -> Unit,
         onSnapshot: (PlayerPlaybackSnapshot) -> Unit,
@@ -147,6 +150,8 @@ internal object MacOSMpvPlayerBackend : DesktopPlaybackBackend {
                         )
                     }
                 }
+
+                override fun applyAudioLanguagePreferences(languages: List<String>) = Unit
 
                 override fun selectAudioTrack(index: Int) {
                     val count = bridge.nuvio_player_get_audio_track_count(playerPtr)

@@ -1,14 +1,18 @@
 package com.nuvio.app.features.catalog
 
+import com.nuvio.app.core.poster.CustomPosterUrlRepository
+import com.nuvio.app.core.poster.withCustomPosterUrls
 import com.nuvio.app.features.collection.CollectionRepository
 import com.nuvio.app.features.collection.TmdbCollectionSourceResolver
 import com.nuvio.app.features.collection.catalogRouteKey
 import com.nuvio.app.features.library.LibraryRepository
-import com.nuvio.app.features.library.toMetaPreview
+import com.nuvio.app.features.servers.ServerCatalog
+import com.nuvio.app.features.servers.serverMessage
 import com.nuvio.app.features.home.HomeCatalogSettingsRepository
 import com.nuvio.app.features.home.filterReleasedItems
 import com.nuvio.app.features.trakt.TraktPublicListSourceResolver
 import com.nuvio.app.features.watchprogress.CurrentDateProvider
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -39,17 +43,25 @@ object CatalogRepository {
         }
         activeRequest = request
         if (target is CatalogTarget.Library) {
-            fetchInternalLibrary(request)
+            observeInternalLibrary(request)
             return
         }
-        fetchPage(request = request, reset = true)
+        fetchPage(
+            request = request,
+            reset = true,
+            forceRefresh = force,
+        )
     }
 
     fun loadMore() {
         val request = activeRequest ?: return
         val current = _uiState.value
         if (current.isLoading || current.nextSkip == null) return
-        fetchPage(request = request, reset = false)
+        fetchPage(
+            request = request,
+            reset = false,
+            forceRefresh = false,
+        )
     }
 
     fun clear() {
@@ -77,7 +89,7 @@ object CatalogRepository {
         )
     }
 
-    private fun fetchInternalLibrary(request: CatalogRequest) {
+    private fun observeInternalLibrary(request: CatalogRequest) {
         activeJob?.cancel()
         _uiState.value = _uiState.value.copy(
             isLoading = true,
@@ -85,41 +97,36 @@ object CatalogRepository {
         )
 
         activeJob = scope.launch {
-            runCatching {
+            try {
                 val target = request.target as CatalogTarget.Library
                 LibraryRepository.ensureLoaded()
-                LibraryRepository.uiState.value.sections
-                    .firstOrNull { it.type == target.sectionType }
-                    ?.items
-                    .orEmpty()
-                    .map { it.toMetaPreview() }
-                    .let(::dedupeCatalogItems)
-            }.fold(
-                onSuccess = { items ->
-                    if (activeRequest != request) return@fold
-                    _uiState.value = CatalogUiState(
-                        items = items,
-                        isLoading = false,
-                        nextSkip = null,
-                        errorMessage = null,
+                LibraryRepository.uiState.libraryCatalogStates(
+                    target, LibraryRepository.uiState.libraryCatalogOrders(target),
+                ).collect { state ->
+                    if (activeRequest != request) return@collect
+                    CustomPosterUrlRepository.ensureLoaded()
+                    val posterPattern = CustomPosterUrlRepository.patternForScreen(
+                        com.nuvio.app.core.poster.CustomPosterScreen.LIBRARY
                     )
-                },
-                onFailure = { error ->
-                    if (activeRequest != request) return@fold
-                    _uiState.value = CatalogUiState(
-                        items = emptyList(),
-                        isLoading = false,
-                        nextSkip = null,
-                        errorMessage = error.message ?: getString(Res.string.catalog_load_failed),
+                    _uiState.value = state.copy(
+                        items = state.items.withCustomPosterUrls(posterPattern)
                     )
-                },
-            )
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                if (activeRequest != request) return@launch
+                _uiState.value = CatalogUiState(
+                    errorMessage = error.serverMessage() ?: error.message ?: getString(Res.string.catalog_load_failed),
+                )
+            }
         }
     }
 
     private fun fetchPage(
         request: CatalogRequest,
         reset: Boolean,
+        forceRefresh: Boolean,
     ) {
         activeJob?.cancel()
         val current = _uiState.value
@@ -141,12 +148,15 @@ object CatalogRepository {
                         catalogId = target.catalogId,
                         genre = target.genre,
                         skip = requestedSkip.takeIf { it > 0 },
+                        forceRefresh = forceRefresh,
                     )
 
                     is CatalogTarget.CollectionSource -> fetchCollectionSourcePage(
                         target = target,
                         page = requestedSkip.takeIf { it > 0 } ?: 1,
                     )
+
+                    is CatalogTarget.Server -> ServerCatalog.page(target, skip = requestedSkip)
 
                     is CatalogTarget.Library -> error(getString(Res.string.catalog_load_failed))
                 }.withUnreleasedFilter(request.hideUnreleasedContent)
@@ -168,8 +178,15 @@ object CatalogRepository {
                         loadedNewItems = loadedNewItems,
                         consecutiveDuplicatePages = if (reset) 0 else current.consecutiveDuplicatePages,
                     )
+                    CustomPosterUrlRepository.ensureLoaded()
+                    val posterScreen = when (request.target) {
+                        is CatalogTarget.Library -> com.nuvio.app.core.poster.CustomPosterScreen.LIBRARY
+                        is CatalogTarget.CollectionSource -> com.nuvio.app.core.poster.CustomPosterScreen.COLLECTIONS
+                        else -> com.nuvio.app.core.poster.CustomPosterScreen.HOME
+                    }
+                    val posterPattern = CustomPosterUrlRepository.patternForScreen(posterScreen)
                     _uiState.value = CatalogUiState(
-                        items = mergedItems,
+                        items = mergedItems.withCustomPosterUrls(posterPattern),
                         isLoading = false,
                         nextSkip = paginationState.nextSkip,
                         consecutiveDuplicatePages = paginationState.consecutiveDuplicatePages,
@@ -183,7 +200,7 @@ object CatalogRepository {
                         items = if (reset) emptyList() else current.items,
                         isLoading = false,
                         nextSkip = null,
-                        errorMessage = error.message ?: getString(Res.string.catalog_load_failed),
+                        errorMessage = error.serverMessage() ?: error.message ?: getString(Res.string.catalog_load_failed),
                     )
                 },
             )

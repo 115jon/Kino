@@ -2,6 +2,7 @@ package com.nuvio.app.features.updater
 
 expect object AppUpdaterPlatform {
     val isSupported: Boolean
+    val isDebugBuild: Boolean
 
     val platform: String
 
@@ -10,6 +11,12 @@ expect object AppUpdaterPlatform {
     fun getIgnoredTag(): String?
 
     fun setIgnoredTag(tag: String?)
+
+    fun getUpdateChannel(): String?
+
+    fun setUpdateChannel(channel: String)
+
+    fun deleteDownloadedApk(path: String)
 
     suspend fun downloadApk(
         assetUrl: String,

@@ -1,3 +1,4 @@
+import AVKit
 import Combine
 import SwiftUI
 import UIKit
@@ -17,15 +18,21 @@ private enum NuvioComposeHost {
 
     static func wrap(
         _ contentController: UIViewController,
+        backgroundColor: UIColor = nuvioBackgroundColor,
         disablesInteractiveContentPopGesture: Bool = false,
-        onTabBarAvailable: ((UITabBar) -> Void)? = nil
+        verticalBar: VerticalBar? = nil,
+        hinge: Hinge? = nil,
+        onTabBarControllerAvailable: ((UITabBarController) -> Void)? = nil
     ) -> RootComposeViewController {
         _ = registerPlayerBridge
-        contentController.view.backgroundColor = nuvioBackgroundColor
+        contentController.view.backgroundColor = backgroundColor
         return RootComposeViewController(
             contentController: contentController,
+            backgroundColor: backgroundColor,
             disablesInteractiveContentPopGesture: disablesInteractiveContentPopGesture,
-            onTabBarAvailable: onTabBarAvailable
+            verticalBar: verticalBar,
+            hinge: hinge,
+            onTabBarControllerAvailable: onTabBarControllerAvailable
         )
     }
 }
@@ -35,17 +42,30 @@ private enum NuvioComposeHost {
 /// to the deepest child that requests them.
 final class RootComposeViewController: UIViewController {
     private let contentController: UIViewController
+    private let backgroundColor: UIColor
     private let disablesInteractiveContentPopGesture: Bool
-    private let onTabBarAvailable: ((UITabBar) -> Void)?
+    private let verticalBar: VerticalBar?
+    private let hinge: Hinge?
+    private let onTabBarControllerAvailable: ((UITabBarController) -> Void)?
+    private var leadingConstraint: NSLayoutConstraint?
+    private var trailingConstraint: NSLayoutConstraint?
+    private var isHalfOpen = false
+    private var foldBoundsSize = CGSize.zero
 
     init(
         contentController: UIViewController,
+        backgroundColor: UIColor,
         disablesInteractiveContentPopGesture: Bool,
-        onTabBarAvailable: ((UITabBar) -> Void)?
+        verticalBar: VerticalBar?,
+        hinge: Hinge?,
+        onTabBarControllerAvailable: ((UITabBarController) -> Void)?
     ) {
         self.contentController = contentController
+        self.backgroundColor = backgroundColor
         self.disablesInteractiveContentPopGesture = disablesInteractiveContentPopGesture
-        self.onTabBarAvailable = onTabBarAvailable
+        self.verticalBar = verticalBar
+        self.hinge = hinge
+        self.onTabBarControllerAvailable = onTabBarControllerAvailable
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -57,43 +77,113 @@ final class RootComposeViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
 
-        view.backgroundColor = nuvioBackgroundColor
-        contentController.view.backgroundColor = nuvioBackgroundColor
+        view.backgroundColor = backgroundColor
+        view.isOpaque = backgroundColor != .clear
+        contentController.view.backgroundColor = backgroundColor
 
         addChild(contentController)
         view.addSubview(contentController.view)
         contentController.view.translatesAutoresizingMaskIntoConstraints = false
+        let leadingConstraint = contentController.view.leadingAnchor.constraint(equalTo: view.leadingAnchor)
+        let trailingConstraint = contentController.view.trailingAnchor.constraint(equalTo: view.trailingAnchor)
         NSLayoutConstraint.activate([
-            contentController.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            contentController.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             contentController.view.topAnchor.constraint(equalTo: view.topAnchor),
             contentController.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            leadingConstraint,
+            trailingConstraint,
         ])
+        self.leadingConstraint = leadingConstraint
+        self.trailingConstraint = trailingConstraint
+        if #available(iOS 27.1, *) {
+            registerForTraitChanges(UITraitCollection.systemTraitsAffectingVerticalBarEdge) {
+                (controller: RootComposeViewController, _: UITraitCollection) in
+                controller.updateVerticalBar()
+            }
+            if hinge != nil {
+                view.addInteraction(UIHingeInteraction { [weak self] _, update in
+                    self?.isHalfOpen = update.hinge?.status == .partiallyOpen
+                    self?.updateFold()
+                })
+            }
+        }
         contentController.didMove(toParent: self)
     }
 
+    override func viewSafeAreaInsetsDidChange() {
+        super.viewSafeAreaInsetsDidChange()
+        updateVerticalBar()
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        guard view.bounds.size != foldBoundsSize else { return }
+        foldBoundsSize = view.bounds.size
+        updateFold()
+    }
+
+    private func updateFold() {
+        guard let hinge else { return }
+        guard #available(iOS 27.1, *), isHalfOpen,
+              let fold = view.reservedRegions(kind: .division).first(where: { $0.frame.width > $0.frame.height })
+        else {
+            hinge.clear()
+            return
+        }
+        hinge.update(top: Double(fold.frame.minY), bottom: Double(fold.frame.maxY))
+    }
+
+    private func updateVerticalBar() {
+        let insets = verticalBarInsets
+        if let verticalBar {
+            verticalBar.update(start: Double(insets.leading), end: Double(insets.trailing))
+        } else {
+            leadingConstraint?.constant = insets.leading
+            trailingConstraint?.constant = -insets.trailing
+        }
+    }
+
+    private var verticalBarInsets: NSDirectionalEdgeInsets {
+        guard #available(iOS 27.1, *) else { return .zero }
+        let insets = view.safeAreaInsets
+        let isRightToLeft = view.effectiveUserInterfaceLayoutDirection == .rightToLeft
+        switch traitCollection.verticalBarEdge {
+        case .leading:
+            return NSDirectionalEdgeInsets(top: 0, leading: isRightToLeft ? insets.right : insets.left, bottom: 0, trailing: 0)
+        case .trailing:
+            return NSDirectionalEdgeInsets(top: 0, leading: 0, bottom: 0, trailing: isRightToLeft ? insets.left : insets.right)
+        default:
+            return .zero
+        }
+    }
+
     override var childForHomeIndicatorAutoHidden: UIViewController? {
-        immersiveController(in: contentController) ?? contentController
+        nil
     }
 
     override var childForScreenEdgesDeferringSystemGestures: UIViewController? {
-        immersiveController(in: contentController) ?? contentController
+        nil
     }
 
     override var childForStatusBarHidden: UIViewController? {
-        immersiveController(in: contentController) ?? contentController
+        nil
     }
 
     override var prefersHomeIndicatorAutoHidden: Bool {
-        immersiveController(in: contentController)?.prefersHomeIndicatorAutoHidden ?? false
+        SystemUI.shared.activePlayer?.prefersHomeIndicatorAutoHidden
+            ?? immersiveController(in: contentController)?.prefersHomeIndicatorAutoHidden
+            ?? false
     }
 
     override var preferredScreenEdgesDeferringSystemGestures: UIRectEdge {
-        immersiveController(in: contentController)?.preferredScreenEdgesDeferringSystemGestures ?? []
+        SystemUI.shared.activePlayer?.preferredScreenEdgesDeferringSystemGestures
+            ?? immersiveController(in: contentController)?.preferredScreenEdgesDeferringSystemGestures
+            ?? []
     }
 
     override var prefersStatusBarHidden: Bool {
-        immersiveController(in: contentController)?.prefersStatusBarHidden ?? false
+        SystemUI.shared.activePlayer?.prefersStatusBarHidden
+            ?? immersiveController(in: contentController)?.prefersStatusBarHidden
+            ?? false
     }
 
     override var preferredStatusBarUpdateAnimation: UIStatusBarAnimation {
@@ -102,19 +192,19 @@ final class RootComposeViewController: UIViewController {
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        setInteractiveContentPopGestureEnabled(false)
+        configureBackGestures(isVisible: true)
     }
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
-        setInteractiveContentPopGestureEnabled(false)
-        if let tabBar = tabBarController?.tabBar {
-            onTabBarAvailable?(tabBar)
+        configureBackGestures(isVisible: true)
+        if let tabBarController {
+            onTabBarControllerAvailable?(tabBarController)
         }
     }
 
     override func viewWillDisappear(_ animated: Bool) {
-        setInteractiveContentPopGestureEnabled(true)
+        configureBackGestures(isVisible: false)
         super.viewWillDisappear(animated)
     }
 
@@ -124,11 +214,12 @@ final class RootComposeViewController: UIViewController {
         setNeedsStatusBarAppearanceUpdate()
     }
 
-    private func setInteractiveContentPopGestureEnabled(_ enabled: Bool) {
-        guard disablesInteractiveContentPopGesture else { return }
+    private func configureBackGestures(isVisible: Bool) {
         if #available(iOS 26.0, *) {
-            navigationController?.interactiveContentPopGestureRecognizer?.isEnabled = enabled
+            navigationController?.interactiveContentPopGestureRecognizer?.isEnabled = false
         }
+        navigationController?.interactivePopGestureRecognizer?.isEnabled =
+            isVisible ? !disablesInteractiveContentPopGesture : true
     }
 
     private func immersiveController(in controller: UIViewController?) -> UIViewController? {
@@ -454,8 +545,9 @@ final class NativeProfileTabInteractionCoordinator: NSObject, UIGestureRecognize
     var onLongPress: (() -> Void)?
     private(set) var isHandlingLongPress = false
     private(set) var suppressesProfileSelection = false
-    private weak var tabBar: UITabBar?
-    private var resetWorkItem: DispatchWorkItem?
+    private weak var tabBarController: UITabBarController?
+    private var selectedIndexBeforeLongPress: Int?
+    private let competingRecognizers = NSHashTable<UIGestureRecognizer>.weakObjects()
     private lazy var recognizer: UILongPressGestureRecognizer = {
         let recognizer = UILongPressGestureRecognizer(
             target: self,
@@ -467,11 +559,11 @@ final class NativeProfileTabInteractionCoordinator: NSObject, UIGestureRecognize
         return recognizer
     }()
 
-    func attach(to tabBar: UITabBar) {
-        guard self.tabBar !== tabBar else { return }
-        self.tabBar?.removeGestureRecognizer(recognizer)
-        tabBar.addGestureRecognizer(recognizer)
-        self.tabBar = tabBar
+    func attach(to tabBarController: UITabBarController) {
+        guard self.tabBarController !== tabBarController else { return }
+        self.tabBarController?.tabBar.removeGestureRecognizer(recognizer)
+        tabBarController.tabBar.addGestureRecognizer(recognizer)
+        self.tabBarController = tabBarController
     }
 
     func gestureRecognizer(
@@ -479,10 +571,11 @@ final class NativeProfileTabInteractionCoordinator: NSObject, UIGestureRecognize
         shouldReceive touch: UITouch
     ) -> Bool {
         guard gestureRecognizer === recognizer,
-              let tabBar,
+              let tabBar = tabBarController?.tabBar,
               let profileItem = tabBar.items?.last else {
             return false
         }
+        competingRecognizers.removeAllObjects()
         guard #available(iOS 17.0, *),
               let profileFrame = profileItem.frame(in: tabBar) else { return false }
         return profileFrame.contains(touch.location(in: tabBar))
@@ -492,24 +585,41 @@ final class NativeProfileTabInteractionCoordinator: NSObject, UIGestureRecognize
         _ gestureRecognizer: UIGestureRecognizer,
         shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
     ) -> Bool {
-        gestureRecognizer === recognizer || otherGestureRecognizer === recognizer
+        guard gestureRecognizer === recognizer || otherGestureRecognizer === recognizer else {
+            return false
+        }
+        competingRecognizers.add(
+            gestureRecognizer === recognizer ? otherGestureRecognizer : gestureRecognizer
+        )
+        return true
     }
 
     @objc private func handleLongPress(_ recognizer: UILongPressGestureRecognizer) {
         switch recognizer.state {
         case .began:
-            resetWorkItem?.cancel()
+            selectedIndexBeforeLongPress = tabBarController?.selectedIndex
             isHandlingLongPress = true
             suppressesProfileSelection = true
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             onLongPress?()
-        case .ended, .cancelled, .failed:
-            let workItem = DispatchWorkItem { [weak self] in
-                self?.isHandlingLongPress = false
-                self?.suppressesProfileSelection = false
+            competingRecognizers.allObjects.forEach { competingRecognizer in
+                competingRecognizer.isEnabled = false
+                competingRecognizer.isEnabled = true
             }
-            resetWorkItem = workItem
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.75, execute: workItem)
+            if let selectedIndexBeforeLongPress {
+                tabBarController?.selectedIndex = selectedIndexBeforeLongPress
+            }
+        case .ended, .cancelled, .failed:
+            let selectedIndex = selectedIndexBeforeLongPress
+            isHandlingLongPress = false
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                if let selectedIndex {
+                    self.tabBarController?.selectedIndex = selectedIndex
+                }
+                self.selectedIndexBeforeLongPress = nil
+                self.suppressesProfileSelection = false
+            }
         default:
             break
         }
@@ -520,14 +630,19 @@ final class NativeProfileTabInteractionCoordinator: NSObject, UIGestureRecognize
 @MainActor
 final class AppNavigationCoordinator: ObservableObject {
     @Published var selectedTab: NuvioAppTab = .home
+    @Published private(set) var isMainContentMounted = false
+    @Published private(set) var isMainContentVisible = false
     @Published private(set) var isAppReady = false
     @Published private var localizedTabTitles: [NuvioAppTab: String] = [:]
+    @Published private(set) var localizedSwitchProfileTitle = ""
+    @Published private(set) var localizedAddProfileTitle = ""
     @Published var isProfileSwitcherPresented = false
 
     let homeCoordinator = TabNavigationCoordinator()
     let searchCoordinator = TabNavigationCoordinator()
     let libraryCoordinator = TabNavigationCoordinator()
     let settingsCoordinator = TabNavigationCoordinator()
+    let appGateController = AppGateController()
     let profileSwitcherController = NativeProfileSwitcherController()
     let profileTabInteraction = NativeProfileTabInteractionCoordinator()
 
@@ -562,27 +677,46 @@ final class AppNavigationCoordinator: ObservableObject {
         localizedTabTitles[tab] ?? tab.fallbackTitle
     }
 
-    func updateTabTitles(home: String, search: String, library: String, profile: String) {
+    func updateTabTitles(
+        home: String,
+        search: String,
+        library: String,
+        profile: String,
+        switchProfile: String,
+        addProfile: String
+    ) {
         localizedTabTitles = [
             .home: home,
             .search: search,
             .library: library,
             .settings: profile,
         ]
+        localizedSwitchProfileTitle = switchProfile
+        localizedAddProfileTitle = addProfile
     }
 
     func updateAppReady(_ ready: Bool) {
         isAppReady = ready
         if !ready {
             isProfileSwitcherPresented = false
-            selectedTab = .home
             allCoordinators.forEach { $0.popToRoot() }
         }
     }
 
+    func setMainContentMounted(_ mounted: Bool) {
+        isMainContentMounted = mounted
+        if !mounted {
+            isMainContentVisible = false
+            selectedTab = .home
+        }
+    }
+
+    func setMainContentVisible(_ visible: Bool) {
+        isMainContentVisible = visible
+    }
+
     func openProfileManagement() {
         isProfileSwitcherPresented = false
-        updateAppReady(false)
         profileSwitcherController.requestManageProfiles()
     }
 
@@ -628,6 +762,7 @@ struct NativeNavComposeView: UIViewControllerRepresentable {
     let appCoordinator: AppNavigationCoordinator
 
     func makeUIViewController(context: Context) -> UIViewController {
+        let verticalBar = VerticalBar()
         let controller = MainViewControllerKt.MainViewController(
             initialTabName: tab.rawValue,
             useNativeTabBar: usesNativeTabBar,
@@ -648,25 +783,56 @@ struct NativeNavComposeView: UIViewControllerRepresentable {
             onActivate: { tabName in
                 appCoordinator.activateTab(named: tabName)
             },
-            onAppReady: { ready in
-                appCoordinator.updateAppReady(ready.boolValue)
-            },
-            onTabTitles: { home, search, library, profile in
+            onTabTitles: { home, search, library, profile, switchProfile, addProfile in
                 appCoordinator.updateTabTitles(
                     home: home,
                     search: search,
                     library: library,
-                    profile: profile
+                    profile: profile,
+                    switchProfile: switchProfile,
+                    addProfile: addProfile
                 )
             },
-            nativeProfileSwitcherController: appCoordinator.profileSwitcherController
+            appGateController: appCoordinator.appGateController,
+            verticalBar: verticalBar
         )
         return NuvioComposeHost.wrap(
             controller,
-            onTabBarAvailable: { tabBar in
-                appCoordinator.profileTabInteraction.attach(to: tabBar)
+            verticalBar: verticalBar,
+            onTabBarControllerAvailable: { tabBarController in
+                appCoordinator.profileTabInteraction.attach(to: tabBarController)
             }
         )
+    }
+
+    func updateUIViewController(_ uiViewController: UIViewController, context: Context) {}
+}
+
+@available(iOS 16.0, *)
+struct AppGateComposeView: UIViewControllerRepresentable {
+    let appCoordinator: AppNavigationCoordinator
+
+    func makeUIViewController(context: Context) -> UIViewController {
+        let verticalBar = VerticalBar()
+        let controller = MainViewControllerKt.AppGateViewController(
+            appGateController: appCoordinator.appGateController,
+            nativeProfileSwitcherController: appCoordinator.profileSwitcherController,
+            onActivate: { tabName in
+                appCoordinator.activateTab(named: tabName)
+            },
+            onAppReady: { ready in
+                appCoordinator.updateAppReady(ready.boolValue)
+            },
+            onMainContentMountChanged: { mounted in
+                appCoordinator.setMainContentMounted(mounted.boolValue)
+            },
+            onMainContentVisibleChanged: { visible in
+                appCoordinator.setMainContentVisible(visible.boolValue)
+            },
+            verticalBar: verticalBar
+        )
+        controller.view.isOpaque = false
+        return NuvioComposeHost.wrap(controller, backgroundColor: .clear, verticalBar: verticalBar)
     }
 
     func updateUIViewController(_ uiViewController: UIViewController, context: Context) {}
@@ -679,6 +845,8 @@ struct DetailComposeView: UIViewControllerRepresentable {
     let appCoordinator: AppNavigationCoordinator
 
     func makeUIViewController(context: Context) -> UIViewController {
+        let verticalBar = VerticalBar()
+        let hinge = Hinge()
         let controller = MainViewControllerKt.ScreenViewController(
             route: route,
             onNavigate: { newRoute, launchSingleTop in
@@ -696,11 +864,16 @@ struct DetailComposeView: UIViewControllerRepresentable {
             },
             onActivate: { tabName in
                 appCoordinator.activateTab(named: tabName)
-            }
+            },
+            appGateController: appCoordinator.appGateController,
+            verticalBar: verticalBar,
+            hinge: hinge
         )
         return NuvioComposeHost.wrap(
             controller,
-            disablesInteractiveContentPopGesture: true
+            disablesInteractiveContentPopGesture: route is PlayerRoute,
+            verticalBar: verticalBar,
+            hinge: route is PlayerRoute ? hinge : nil
         )
     }
 
@@ -753,7 +926,7 @@ struct TabContentView: View {
         // stack. Applying it here keeps the authentication/profile gate truly
         // full-screen on iOS 26, where a modifier on TabView itself is ignored.
         .toolbar(
-            usesNativeTabBar && appCoordinator.isAppReady && coordinator.path.isEmpty
+            usesNativeTabBar && appCoordinator.isMainContentVisible && coordinator.path.isEmpty
                 ? Visibility.visible
                 : Visibility.hidden,
             for: .tabBar
@@ -793,18 +966,35 @@ private struct DetailDestinationView: View {
         wrapper.route is DetailRoute || wrapper.route is StreamRoute
     }
 
+    private var respectsNativeNavigationSafeArea: Bool {
+        wrapper.route is FolderDetailRoute
+    }
+
+    private var hidesNativeNavigationBar: Bool {
+        wrapper.route.hidesNavigationBar
+    }
+
     private var showsReadabilityFade: Bool {
-        !wrapper.route.hidesNavigationBar && !usesComposeNavigationHeader
+        !hidesNativeNavigationBar && !usesComposeNavigationHeader
     }
 
     private var content: some View {
         ZStack(alignment: .top) {
-            DetailComposeView(
-                route: wrapper.route,
-                coordinator: coordinator,
-                appCoordinator: appCoordinator
-            )
-            .ignoresSafeArea(.all)
+            if respectsNativeNavigationSafeArea {
+                DetailComposeView(
+                    route: wrapper.route,
+                    coordinator: coordinator,
+                    appCoordinator: appCoordinator
+                )
+                .ignoresSafeArea(.all, edges: [.horizontal, .bottom])
+            } else {
+                DetailComposeView(
+                    route: wrapper.route,
+                    coordinator: coordinator,
+                    appCoordinator: appCoordinator
+                )
+                .ignoresSafeArea(.all)
+            }
 
             if showsReadabilityFade {
                 NativeToolbarReadabilityFade()
@@ -822,9 +1012,10 @@ private struct DetailDestinationView: View {
         }
         .toolbar(.hidden, for: .tabBar)
         .toolbar(
-            wrapper.route.hidesNavigationBar ? Visibility.hidden : Visibility.visible,
+            hidesNativeNavigationBar ? Visibility.hidden : Visibility.visible,
             for: .navigationBar
         )
+        .verticalBarDisabled(wrapper.route is PlayerRoute)
     }
 
     @ViewBuilder
@@ -833,6 +1024,17 @@ private struct DetailDestinationView: View {
             content.navigationSubtitle(wrapper.route.subtitle ?? "")
         } else {
             content
+        }
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func verticalBarDisabled(_ disabled: Bool) -> some View {
+        if #available(iOS 27.1, *), disabled {
+            toolbarVerticalBehavior(.disabled)
+        } else {
+            self
         }
     }
 }
@@ -889,7 +1091,7 @@ private final class NativeProfileSwitcherViewModel: ObservableObject {
     }
 
     func choose(_ profile: NativeProfileItem, onComplete: @escaping () -> Void) {
-        if profile.pinEnabled {
+        if profile.pinEnabled && !profile.active {
             lockedProfile = profile
             pin = ""
             errorMessage = nil
@@ -969,7 +1171,7 @@ private struct NativeProfileAvatarView: View {
         }
         .clipShape(Circle())
         .overlay {
-            Circle().stroke(
+            Circle().strokeBorder(
                 Color(uiColor: profile.avatarColor).opacity(profile.active ? 1 : 0.45),
                 lineWidth: profile.active ? 2.5 : 1.5
             )
@@ -987,21 +1189,27 @@ private struct NativeProfileAvatarView: View {
 private struct NativeProfileSwitcherView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var model: NativeProfileSwitcherViewModel
+    let title: String
+    let addProfileTitle: String
     let onManageProfiles: () -> Void
 
     init(
         controller: NativeProfileSwitcherController,
+        title: String,
+        addProfileTitle: String,
         onManageProfiles: @escaping () -> Void
     ) {
         _model = StateObject(
             wrappedValue: NativeProfileSwitcherViewModel(controller: controller)
         )
+        self.title = title
+        self.addProfileTitle = addProfileTitle
         self.onManageProfiles = onManageProfiles
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Switch Profile")
+            Text(title)
                 .font(.headline)
 
             if model.isLoaded {
@@ -1043,8 +1251,9 @@ private struct NativeProfileSwitcherView: View {
                                         .font(.system(size: 19, weight: .semibold))
                                         .frame(width: 52, height: 52)
                                         .background(.secondary.opacity(0.12), in: Circle())
-                                    Text("Add")
+                                    Text(addProfileTitle)
                                         .font(.caption)
+                                        .multilineTextAlignment(.center)
                                         .frame(width: 64)
                                 }
                             }
@@ -1124,10 +1333,7 @@ struct NativeNavContentView: View {
             get: { appCoordinator.selectedTab },
             set: { newTab in
                 if newTab == .settings &&
-                    (
-                        appCoordinator.profileTabInteraction.suppressesProfileSelection ||
-                            appCoordinator.isProfileSwitcherPresented
-                    ) {
+                    appCoordinator.profileTabInteraction.suppressesProfileSelection {
                     return
                 }
                 if newTab == appCoordinator.selectedTab {
@@ -1209,6 +1415,8 @@ struct NativeNavContentView: View {
                     ) {
                         NativeProfileSwitcherView(
                             controller: appCoordinator.profileSwitcherController,
+                            title: appCoordinator.localizedSwitchProfileTitle,
+                            addProfileTitle: appCoordinator.localizedAddProfileTitle,
                             onManageProfiles: appCoordinator.openProfileManagement
                         )
                     }
@@ -1246,21 +1454,78 @@ struct NativeNavContentView: View {
 
     @ViewBuilder
     var body: some View {
-        if #available(iOS 26.0, *), usesNativeTabBar {
-            nativeTabs
-        } else {
-            legacyTabs
+        ZStack {
+            Group {
+                if appCoordinator.isMainContentMounted {
+                    if #available(iOS 26.0, *), usesNativeTabBar {
+                        nativeTabs
+                    } else {
+                        legacyTabs
+                    }
+                } else {
+                    Color(uiColor: nuvioBackgroundColor)
+                        .ignoresSafeArea(.all)
+                }
+            }
+            .zIndex(0)
+
+            AppGateComposeView(appCoordinator: appCoordinator)
+                .ignoresSafeArea(.all)
+                .allowsHitTesting(!appCoordinator.isAppReady)
+                .accessibilityHidden(appCoordinator.isAppReady)
+                .zIndex(1)
         }
     }
 }
 
 struct ContentView: View {
+    @Environment(\.scenePhase) private var scenePhase
+    @ObservedObject private var systemUI = SystemUI.shared
+
     var body: some View {
-        if #available(iOS 16.0, *) {
-            NativeNavContentView()
-        } else {
-            ComposeView()
-                .ignoresSafeArea(.all)
+        Group {
+            if #available(iOS 16.0, *) {
+                NativeNavContentView()
+                    .accessibilityHidden(systemUI.pictureInPictureMessage != nil)
+                    .allowsHitTesting(systemUI.pictureInPictureMessage == nil)
+            } else {
+                ComposeView()
+                    .ignoresSafeArea(.all)
+                    .accessibilityHidden(systemUI.pictureInPictureMessage != nil)
+                    .allowsHitTesting(systemUI.pictureInPictureMessage == nil)
+            }
+        }
+        .persistentSystemOverlays(systemUI.isPlayerImmersive ? .hidden : .automatic)
+        .statusBarHidden(systemUI.isPlayerImmersive)
+        .overlay {
+            if let message = systemUI.pictureInPictureMessage {
+                Color.black
+                    .ignoresSafeArea()
+                    .overlay {
+                        VStack(spacing: 16) {
+                            Image(uiImage: AVPictureInPictureController.pictureInPictureButtonStartImage)
+                                .renderingMode(.template)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 96, height: 72)
+                                .accessibilityHidden(true)
+                            Text(message)
+                                .font(.body)
+                                .multilineTextAlignment(.center)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .foregroundStyle(.gray)
+                        .padding(24)
+                        .accessibilityElement(children: .combine)
+                    }
+            }
+        }
+        .onChange(of: scenePhase) { phase in
+            if phase == .active {
+                DispatchQueue.main.async {
+                    NotificationCenter.default.post(name: playerSceneDidActivateNotification, object: nil)
+                }
+            }
         }
     }
 }

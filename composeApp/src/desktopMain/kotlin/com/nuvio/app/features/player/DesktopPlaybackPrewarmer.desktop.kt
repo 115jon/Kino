@@ -13,11 +13,13 @@ internal suspend fun prewarmDesktopPlaybackBackend() {
     val osName = System.getProperty("os.name").orEmpty().lowercase()
     if (osName.contains("windows")) {
         withContext(Dispatchers.IO) {
-            runCatching { WindowsJoglNativeLoader.ensureConfigured() }
-                .onFailure { desktopPlaybackPrewarmLog.w(it) { "windows jogl preload failed" } }
+            runCatching { WindowsMpvLibrary.INSTANCE }
+                .onSuccess { desktopPlaybackPrewarmLog.i { "windows mpv preload complete" } }
+                .onFailure { desktopPlaybackPrewarmLog.w(it) { "windows mpv preload failed" } }
         }
         return
     }
+
     if (!osName.contains("mac")) return
     if (!desktopPlaybackPrewarmStarted.compareAndSet(false, true)) return
 

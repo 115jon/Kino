@@ -1,23 +1,11 @@
 package com.nuvio.app.features.settings
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.LazyListScope
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.Icon
@@ -29,21 +17,21 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.nuvio.app.core.build.KinoFeaturePolicy
+import com.nuvio.app.core.ui.floatingNavigationGlowSupported
 import com.nuvio.app.core.ui.AppTheme
+import com.nuvio.app.isIos
 import com.nuvio.app.core.ui.NuvioBottomSheetActionRow
-import com.nuvio.app.core.ui.NuvioBottomSheetDivider
 import com.nuvio.app.core.ui.NuvioModalBottomSheet
+import com.nuvio.app.core.ui.NuvioStatusModal
 import com.nuvio.app.core.ui.dismissNuvioBottomSheet
 import com.nuvio.app.core.ui.labelRes
-import com.nuvio.app.core.ui.ThemeColors
 import kotlinx.coroutines.launch
 import nuvio.composeapp.generated.resources.Res
 import nuvio.composeapp.generated.resources.cd_selected
@@ -54,15 +42,24 @@ import nuvio.composeapp.generated.resources.compose_settings_page_meta_screen
 import nuvio.composeapp.generated.resources.compose_settings_page_poster_customization
 import nuvio.composeapp.generated.resources.compose_settings_page_streams
 import nuvio.composeapp.generated.resources.settings_appearance_app_language
+import nuvio.composeapp.generated.resources.settings_appearance_app_language_restart_message
+import nuvio.composeapp.generated.resources.settings_appearance_app_language_restart_title
 import nuvio.composeapp.generated.resources.settings_appearance_app_language_sheet_title
+import nuvio.composeapp.generated.resources.settings_appearance_app_icon
+import nuvio.composeapp.generated.resources.settings_appearance_nav_bar_style
+import nuvio.composeapp.generated.resources.settings_nav_bar_glow_on
+import nuvio.composeapp.generated.resources.settings_nav_bar_glow_off
+import nuvio.composeapp.generated.resources.settings_nav_bar_summary
 import nuvio.composeapp.generated.resources.settings_appearance_amoled_black
 import nuvio.composeapp.generated.resources.settings_appearance_amoled_description
 import nuvio.composeapp.generated.resources.settings_appearance_continue_watching_description
 import nuvio.composeapp.generated.resources.settings_appearance_liquid_glass
 import nuvio.composeapp.generated.resources.settings_appearance_liquid_glass_description
 import nuvio.composeapp.generated.resources.settings_appearance_poster_customization_description
+import nuvio.composeapp.generated.resources.settings_appearance_section_detail_page
 import nuvio.composeapp.generated.resources.settings_appearance_section_display
 import nuvio.composeapp.generated.resources.settings_appearance_section_home
+import nuvio.composeapp.generated.resources.settings_appearance_section_streams
 import nuvio.composeapp.generated.resources.settings_appearance_section_theme
 import nuvio.composeapp.generated.resources.settings_content_discovery_collections_description
 import nuvio.composeapp.generated.resources.settings_content_discovery_homescreen_description
@@ -82,8 +79,13 @@ internal fun LazyListScope.appearanceSettingsContent(
     liquidGlassNativeTabBarSupported: Boolean,
     liquidGlassNativeTabBarEnabled: Boolean,
     onLiquidGlassNativeTabBarToggle: (Boolean) -> Unit,
+    appIconState: AppIconSettingsState,
+    onAppIconSelected: (AppIconOption) -> Unit,
+    onAppIconFailureDismissed: () -> Unit,
     selectedAppLanguage: AppLanguage,
     onAppLanguageSelected: (AppLanguage) -> Unit,
+    selectedNavBarStyle: NavBarStyle,
+    onNavBarStyleSelected: (NavBarStyle) -> Unit,
     onHomescreenClick: () -> Unit,
     onMetaScreenClick: () -> Unit,
     onStreamsClick: () -> Unit,
@@ -97,53 +99,23 @@ internal fun LazyListScope.appearanceSettingsContent(
             isTablet = isTablet,
         ) {
             SettingsGroup(isTablet = isTablet) {
-                val themes = listOf(AppTheme.WHITE) + AppTheme.entries.filterNot { it == AppTheme.WHITE }
-                val horizontalPadding = if (isTablet) 20.dp else 16.dp
-                val verticalPadding = if (isTablet) 18.dp else 14.dp
-                val themeSpacing = if (isTablet) 16.dp else 12.dp
-                BoxWithConstraints(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(
-                            horizontal = horizontalPadding,
-                            vertical = verticalPadding,
-                        ),
-                ) {
-                    val preferredColumns = if (isTablet) 4 else 3
-                    val minThemeCellWidth = if (isTablet) 92.dp else 78.dp
-                    val themeColumns = ((maxWidth + themeSpacing) / (minThemeCellWidth + themeSpacing))
-                        .toInt()
-                        .coerceAtLeast(1)
-                        .coerceAtMost(preferredColumns)
-
-                    Column(
-                        verticalArrangement = Arrangement.spacedBy(themeSpacing),
-                    ) {
-                        themes.chunked(themeColumns).forEach { rowThemes ->
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(themeSpacing),
-                            ) {
-                                rowThemes.forEach { theme ->
-                                    ThemeChip(
-                                        theme = theme,
-                                        isSelected = theme == selectedTheme,
-                                        onClick = { onThemeSelected(theme) },
-                                        modifier = Modifier.weight(1f),
-                                    )
-                                }
-                                repeat(themeColumns - rowThemes.size) {
-                                    Spacer(modifier = Modifier.weight(1f))
-                                }
-                            }
-                        }
-                    }
-                }
+                AppearanceThemePicker(
+                    isTablet = isTablet,
+                    selectedTheme = selectedTheme,
+                    onThemeSelected = onThemeSelected,
+                )
             }
         }
     }
     item {
         var showLanguageSheet by remember { mutableStateOf(false) }
+        var showLanguageRestartDialog by remember { mutableStateOf(false) }
+        val layoutDirection = LocalLayoutDirection.current
+        var showNavBarStyleSheet by remember { mutableStateOf(false) }
+        var showAppIconPicker by remember { mutableStateOf(false) }
+        val navBarStyleAvailable = !isIos
+        val glowEnabled by ThemeSettingsRepository.navBarGlowEnabled.collectAsStateWithLifecycle()
+        val effectiveNavBarStyle = if (isTablet) NavBarStyle.COMPACT else selectedNavBarStyle
         SettingsSection(
             title = stringResource(Res.string.settings_appearance_section_display),
             isTablet = isTablet,
@@ -166,6 +138,26 @@ internal fun LazyListScope.appearanceSettingsContent(
                         onCheckedChange = onLiquidGlassNativeTabBarToggle,
                     )
                 }
+                if (KinoFeaturePolicy.alternateAppIconsEnabled) {
+                    SettingsGroupDivider(isTablet = isTablet)
+                    SettingsNavigationRow(
+                        title = stringResource(Res.string.settings_appearance_app_icon),
+                        description = stringResource(appIconState.selected.labelResource),
+                        enabled = appIconState.pending == null,
+                        isTablet = isTablet,
+                        trailingContent = {
+                            AppIconThumbnail(
+                                icon = appIconState.selected,
+                                modifier = Modifier.size(if (isTablet) 44.dp else 40.dp),
+                                cornerRadius = if (isTablet) 11.dp else 10.dp,
+                            )
+                        },
+                        onClick = {
+                            onAppIconFailureDismissed()
+                            showAppIconPicker = true
+                        },
+                    )
+                }
                 SettingsGroupDivider(isTablet = isTablet)
                 SettingsNavigationRow(
                     title = stringResource(Res.string.settings_appearance_app_language),
@@ -173,6 +165,23 @@ internal fun LazyListScope.appearanceSettingsContent(
                     isTablet = isTablet,
                     onClick = { showLanguageSheet = true },
                 )
+                if (navBarStyleAvailable) {
+                    SettingsGroupDivider(isTablet = isTablet)
+                    SettingsNavigationRow(
+                        title = stringResource(Res.string.settings_appearance_nav_bar_style),
+                        description = if (floatingNavigationGlowSupported && effectiveNavBarStyle != NavBarStyle.CLASSIC) {
+                            stringResource(
+                                Res.string.settings_nav_bar_summary,
+                                stringResource(effectiveNavBarStyle.labelRes),
+                                stringResource(if (glowEnabled) Res.string.settings_nav_bar_glow_on else Res.string.settings_nav_bar_glow_off),
+                            )
+                        } else {
+                            stringResource(effectiveNavBarStyle.labelRes)
+                        },
+                        isTablet = isTablet,
+                        onClick = { showNavBarStyleSheet = true },
+                    )
+                }
             }
         }
 
@@ -182,8 +191,40 @@ internal fun LazyListScope.appearanceSettingsContent(
                 onLanguageSelected = {
                     onAppLanguageSelected(it)
                     showLanguageSheet = false
+                    val newLayoutDirection = if (it.isRightToLeft()) LayoutDirection.Rtl else LayoutDirection.Ltr
+                    if (isIos && newLayoutDirection != layoutDirection) showLanguageRestartDialog = true
                 },
                 onDismiss = { showLanguageSheet = false },
+            )
+        }
+
+        NuvioStatusModal(
+            title = stringResource(Res.string.settings_appearance_app_language_restart_title),
+            message = stringResource(Res.string.settings_appearance_app_language_restart_message),
+            isVisible = showLanguageRestartDialog,
+            onConfirm = { showLanguageRestartDialog = false },
+        )
+
+        if (showAppIconPicker) {
+            AppIconPicker(
+                isTablet = isTablet,
+                state = appIconState,
+                onSelected = onAppIconSelected,
+                onDismiss = {
+                    onAppIconFailureDismissed()
+                    showAppIconPicker = false
+                },
+            )
+        }
+
+        if (navBarStyleAvailable && showNavBarStyleSheet) {
+            NavigationBarSettingsSheet(
+                isTablet = isTablet,
+                selectedStyle = effectiveNavBarStyle,
+                onStyleSelected = onNavBarStyleSelected,
+                glowEnabled = glowEnabled,
+                onGlowChanged = ThemeSettingsRepository::setNavBarGlowEnabled,
+                onDismiss = { showNavBarStyleSheet = false },
             )
         }
     }
@@ -226,7 +267,7 @@ internal fun LazyListScope.appearanceSettingsContent(
     }
     item {
         SettingsSection(
-            title = stringResource(Res.string.compose_settings_page_streams),
+            title = stringResource(Res.string.settings_appearance_section_streams),
             isTablet = isTablet,
         ) {
             SettingsGroup(isTablet = isTablet) {
@@ -241,7 +282,7 @@ internal fun LazyListScope.appearanceSettingsContent(
     }
     item {
         SettingsSection(
-            title = stringResource(Res.string.compose_settings_page_meta_screen),
+            title = stringResource(Res.string.settings_appearance_section_detail_page),
             isTablet = isTablet,
         ) {
             SettingsGroup(isTablet = isTablet) {
@@ -302,12 +343,10 @@ private fun AppearanceLanguageBottomSheet(
                 )
             }
 
-            itemsIndexed(options) { index, option ->
-                if (index > 0) {
-                    NuvioBottomSheetDivider()
-                }
+            items(options) { option ->
                 NuvioBottomSheetActionRow(
                     title = stringResource(option.labelRes),
+                    selected = option.language == selectedLanguage,
                     onClick = {
                         onLanguageSelected(option.language)
                         coroutineScope.launch {
@@ -326,83 +365,5 @@ private fun AppearanceLanguageBottomSheet(
                 )
             }
         }
-    }
-}
-
-@Composable
-private fun ThemeChip(
-    theme: AppTheme,
-    isSelected: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val palette = ThemeColors.getColorPalette(theme)
-
-    Column(
-        modifier = modifier
-            .clip(RoundedCornerShape(12.dp))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 4.dp, vertical = 8.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Box(
-            modifier = Modifier
-                .size(56.dp)
-                .then(
-                    if (isSelected) {
-                        Modifier.border(
-                            width = 1.5.dp,
-                            color = palette.focusRing,
-                            shape = RoundedCornerShape(14.dp),
-                        )
-                    } else {
-                        Modifier
-                    },
-                ),
-            contentAlignment = Alignment.Center,
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(44.dp)
-                    .clip(CircleShape)
-                    .background(palette.secondary),
-                contentAlignment = Alignment.Center,
-            ) {
-                if (isSelected) {
-                    Icon(
-                        imageVector = Icons.Default.Check,
-                        contentDescription = stringResource(Res.string.cd_selected),
-                        tint = palette.onSecondary,
-                        modifier = Modifier.size(22.dp),
-                    )
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(6.dp))
-
-        Text(
-            text = stringResource(theme.labelRes),
-            style = MaterialTheme.typography.labelMedium,
-            color = if (isSelected) {
-                MaterialTheme.colorScheme.onSurface
-            } else {
-                MaterialTheme.colorScheme.onSurfaceVariant
-            },
-            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
-            textAlign = TextAlign.Center,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.fillMaxWidth(),
-        )
-
-        Spacer(modifier = Modifier.height(4.dp))
-
-        Box(
-            modifier = Modifier
-                .size(width = 36.dp, height = 3.dp)
-                .clip(RoundedCornerShape(2.dp))
-                .background(palette.focusRing),
-        )
     }
 }

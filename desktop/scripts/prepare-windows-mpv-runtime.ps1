@@ -5,7 +5,7 @@ param(
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $resourceDirectory = Join-Path $repoRoot "composeApp\src\desktopMain\resources\win32-x86-64"
 $manifestPath = Join-Path $repoRoot "desktop\runtime\windows-mpv-runtime.json"
-$requiredFiles = @("libmpv-2.dll", "mpv.dll")
+$requiredFiles = @("libmpv-2.dll")
 
 if (-not (Test-Path -LiteralPath $manifestPath)) {
     throw "MPV runtime manifest was not found: $manifestPath"

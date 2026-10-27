@@ -3,6 +3,8 @@ package com.nuvio.app.features.updater
 actual object AppUpdaterPlatform {
     actual val isSupported: Boolean = true
     actual val platform: String = "android"
+    actual val isDebugBuild: Boolean
+        get() = AndroidAppUpdaterPlatform.isDebugBuild()
 
     actual fun getSupportedAbis(): List<String> = AndroidAppUpdaterPlatform.getSupportedAbis()
 
@@ -10,6 +12,16 @@ actual object AppUpdaterPlatform {
 
     actual fun setIgnoredTag(tag: String?) {
         AndroidAppUpdaterPlatform.setIgnoredTag(tag)
+    }
+
+    actual fun getUpdateChannel(): String? = AndroidAppUpdaterPlatform.getUpdateChannel()
+
+    actual fun setUpdateChannel(channel: String) {
+        AndroidAppUpdaterPlatform.setUpdateChannel(channel)
+    }
+
+    actual fun deleteDownloadedApk(path: String) {
+        AndroidAppUpdaterPlatform.deleteDownloadedApk(path)
     }
 
     actual suspend fun downloadApk(

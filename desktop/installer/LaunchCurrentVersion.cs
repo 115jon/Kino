@@ -60,6 +60,8 @@ namespace Installer
 
         public static void Execute(LaunchRequest request)
         {
+            InstallerLogger.Info("Starting Kino " + request.ActiveVersion + ": " + request.ExecutablePath);
+            ForegroundPermission.AllowAny();
             Process.Start(new ProcessStartInfo
             {
                 FileName = request.ExecutablePath,

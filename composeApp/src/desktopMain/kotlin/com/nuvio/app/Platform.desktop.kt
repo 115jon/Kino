@@ -7,3 +7,8 @@ private class DesktopPlatform : Platform {
 actual fun getPlatform(): Platform = DesktopPlatform()
 
 internal actual val isIos: Boolean = false
+
+internal actual val supportsPosterNavigationMotion: Boolean = false
+
+internal fun isWindowsPlatform(): Boolean =
+    System.getProperty("os.name").orEmpty().contains("win", ignoreCase = true)

@@ -51,7 +51,7 @@ Write-Host "Building Kino desktop distributable $version..."
 if ($LASTEXITCODE -ne 0) { throw "Windows MPV runtime preparation failed with exit code $LASTEXITCODE." }
 Push-Location $repoRoot
 try {
-    & $gradlePath "-Pkino.release.platform=desktop" ":composeApp:createReleaseDistributable"
+    & $gradlePath "-Pkino.release.platform=desktop" ":composeApp:createReleaseDistributable" ":composeApp:verifyReleaseBytecode"
     if ($LASTEXITCODE -ne 0) { throw "Desktop distributable build failed with exit code $LASTEXITCODE." }
 }
 finally {

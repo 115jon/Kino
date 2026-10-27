@@ -2,12 +2,10 @@ package com.nuvio.app.features.watchprogress
 
 import androidx.compose.runtime.Composable
 import com.nuvio.app.core.format.formatReleaseDateWithoutYear
-import com.nuvio.app.features.watching.domain.daysUntilExplicitRelease
-import com.nuvio.app.features.watching.domain.isoCalendarDateOrNull
-import com.nuvio.app.features.trakt.parseTraktIsoDateTimeToEpochMs
+import com.nuvio.app.core.time.daysUntilEpisodeRelease
+import com.nuvio.app.core.time.parseEpisodeReleaseEpochMs
 import nuvio.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.stringResource
-import co.touchlab.kermit.Logger
 
 internal fun formatAirDateDaysLabel(
     daysUntil: Int,
@@ -23,56 +21,42 @@ internal fun formatAirDateDaysLabel(
 fun computeAirDateBadgeText(
     releasedIso: String?,
     todayIsoDate: String,
-    compact: Boolean
 ): String? {
     if (releasedIso.isNullOrBlank() || todayIsoDate.isBlank()) {
         return null
     }
 
-    val releaseEpoch = parseTraktIsoDateTimeToEpochMs(releasedIso)
+    val releaseEpoch = parseEpisodeReleaseEpochMs(releasedIso)
     if (releaseEpoch != null && WatchProgressClock.nowEpochMs() >= releaseEpoch) {
         return null
     }
 
-    val daysUntil = daysUntilExplicitRelease(
+    val daysUntil = daysUntilEpisodeRelease(
         todayIsoDate = todayIsoDate,
         releasedDate = releasedIso,
     ) ?: return null
 
     return when {
         daysUntil < 0 -> null
-        daysUntil == 0 -> {
-            if (compact) stringResource(Res.string.cw_airs_today_short)
-            else stringResource(Res.string.cw_airs_today)
-        }
-        daysUntil == 1 -> {
-            if (compact) stringResource(Res.string.cw_airs_tomorrow_short)
-            else stringResource(Res.string.cw_airs_tomorrow)
-        }
+        daysUntil == 0 -> stringResource(Res.string.cw_airs_today)
+        daysUntil == 1 -> stringResource(Res.string.cw_airs_tomorrow)
         daysUntil in 2..7 -> {
             formatAirDateDaysLabel(
                 daysUntil = daysUntil,
-                compact = compact,
+                compact = false,
                 fullFormat = stringResource(Res.string.cw_airs_in_days_format),
                 compactFormat = stringResource(Res.string.cw_airs_in_days_short_format),
             )
         }
         else -> {
             val formattedDate = formatReleaseDateWithoutYear(releasedIso)
-            if (compact) stringResource(Res.string.cw_airs_date_short, formattedDate)
-            else stringResource(Res.string.cw_airs_date, formattedDate)
+            stringResource(Res.string.cw_airs_date, formattedDate)
         }
     }
 }
 
 fun parseReleaseDateToEpochMs(raw: String?): Long? {
-    if (raw.isNullOrBlank()) return null
-    val trimmed = raw.trim()
-    val epochMs = parseTraktIsoDateTimeToEpochMs(trimmed)
-    if (epochMs != null) return epochMs
-
-    val datePart = isoCalendarDateOrNull(trimmed) ?: return null
-    return CurrentDateProvider.localStartOfDayEpochMs(datePart)
+    return parseEpisodeReleaseEpochMs(raw)
 }
 
 class ReleaseAlertState(
@@ -85,19 +69,13 @@ fun calculateReleaseAlertState(
     seedSeasonNumber: Int?,
     nextSeasonNumber: Int?,
     releasedIso: String?,
+    releaseEpochMs: Long? = parseReleaseDateToEpochMs(releasedIso),
+    nowEpochMs: Long = WatchProgressClock.nowEpochMs(),
 ): ReleaseAlertState {
-    val releaseEpoch = parseReleaseDateToEpochMs(releasedIso)
-    val nowMs = WatchProgressClock.nowEpochMs()
-
-    val log = Logger.withTag("ReleaseAlert")
-    log.d {
-        "calculateReleaseAlertState inputs: releasedIso=$releasedIso, " +
-        "releaseEpoch=$releaseEpoch, seedLastUpdatedEpochMs=$seedLastUpdatedEpochMs, " +
-        "seedSeasonNumber=$seedSeasonNumber, nextSeasonNumber=$nextSeasonNumber, nowMs=$nowMs"
-    }
+    val releaseEpoch = releaseEpochMs
+    val nowMs = nowEpochMs
 
     if (releaseEpoch == null) {
-        log.d { "calculateReleaseAlertState failed: releaseEpoch is null" }
         return ReleaseAlertState(false, false)
     }
 
@@ -111,12 +89,6 @@ fun calculateReleaseAlertState(
         seedSeasonNumber != null &&
         nextSeasonNumber != null &&
         nextSeasonNumber != seedSeasonNumber
-
-    log.d {
-        "calculateReleaseAlertState result: isReleaseAlert=$isReleaseAlert (hasAired=$hasAired, " +
-        "epoch>seed=${releaseEpoch > seedLastUpdatedEpochMs}, ageMs=${nowMs - releaseEpoch}), " +
-        "isNewSeasonRelease=$isNewSeasonRelease"
-    }
 
     return ReleaseAlertState(
         isReleaseAlert = isReleaseAlert,

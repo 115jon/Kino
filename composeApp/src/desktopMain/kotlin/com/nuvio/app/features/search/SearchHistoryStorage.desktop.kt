@@ -13,4 +13,11 @@ internal actual object SearchHistoryStorage {
     actual fun savePayload(payload: String) {
         DesktopPreferences.putString(preferencesName, ProfileScopedKey.of(payloadKey), payload)
     }
+
+    actual fun loadEnabled(): Boolean? =
+        DesktopPreferences.getBoolean(preferencesName, ProfileScopedKey.of("search_history_enabled"))
+
+    actual fun saveEnabled(enabled: Boolean) {
+        DesktopPreferences.putBoolean(preferencesName, ProfileScopedKey.of("search_history_enabled"), enabled)
+    }
 }

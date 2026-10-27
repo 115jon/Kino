@@ -16,6 +16,8 @@ import nuvio.composeapp.generated.resources.ic_player_pause
 import nuvio.composeapp.generated.resources.ic_player_play
 import nuvio.composeapp.generated.resources.ic_player_subtitles
 import nuvio.composeapp.generated.resources.library_add_plus
+import nuvio.composeapp.generated.resources.ic_player_episodes
+import nuvio.composeapp.generated.resources.ic_player_source
 import org.jetbrains.compose.resources.painterResource
 
 internal actual val nuvioPlatformExtraTopPadding: Dp = 0.dp
@@ -28,6 +30,9 @@ internal actual fun nuvioBottomNavigationBarInsets(): WindowInsets = WindowInset
 
 @Composable
 internal actual fun platformPhysicalTopInset(): Dp = 0.dp
+
+@Composable
+internal actual fun ResizeForKeyboard() = Unit
 
 @Composable
 actual fun PlatformBackHandler(
@@ -45,10 +50,14 @@ actual fun appIconPainter(icon: AppIconResource): Painter =
             AppIconResource.PlayerSubtitles -> Res.drawable.ic_player_subtitles
             AppIconResource.PlayerAudioFilled -> Res.drawable.ic_player_audio_filled
             AppIconResource.LibraryAddPlus -> Res.drawable.library_add_plus
+            AppIconResource.PlayerSource -> Res.drawable.ic_player_source
+            AppIconResource.PlayerEpisodes -> Res.drawable.ic_player_episodes
         }
     )
 
 internal actual fun ImageLoader.Builder.configurePlatformImageLoader(): ImageLoader.Builder = this
+
+internal actual val platformProvidesImageLoader: Boolean = false
 
 actual fun platformExitApp() {
     exitProcess(0)

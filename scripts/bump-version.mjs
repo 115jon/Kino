@@ -4,26 +4,11 @@ import fs from "node:fs";
 import {
   determineBump,
   getPlatformTag,
+  getReleaseFile,
   incrementVersion,
+  readReleaseState,
+  writeReleaseState,
 } from "./versioning.mjs";
-
-const platformFiles = {
-  android: {
-    file: "release/versions/android.properties",
-    versionPattern: /^(versionName=)(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/m,
-    buildPattern: /^(versionCode=)(\d+)$/m,
-  },
-  desktop: {
-    file: "release/versions/desktop.properties",
-    versionPattern: /^(versionName=)(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/m,
-    buildPattern: /^(versionCode=)(\d+)$/m,
-  },
-  ios: {
-    file: "release/versions/ios.xcconfig",
-    versionPattern: /^(MARKETING_VERSION=)(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/m,
-    buildPattern: /^(CURRENT_PROJECT_VERSION=)(\d+)$/m,
-  },
-};
 
 function runGit(args) {
   return execFileSync("git", args, {
@@ -61,13 +46,9 @@ function getCommitsSinceCurrentVersion(tag) {
 }
 
 const platform = process.argv.find((arg) => arg.startsWith("--platform="))?.split("=")[1] ?? "android";
-const platformConfig = platformFiles[platform];
-if (!platformConfig) throw new Error(`Invalid release platform: ${platform}`);
-
-const content = fs.readFileSync(platformConfig.file, "utf8");
-const version = content.match(platformConfig.versionPattern)?.[2];
-const build = Number(content.match(platformConfig.buildPattern)?.[2]);
-if (!version || !Number.isInteger(build)) throw new Error(`Invalid version file: ${platformConfig.file}`);
+const { file } = getReleaseFile(platform);
+const content = fs.readFileSync(file, "utf8");
+const { version, build } = readReleaseState(platform, content);
 
 const requestedBump = process.argv.find((arg) => arg.startsWith("--bump="))?.split("=")[1];
 const currentTag = getPlatformTag(platform, version);
@@ -88,8 +69,5 @@ console.log(`Next tag: ${getPlatformTag(platform, nextVersion)}`);
 
 if (process.argv.includes("--dry-run") || bump === "none") process.exit(0);
 
-const updated = content
-  .replace(platformConfig.versionPattern, `$1${nextVersion}`)
-  .replace(platformConfig.buildPattern, `$1${build + 1}`);
-fs.writeFileSync(platformConfig.file, updated);
-console.log(`Updated ${platformConfig.file} to ${nextVersion} (build ${build + 1}).`);
+fs.writeFileSync(file, writeReleaseState(platform, content, { version: nextVersion, build: build + 1 }));
+console.log(`Updated ${file} to ${nextVersion} (build ${build + 1}).`);

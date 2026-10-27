@@ -90,9 +90,6 @@ private interface WindowsDwmLibrary : Library {
 
 private val CurrentUserRegistryKey = Pointer.createConstant(-2147483647L)
 
-internal fun isWindowsPlatform(): Boolean =
-    System.getProperty("os.name").orEmpty().contains("win", ignoreCase = true)
-
 internal fun readWindowsDarkMode(): Boolean = runCatching {
     val data = Memory(4)
     val dataSize = IntByReference(4)

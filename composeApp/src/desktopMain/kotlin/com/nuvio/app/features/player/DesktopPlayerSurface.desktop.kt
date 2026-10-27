@@ -20,9 +20,13 @@ actual fun PlatformPlayerSurface(
     useYoutubeChunkedPlayback: Boolean,
     modifier: Modifier,
     playWhenReady: Boolean,
+    initialPositionMs: Long?,
+    initialPositionRequestKey: String?,
     resizeMode: PlayerResizeMode,
+    playbackEngine: AndroidPlaybackEngine?,
     useNativeController: Boolean,
     overlayContent: @Composable () -> Unit,
+    onInitialPositionHandled: (key: String, handled: Boolean) -> Unit,
     onControllerReady: (PlayerEngineController) -> Unit,
     onSnapshot: (PlayerPlaybackSnapshot) -> Unit,
     onError: (String?) -> Unit,
@@ -50,6 +54,9 @@ actual fun PlatformPlayerSurface(
         playWhenReady = playWhenReady,
         resizeMode = resizeMode,
         useNativeController = useNativeController,
+        initialPositionMs = initialPositionMs,
+        initialPositionRequestKey = initialPositionRequestKey,
+        onInitialPositionHandled = onInitialPositionHandled,
         overlayContent = overlayContent,
         onControllerReady = { controller ->
             onControllerReady(mediaKeySession.bind(controller))
@@ -68,11 +75,8 @@ actual fun PlatformPlayerSurface(
 internal actual val supportsValidatedStartupFallback: Boolean =
     isValidatedStartupFallbackOs(System.getProperty("os.name").orEmpty())
 
-internal actual fun platformPlayerSurfaceOwnsOverlay(): Boolean {
-    val osName = System.getProperty("os.name").orEmpty().lowercase()
-    val surface = System.getProperty("kino.windows.video-surface")
-    return osName.contains("win") && shouldUseNativeWindowsVideoSurface(surface)
-}
+internal actual fun platformPlayerSurfaceOwnsOverlay(): Boolean =
+    System.getProperty("os.name").orEmpty().lowercase().contains("win")
 
 internal interface DesktopPlaybackBackend {
     @Composable
@@ -88,6 +92,9 @@ internal interface DesktopPlaybackBackend {
         playWhenReady: Boolean,
         resizeMode: PlayerResizeMode,
         useNativeController: Boolean,
+        initialPositionMs: Long?,
+        initialPositionRequestKey: String?,
+        onInitialPositionHandled: (key: String, handled: Boolean) -> Unit,
         overlayContent: @Composable () -> Unit,
         onControllerReady: (PlayerEngineController) -> Unit,
         onSnapshot: (PlayerPlaybackSnapshot) -> Unit,
@@ -103,7 +110,7 @@ private fun desktopPlaybackBackend(): DesktopPlaybackBackend {
     return if (osName.contains("mac")) {
         MacOSMpvPlayerBackend
     } else if (osName.contains("win")) {
-        WindowsMpvPlayerBackend
+        WindowsMpvPlayerBackend()
     } else {
         UnsupportedDesktopPlaybackBackend(osName.ifBlank { "unknown" })
     }
@@ -125,6 +132,9 @@ private class UnsupportedDesktopPlaybackBackend(
         playWhenReady: Boolean,
         resizeMode: PlayerResizeMode,
         useNativeController: Boolean,
+        initialPositionMs: Long?,
+        initialPositionRequestKey: String?,
+        onInitialPositionHandled: (key: String, handled: Boolean) -> Unit,
         overlayContent: @Composable () -> Unit,
         onControllerReady: (PlayerEngineController) -> Unit,
         onSnapshot: (PlayerPlaybackSnapshot) -> Unit,
@@ -134,6 +144,9 @@ private class UnsupportedDesktopPlaybackBackend(
         onWindowFocusChanged: (Boolean, Long?) -> Unit,
     ) {
         overlayContent
+        initialPositionMs
+        initialPositionRequestKey
+        onInitialPositionHandled
         onSurfaceInteraction
         onSurfaceExit
         onWindowFocusChanged

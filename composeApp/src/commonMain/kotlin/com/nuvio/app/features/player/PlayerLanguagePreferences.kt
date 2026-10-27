@@ -459,7 +459,7 @@ internal fun languagePreferenceCodeForDisplay(code: String?): String? {
     }?.code
 }
 
-private fun languageLabelResForCode(code: String?): StringResource? {
+internal fun languageLabelResForCode(code: String?): StringResource? {
     val displayCode = languagePreferenceCodeForDisplay(code) ?: return null
     return AvailableLanguageOptions.firstOrNull { it.code == displayCode }?.labelRes
 }

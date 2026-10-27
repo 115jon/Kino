@@ -21,6 +21,28 @@ const platformTagPrefixes = {
   ios: "ios-v",
 };
 
+const propertiesVersionPatterns = {
+  versionPattern: /^(versionName=)(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/m,
+  buildPattern: /^(versionCode=)(\d+)$/m,
+};
+
+const releaseFiles = {
+  android: {
+    file: "release/versions/android.properties",
+    ...propertiesVersionPatterns,
+  },
+  desktop: {
+    file: "release/versions/desktop.properties",
+    canonicalFile: "release/versions/desktop.version",
+    ...propertiesVersionPatterns,
+  },
+  ios: {
+    file: "release/versions/ios.xcconfig",
+    versionPattern: /^(MARKETING_VERSION=)(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/m,
+    buildPattern: /^(CURRENT_PROJECT_VERSION=)(\d+)$/m,
+  },
+};
+
 export function parseConventionalCommit(message) {
   const subject = message.split(/\r?\n/, 1)[0]?.trim() ?? "";
   const match = subject.match(/^([\w-]+)(?:\([^)]*\))?(!)?:\s+.+$/);
@@ -65,9 +87,7 @@ export function incrementVersion(version, bump) {
 }
 
 export function getPlatformTag(platform, version) {
-  const prefix = platformTagPrefixes[platform];
-  if (!prefix) throw new Error(`Invalid release platform: ${platform}`);
-  return `${prefix}${version}`;
+  return `${getPlatformTagPrefix(platform)}${version}`;
 }
 
 export function getPlatformTagPrefix(platform) {
@@ -124,6 +144,27 @@ export function synchronizeReleaseState(current, nextVersion, baseline = current
     version: nextVersion,
     build: versionIncreased ? Math.max(current.build, baseline.build + 1) : current.build,
   };
+}
+
+export function getReleaseFile(platform) {
+  const config = releaseFiles[platform];
+  if (!config) throw new Error(`Invalid release platform: ${platform}`);
+  return config;
+}
+
+export function readReleaseState(platform, content, file = getReleaseFile(platform).file) {
+  const { versionPattern, buildPattern } = getReleaseFile(platform);
+  const version = content.match(versionPattern)?.[2];
+  const build = Number(content.match(buildPattern)?.[2]);
+  if (!version || !Number.isInteger(build)) throw new Error(`Invalid version file: ${file}`);
+  return { version, build };
+}
+
+export function writeReleaseState(platform, content, state) {
+  const { versionPattern, buildPattern } = getReleaseFile(platform);
+  return content
+    .replace(versionPattern, `$1${state.version}`)
+    .replace(buildPattern, `$1${state.build}`);
 }
 
 function parseVersion(version) {

@@ -22,6 +22,8 @@ actual object MdbListSettingsStorage {
     private const val useTraktKey = "mdblist_use_trakt"
     private const val useLetterboxdKey = "mdblist_use_letterboxd"
     private const val useAudienceKey = "mdblist_use_audience"
+    private const val useMalKey = "mdblist_use_mal"
+    private const val showOnHeroKey = "mdblist_show_on_hero"
     private val syncKeys = listOf(
         enabledKey,
         apiKey,
@@ -32,6 +34,8 @@ actual object MdbListSettingsStorage {
         useTraktKey,
         useLetterboxdKey,
         useAudienceKey,
+        useMalKey,
+        showOnHeroKey,
     )
 
     private var preferences: SharedPreferences? = null
@@ -98,6 +102,18 @@ actual object MdbListSettingsStorage {
         saveBoolean(useAudienceKey, enabled)
     }
 
+    actual fun loadUseMal(): Boolean? = loadBoolean(useMalKey)
+
+    actual fun saveUseMal(enabled: Boolean) {
+        saveBoolean(useMalKey, enabled)
+    }
+
+    actual fun loadShowOnHero(): Boolean? = loadBoolean(showOnHeroKey)
+
+    actual fun saveShowOnHero(enabled: Boolean) {
+        saveBoolean(showOnHeroKey, enabled)
+    }
+
     private fun loadBoolean(key: String): Boolean? =
         preferences?.let { sharedPreferences ->
             val scopedKey = ProfileScopedKey.of(key)
@@ -125,6 +141,8 @@ actual object MdbListSettingsStorage {
         loadUseTrakt()?.let { put(useTraktKey, encodeSyncBoolean(it)) }
         loadUseLetterboxd()?.let { put(useLetterboxdKey, encodeSyncBoolean(it)) }
         loadUseAudience()?.let { put(useAudienceKey, encodeSyncBoolean(it)) }
+        loadUseMal()?.let { put(useMalKey, encodeSyncBoolean(it)) }
+        loadShowOnHero()?.let { put(showOnHeroKey, encodeSyncBoolean(it)) }
     }
 
     actual fun replaceFromSyncPayload(payload: JsonObject) {
@@ -141,5 +159,7 @@ actual object MdbListSettingsStorage {
         payload.decodeSyncBoolean(useTraktKey)?.let(::saveUseTrakt)
         payload.decodeSyncBoolean(useLetterboxdKey)?.let(::saveUseLetterboxd)
         payload.decodeSyncBoolean(useAudienceKey)?.let(::saveUseAudience)
+        payload.decodeSyncBoolean(useMalKey)?.let(::saveUseMal)
+        payload.decodeSyncBoolean(showOnHeroKey)?.let(::saveShowOnHero)
     }
 }

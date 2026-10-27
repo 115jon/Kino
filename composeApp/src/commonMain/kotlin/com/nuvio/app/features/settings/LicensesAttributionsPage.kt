@@ -42,13 +42,15 @@ import org.jetbrains.compose.resources.stringResource
 private const val TmdbUrl = "https://www.themoviedb.org"
 private const val ImdbDatasetsUrl = "https://developer.imdb.com/non-commercial-datasets/"
 private const val TraktUrl = "https://trakt.tv"
+private const val SimklUrl = "https://simkl.com"
 private const val PremiumizeUrl = "https://www.premiumize.me"
 private const val TorboxUrl = "https://torbox.app"
 private const val MdbListUrl = "https://mdblist.com"
 private const val IntroDbUrl = "https://introdb.app/"
-private const val NuvioRepositoryUrl = "https://github.com/NuvioMedia/NuvioMobile"
+private const val NuvioRepositoryUrl = "https://github.com/115jon/Kino"
 private const val MpvKitUrl = "https://github.com/mpvkit/MPVKit"
 private const val ApacheLicenseUrl = "https://www.apache.org/licenses/LICENSE-2.0"
+private const val HazeLicenseUrl = "https://github.com/chrisbanes/haze/blob/1.7.2/LICENSE"
 
 private data class AttributionItem(
     val titleRes: StringResource,
@@ -130,6 +132,21 @@ private fun LicensesAttributionsBody(
         ) {
             LicenseRow(
                 item = platformLicenseItem(),
+                isTablet = isTablet,
+            )
+        }
+
+        PlainSettingsStack(
+            title = stringResource(Res.string.settings_licenses_attributions_section_ui),
+            isTablet = isTablet,
+        ) {
+            LicenseRow(
+                item = LicenseItem(
+                    titleRes = Res.string.settings_licenses_attributions_haze_title,
+                    bodyRes = Res.string.settings_licenses_attributions_haze_body,
+                    licenseRes = Res.string.settings_licenses_attributions_haze_license,
+                    link = HazeLicenseUrl,
+                ),
                 isTablet = isTablet,
             )
         }
@@ -329,6 +346,12 @@ private fun attributionItems(): List<AttributionItem> = listOf(
         bodyRes = Res.string.settings_licenses_attributions_trakt_body,
         logo = IntegrationLogo.Trakt,
         link = TraktUrl,
+    ),
+    AttributionItem(
+        titleRes = Res.string.settings_licenses_attributions_simkl_title,
+        bodyRes = Res.string.settings_licenses_attributions_simkl_body,
+        logo = IntegrationLogo.Simkl,
+        link = SimklUrl,
     ),
     AttributionItem(
         titleRes = Res.string.settings_licenses_attributions_premiumize_title,

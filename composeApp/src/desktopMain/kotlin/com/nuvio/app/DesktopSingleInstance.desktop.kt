@@ -102,6 +102,14 @@ internal class DesktopSingleInstanceCoordinator private constructor(
         acceptRequests()
     }
 
+    private val shutdownHook = thread(start = false, name = "kino-single-instance-release") {
+        close()
+    }
+
+    init {
+        runCatching { Runtime.getRuntime().addShutdownHook(shutdownHook) }
+    }
+
     private fun acceptRequests() {
         while (!closed.get()) {
             val socket = try {
@@ -132,6 +140,9 @@ internal class DesktopSingleInstanceCoordinator private constructor(
 
     override fun close() {
         if (!closed.compareAndSet(false, true)) return
+        if (Thread.currentThread() !== shutdownHook) {
+            runCatching { Runtime.getRuntime().removeShutdownHook(shutdownHook) }
+        }
         runCatching { server.close() }
         runCatching { Files.deleteIfExists(descriptorPath) }
         runCatching { lock.release() }
@@ -150,6 +161,8 @@ internal class DesktopSingleInstanceCoordinator private constructor(
         private const val CONNECT_RETRY_MILLIS = 40L
         private const val CONNECT_DEADLINE_MILLIS = 1_500L
         private const val CLOSE_JOIN_MILLIS = 1_000L
+        private const val TAKEOVER_DEADLINE_MILLIS = 20_000L
+        private const val TAKEOVER_RETRY_MILLIS = 100L
 
         fun defaultDirectory(): Path {
             val localAppData = System.getenv("LOCALAPPDATA")?.takeIf(String::isNotBlank)
@@ -162,6 +175,7 @@ internal class DesktopSingleInstanceCoordinator private constructor(
 
         fun acquire(
             directory: Path = defaultDirectory(),
+            takeoverTimeoutMillis: Long = TAKEOVER_DEADLINE_MILLIS,
             onActivation: () -> Unit,
         ): DesktopInstanceLaunch {
             return runCatching {
@@ -177,21 +191,43 @@ internal class DesktopSingleInstanceCoordinator private constructor(
                 )
                 restrictToOwner(lockPath, isDirectory = false)
 
-                val lock = try {
-                    channel.tryLock()
-                } catch (_: OverlappingFileLockException) {
-                    null
-                }
-
-                if (lock == null) {
-                    channel.close()
-                    DesktopInstanceLaunch.Secondary(signalPrimary(descriptorPath))
-                } else {
-                    createPrimary(channel, lock, descriptorPath, onActivation)
+                try {
+                    acquireOrSignal(channel, descriptorPath, takeoverTimeoutMillis, onActivation)
+                } catch (error: Throwable) {
+                    runCatching { channel.close() }
+                    throw error
                 }
             }.getOrElse { error ->
                 DesktopInstanceLaunch.Unavailable(error.message ?: error::class.simpleName.orEmpty())
             }
+        }
+
+        private fun acquireOrSignal(
+            channel: FileChannel,
+            descriptorPath: Path,
+            takeoverTimeoutMillis: Long,
+            onActivation: () -> Unit,
+        ): DesktopInstanceLaunch {
+            val deadline = System.nanoTime() + takeoverTimeoutMillis * 1_000_000
+            while (true) {
+                val lock = tryLock(channel)
+                if (lock != null) return createPrimary(channel, lock, descriptorPath, onActivation)
+                if (signalPrimary(descriptorPath)) {
+                    channel.close()
+                    return DesktopInstanceLaunch.Secondary(activationDelivered = true)
+                }
+                if (System.nanoTime() >= deadline) {
+                    channel.close()
+                    return DesktopInstanceLaunch.Secondary(activationDelivered = false)
+                }
+                Thread.sleep(TAKEOVER_RETRY_MILLIS)
+            }
+        }
+
+        private fun tryLock(channel: FileChannel): FileLock? = try {
+            channel.tryLock()
+        } catch (_: OverlappingFileLockException) {
+            null
         }
 
         private fun createPrimary(

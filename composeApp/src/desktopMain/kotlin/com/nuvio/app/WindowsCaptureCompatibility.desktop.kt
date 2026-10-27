@@ -17,7 +17,7 @@ private interface WindowsEnvironmentLibrary : Library {
 }
 
 internal fun configureWindowsCaptureCompatibility(): Boolean {
-    if (!System.getProperty("os.name").orEmpty().contains("win", ignoreCase = true)) return false
+    if (!isWindowsPlatform()) return false
     return runCatching {
         WindowsEnvironmentLibrary.INSTANCE.SetEnvironmentVariableW(
             WString(DisableVulkanObsCapture),

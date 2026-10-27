@@ -4,6 +4,7 @@ import co.touchlab.kermit.Logger
 import com.nuvio.app.core.network.SupabaseProvider
 import com.nuvio.app.core.storage.LocalAccountDataCleaner
 import io.github.jan.supabase.auth.auth
+import io.github.jan.supabase.auth.exception.AuthRestException
 import io.github.jan.supabase.auth.providers.builtin.Email
 import io.github.jan.supabase.auth.status.SessionStatus
 import io.github.jan.supabase.exceptions.RestException
@@ -13,6 +14,7 @@ import kotlin.uuid.Uuid
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -20,10 +22,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import nuvio.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.getString
-
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
 
 object AuthRepository {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -36,6 +34,7 @@ object AuthRepository {
     val error: StateFlow<String?> = _error.asStateFlow()
 
     private var initialized = false
+    private var sessionStatusJob: Job? = null
     private var validatedRemoteUserId: String? = null
 
     fun initialize() {
@@ -51,7 +50,7 @@ object AuthRepository {
             )
         }
 
-        scope.launch {
+        sessionStatusJob = scope.launch {
             SupabaseProvider.client.auth.sessionStatus.collect { status ->
                 if (AuthStorage.loadAnonymousUserId() != null) return@collect
                 when (status) {
@@ -112,18 +111,10 @@ object AuthRepository {
         )
     }
 
-    private fun getCleanErrorMessage(e: Throwable, defaultMessage: String): String {
-        val message = e.message ?: return defaultMessage
-        return sanitizeAuthErrorMessage(message, defaultMessage)
-    }
-
-    private fun buildNormalizedAuthEmail(email: String): String = normalizeAuthEmail(email)
-    private fun buildEmailDiagnostics(email: String): AuthEmailDiagnostics = buildAuthEmailDiagnostics(email)
-
     suspend fun signUpWithEmail(email: String, password: String): Result<Unit> = runCatching {
         _error.value = null
-        val emailDiagnostics = buildEmailDiagnostics(email)
-        val normalizedEmail = buildNormalizedAuthEmail(email)
+        val emailDiagnostics = buildAuthEmailDiagnostics(email)
+        val normalizedEmail = normalizeAuthEmail(email)
         log.i { "Email sign-up attempt ${emailDiagnostics.toLogFields()}" }
         SupabaseProvider.client.auth.signUpWith(Email) {
             this.email = normalizedEmail
@@ -131,22 +122,24 @@ object AuthRepository {
         }
         Unit
     }.onFailure { e ->
-        log.e(e) { "Email sign-up failed ${buildEmailDiagnostics(email).toLogFields()}" }
-        _error.value = getCleanErrorMessage(e, getString(Res.string.auth_sign_up_failed))
+        log.e(e) { "Email sign-up failed ${buildAuthEmailDiagnostics(email).toLogFields()}" }
+        _error.value = e.safeAuthErrorDescription()
+            ?: getString(Res.string.auth_sign_up_failed)
     }
 
     suspend fun signInWithEmail(email: String, password: String): Result<Unit> = runCatching {
         _error.value = null
-        val emailDiagnostics = buildEmailDiagnostics(email)
-        val normalizedEmail = buildNormalizedAuthEmail(email)
+        val emailDiagnostics = buildAuthEmailDiagnostics(email)
+        val normalizedEmail = normalizeAuthEmail(email)
         log.i { "Email sign-in attempt ${emailDiagnostics.toLogFields()}" }
         SupabaseProvider.client.auth.signInWith(Email) {
             this.email = normalizedEmail
             this.password = password
         }
     }.onFailure { e ->
-        log.e(e) { "Email sign-in failed ${buildEmailDiagnostics(email).toLogFields()}" }
-        _error.value = getCleanErrorMessage(e, getString(Res.string.auth_sign_in_failed))
+        log.e(e) { "Email sign-in failed ${buildAuthEmailDiagnostics(email).toLogFields()}" }
+        _error.value = e.safeAuthErrorDescription()
+            ?: getString(Res.string.auth_sign_in_failed)
     }
 
     suspend fun signOut(): Result<Unit> {
@@ -187,6 +180,27 @@ object AuthRepository {
             }.getOrDefault("Sign out failed")
             Result.failure(failure)
         }
+    }
+
+    suspend fun prepareForServerSwitch(): Result<Unit> {
+        _error.value = null
+        val anonymousClear = runCatching { AuthStorage.clearAnonymousUserId() }
+        validatedRemoteUserId = null
+        val sessionClear = runCatching { SupabaseProvider.client.auth.clearSession() }
+        _state.value = AuthState.Unauthenticated
+        val failure = anonymousClear.exceptionOrNull() ?: sessionClear.exceptionOrNull()
+        val cancellation = sessionClear.exceptionOrNull() as? CancellationException
+        if (cancellation != null) throw cancellation
+        return if (failure == null) Result.success(Unit) else Result.failure(failure)
+    }
+
+    fun reinitialize() {
+        sessionStatusJob?.cancel()
+        sessionStatusJob = null
+        initialized = false
+        validatedRemoteUserId = null
+        _state.value = AuthState.Loading
+        initialize()
     }
 
     suspend fun signOutIfSessionInvalid(error: Throwable, source: String): Boolean {
@@ -266,50 +280,16 @@ object AuthRepository {
         }
         return null
     }
-}
 
-internal fun sanitizeAuthErrorMessage(message: String?, defaultMessage: String): String {
-    val trimmed = message?.trim().orEmpty()
-    if (trimmed.isBlank()) return defaultMessage
-    if (trimmed.contains("exceed_egress_quota", ignoreCase = true) ||
-        trimmed.contains("project is restricted", ignoreCase = true)
-    ) {
-        return "The service is temporarily unavailable. Please try again later."
-    }
-
-    if (trimmed.contains("URL:", ignoreCase = true) ||
-        trimmed.contains("Headers:", ignoreCase = true) ||
-        trimmed.contains("Http Method:", ignoreCase = true) ||
-        trimmed.equals("Unknown Error", ignoreCase = true)
-    ) {
-        return defaultMessage
-    }
-
-    val jsonStart = trimmed.indexOf('{')
-    val jsonEnd = trimmed.lastIndexOf('}')
-    if (jsonStart != -1 && jsonEnd != -1 && jsonEnd > jsonStart) {
-        val jsonStr = trimmed.substring(jsonStart, jsonEnd + 1)
-        try {
-            val element = Json.parseToJsonElement(jsonStr)
-            val obj = element.jsonObject
-            return obj["error_description"]?.jsonPrimitive?.content
-                ?: obj["error"]?.jsonPrimitive?.content
-                ?: obj["msg"]?.jsonPrimitive?.content
-                ?: obj["message"]?.jsonPrimitive?.content
-                ?: trimmed
-        } catch (_: Exception) {
-            // fall back
-        }
-    }
-    if (trimmed.contains("errorDescription=")) {
-        val description = trimmed.substringAfter("errorDescription=").substringBefore(")").trim()
-        if (description.isNotEmpty() && !description.startsWith("null")) return description
-    }
-    if (trimmed.contains("error_description=")) {
-        val description = trimmed.substringAfter("error_description=").substringBefore(")").trim()
-        if (description.isNotEmpty() && !description.startsWith("null")) return description
-    }
-    return trimmed
+    private fun Throwable.safeAuthErrorDescription(): String? =
+        findCause<AuthRestException>()
+            ?.errorDescription
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+            ?: findCause<RestException>()
+                ?.description
+                ?.trim()
+                ?.takeIf { it.isNotEmpty() }
 }
 
 internal fun normalizeAuthEmail(email: String): String = email.trim()
