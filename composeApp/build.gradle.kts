@@ -739,6 +739,21 @@ compose.desktop {
 
 apply(from = "desktop-release-bytecode.gradle.kts")
 
+val desktopTestCompilation = kotlin.targets.getByName("desktop").compilations.getByName("test")
+
+tasks.register<JavaExec>("runPlayerHarness") {
+    description = "Plays local media through the Windows player without the app shell."
+    dependsOn(desktopTestCompilation.compileAllTaskName)
+    classpath(desktopTestCompilation.output.allOutputs, desktopTestCompilation.runtimeDependencyFiles)
+    mainClass.set("com.nuvio.app.features.player.harness.PlayerHarnessKt")
+    jvmArgs(providers.gradleProperty("kino.harness.jvmArgs").orNull?.split(' ')?.filter(String::isNotBlank).orEmpty())
+    systemProperties(
+        System.getProperties().stringPropertyNames()
+            .filter { it.startsWith("kino.") || it.startsWith("skiko.") }
+            .associateWith(System::getProperty),
+    )
+}
+
 val bootIosTestSimulator by tasks.registering(Exec::class) {
     val device = tasks.named<KotlinNativeSimulatorTest>("iosSimulatorArm64Test").flatMap { it.device }
     commandLine("xcrun", "simctl", "boot")
