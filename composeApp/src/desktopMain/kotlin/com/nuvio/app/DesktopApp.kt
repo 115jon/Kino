@@ -49,9 +49,8 @@ private fun configureMacOsNativeAppearance() {
 }
 
 private fun configureComposeInterop() {
-    val osName = System.getProperty("os.name")?.lowercase().orEmpty()
     val windowsVideoSurface = System.getProperty("kino.windows.video-surface")?.trim()?.lowercase()
-    val usesNativeWindowsVideo = osName.contains("win") && windowsVideoSurface !in setOf("embedded", "gl", "opengl")
+    val usesNativeWindowsVideo = isWindowsPlatform() && windowsVideoSurface !in setOf("embedded", "gl", "opengl")
     val blendingOverride = System.getProperty("kino.compose-interop-blending")
     System.setProperty(
         "compose.interop.blending",
@@ -60,8 +59,7 @@ private fun configureComposeInterop() {
 }
 
 private fun configureWindowsPresentationCompatibility() {
-    val osName = System.getProperty("os.name")?.lowercase().orEmpty()
-    if (!osName.contains("win")) return
+    if (!isWindowsPlatform()) return
     if (System.getProperty("skiko.vsync.enabled") == null) {
         System.setProperty("skiko.vsync.enabled", "true")
     }

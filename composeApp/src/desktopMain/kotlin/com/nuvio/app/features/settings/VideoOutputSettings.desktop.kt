@@ -1,13 +1,13 @@
 package com.nuvio.app.features.settings
 
 import com.nuvio.app.desktop.DesktopPreferences
+import com.nuvio.app.isWindowsPlatform
 
 internal actual object VideoOutputSettingsPlatform {
     private const val preferencesName = "kino_video_output"
     private const val hdrPassthroughKey = "hdr_passthrough"
 
-    actual val hdrPassthroughSupported: Boolean =
-        System.getProperty("os.name").orEmpty().lowercase().contains("win")
+    actual val hdrPassthroughSupported: Boolean = isWindowsPlatform()
 
     actual fun loadHdrPassthroughEnabled(): Boolean =
         DesktopPreferences.getBoolean(preferencesName, hdrPassthroughKey) ?: false
