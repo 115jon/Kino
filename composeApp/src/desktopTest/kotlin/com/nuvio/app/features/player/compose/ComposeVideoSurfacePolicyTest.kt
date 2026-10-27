@@ -1,5 +1,6 @@
 package com.nuvio.app.features.player.compose
 
+import com.nuvio.app.features.player.MpvOption
 import com.nuvio.app.features.player.MpvPlaybackState
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -12,6 +13,23 @@ class ComposeVideoSurfacePolicyTest {
         assertEquals(false, isComposeWindowsVideoSurface(null))
         assertEquals(false, isComposeWindowsVideoSurface("native"))
         assertEquals(false, isComposeWindowsVideoSurface("embedded"))
+    }
+
+    @Test
+    fun `compose is the default surface unless hdr passthrough is on`() {
+        assertEquals("compose", defaultWindowsVideoSurface(hdrPassthrough = false))
+        assertEquals("native", defaultWindowsVideoSurface(hdrPassthrough = true))
+    }
+
+    @Test
+    fun `compose video mpv options default to zero copy nvdec with copy fallbacks`() {
+        assertEquals(ComposeVideoDefaultHwdec, composeVideoHwdec(null))
+        assertEquals(ComposeVideoDefaultHwdec, composeVideoHwdec(" "))
+        assertEquals("d3d11va-copy", composeVideoHwdec("d3d11va-copy"))
+        assertEquals(
+            listOf(MpvOption("video-sync", "display-resample"), MpvOption("hwdec", "no")),
+            parseComposeVideoMpvOverrides("video-sync=display-resample, hwdec=no,broken"),
+        )
     }
 
     @Test

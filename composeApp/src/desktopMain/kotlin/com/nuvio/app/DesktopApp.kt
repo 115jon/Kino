@@ -10,6 +10,7 @@ import co.touchlab.kermit.Logger
 import com.nuvio.app.core.logging.initializeDesktopAppLogging
 import com.nuvio.app.features.player.prewarmDesktopPlaybackBackend
 import com.nuvio.app.features.player.compose.configureWindowsComposeVideoRenderApi
+import com.nuvio.app.features.player.compose.configureWindowsVideoSurfaceSelection
 import nuvio.composeapp.generated.resources.Res
 import nuvio.composeapp.generated.resources.app_logo
 import org.jetbrains.compose.resources.painterResource
@@ -74,6 +75,7 @@ fun main() {
     configureWindowsCaptureCompatibility()
     configureMacOsNativeAppearance()
     System.setProperty("java.net.preferIPv4Stack", "true")
+    configureWindowsVideoSurfaceSelection()
     configureComposeInterop()
     configureWindowsPresentationCompatibility()
     configureWindowsComposeVideoRenderApi()

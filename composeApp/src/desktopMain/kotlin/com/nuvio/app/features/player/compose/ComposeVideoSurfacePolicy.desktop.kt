@@ -2,6 +2,7 @@ package com.nuvio.app.features.player.compose
 
 import com.nuvio.app.features.player.MpvOption
 import com.nuvio.app.features.player.MpvPlaybackState
+import com.nuvio.app.features.settings.VideoOutputSettingsPlatform
 
 private val composeSurfaceNames = setOf("compose", "skia")
 
@@ -12,7 +13,18 @@ internal fun isComposeWindowsVideoSurface(surface: String?): Boolean =
 
 internal fun isComposeWindowsVideoSurfaceSelected(): Boolean =
     System.getProperty("os.name").orEmpty().lowercase().contains("win") &&
-        isComposeWindowsVideoSurface(System.getProperty("kino.windows.video-surface"))
+        isComposeWindowsVideoSurface(System.getProperty(WindowsVideoSurfaceProperty))
+
+private const val WindowsVideoSurfaceProperty = "kino.windows.video-surface"
+
+internal fun defaultWindowsVideoSurface(hdrPassthrough: Boolean): String = if (hdrPassthrough) "native" else "compose"
+
+internal fun configureWindowsVideoSurfaceSelection() {
+    if (!System.getProperty("os.name").orEmpty().lowercase().contains("win")) return
+    if (System.getProperty(WindowsVideoSurfaceProperty) != null) return
+    val hdrPassthrough = runCatching { VideoOutputSettingsPlatform.loadHdrPassthroughEnabled() }.getOrDefault(false)
+    System.setProperty(WindowsVideoSurfaceProperty, defaultWindowsVideoSurface(hdrPassthrough))
+}
 
 internal fun configureWindowsComposeVideoRenderApi() {
     if (!isComposeWindowsVideoSurfaceSelected()) return
