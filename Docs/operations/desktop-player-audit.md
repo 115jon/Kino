@@ -377,5 +377,90 @@ A separate, smaller per-minute hitch was in Kino's process. Skiko's `FrameWatche
 
 ### Open items
 
-- On 60 fps content, about a third of the frames mpv renders are replaced before Compose draws them (`unshown` about 20 per second). mpv renders with `BLOCK_FOR_TARGET_TIME` on its own clock, and Compose presents on vsync, so two frames can land inside one vsync. A small FIFO (two pending frames, one more ring slot) would trade one frame of latency for even pacing. 24 fps content is not affected.
 - Dolby Vision cost is now dominated by the CUDA copy and the GL upload of the 8-bit result. Removing them needs a render API with libplacebo (`gpu-next`) or an FFmpeg that can import CUDA frames into Vulkan inside mpv's filter graph.
+
+## 8. UI scroll and 60 fps pacing on the compose surface
+
+Date: 2026-10-27. Branch: `t3/fix-compose-video-scroll-pacing`.
+
+### Cause
+
+- The compose surface forces Skiko onto OpenGL. Skiko's Windows GL loop draws, swaps with swap interval 0, calls `glFinish`, then waits for vsync with `DwmFlush` on a helper thread.
+- On the test machine `DwmFlush` does not follow vsync. Called in a loop with nothing else rendering, it returned at p50 17 ms and p95 47 ms, with 84 of 240 calls over 20 ms. Every Compose frame waits on it, so scrolling ran at 37-42 fps. With vsync off the same frames took 1.2 ms each, so the GL work itself was never the problem.
+- The same `DwmFlush` cadence explained most of the lost 60 fps video frames: Compose presented about 54 frames per second, and mpv's extra frames were overwritten.
+- `DCompositionWaitForCompositorClock` (Windows 11) ticked at p50 16.7 ms and p95 17.1 ms on the same display and costs no CPU.
+
+### What changed
+
+- `WindowsCompositorClockPacing` (installed from `DesktopApp.kt`) wraps the window's `SkikoRenderDelegate`. While the renderer is OpenGL it waits for the compositor clock before Compose records a frame, and turns off Skiko's `DwmFlush` for that layer. A frame that follows more than 25 ms of idle is not delayed. Direct3D layers, Windows 10 (no compositor clock) and `-Dkino.windows.compositor-clock-pacing=false` keep Skiko's own pacing. A failed wait restores `DwmFlush`.
+- `VideoFrameRing` now hands frames to Compose through `VideoFrameQueue`: up to two pending frames, shown oldest first, one per Compose frame. Compose asks for another frame while frames are pending. mpv redraws (`MPV_RENDER_PARAM_NEXT_FRAME_INFO` without `PRESENT`, or with `REDRAW`) replace the newest pending frame instead of queueing. While the video is hidden, and on every playback restart, only the newest frame is kept, so a reveal or seek never shows older frames first.
+- The perf log reports `gapsOver25`, `gapsOver58` and `avgPending`. `:composeApp:runScrollHarness` scrolls a home-like screen (hero, 30 poster rows) and reports frame times, process CPU and EDT dispatch lag per 10 s pass.
+
+### Results
+
+Measured on a 60 Hz display. Harness runs used `--no-configuration-cache`: with the configuration cache on, Gradle reused stale `-D` properties between runs.
+
+UI scroll, `runScrollHarness`, steady-state passes:
+
+| Renderer | p50 | p95 | Frames over 33 ms per 10 s | fps | CPU, % of one core | EDT lag p50 / p95 |
+|---|---|---|---|---|---|---|
+| OpenGL with `DwmFlush` (before) | 18.6-21.2 ms | 44.6-51.4 ms | 45-90 | 36-42 | 26-37 | 0 / 2-4 ms |
+| OpenGL with the compositor clock (after) | 16.7 ms | 17.0-17.3 ms | 0-7 | 58-60 | 25-55 | 8.5 / 16-18 ms |
+| Direct3D, for reference | 16.2-16.7 ms | 17.4-19.9 ms | 0-6 | 58-60 | 14-22 | 0 / 0-1 ms |
+
+- The paced loop renders 60 frames per second instead of about 40, and each GL frame costs about 2.5 times the CPU of a Direct3D frame, so scroll CPU is higher than before.
+- The EDT now sleeps in the compositor wait during continuous animation, so other EDT work waits up to one frame. It does not hold the GL driver lock and does not spin.
+
+Video, 40 s windows, presented frames divided by rendered frames:
+
+| Case | Before | After |
+|---|---|---|
+| SDR 1080p60 | 0.82, 0.67 | 1.00, 0.98 |
+| HDR10 4K60 | 0.86, 0.82, 0.82, 0.82, 0.89 | 1.00, 1.00, 1.00, 1.00, 1.00 |
+| Dolby Vision 4K60 | 0.79, 0.82, 0.85, 0.79, 0.79 | 0.99, 0.98, 0.99, 1.00, 0.99 |
+| SDR 1080p24 | 0.99 (5 runs) | 1.00 (5 runs) |
+
+On 60 fps content the queue holds one extra frame (`avgPending` 2.0 before each take), so video reaches the screen about 16.7 ms later than before. 24 fps content keeps `avgPending` 1.0 and gains no latency.
+
+CPU, % of one core, alternating builds (before is `19289326c`):
+
+| Case | Before | After |
+|---|---|---|
+| 1080p24 | 26.6, 26.5, 28.0, 27.8, 26.2 (mean 27.0) | 30.0, 27.0, 27.0, 27.1, 29.1 (mean 28.0) |
+| 4K24 SDR | 26.8, 23.0 | 27.1, 25.5 |
+| 4K60 Dolby Vision 8.1 | 85.2, 87.7, 87.7, 87.8, 87.1 (mean 87.1), 0 drops | 85.2, 96.6, 88.2, 84.5, 89.2 (mean 88.7), 0 drops in 4 runs, 87 in 1 |
+| 4K60 HDR10 | 38.3, 38.7, 40.8, 38.6, 32.1 (mean 37.7), 7 drops in 1 run | 46.2, 36.7, 32.6, 40.6, 41.4 (mean 39.5), 0 drops |
+| 1080p60 SDR | 37.6, 38.8 | 36.4, 45.7 |
+
+- Means are 1-2 points higher after. That is inside the run-to-run spread, and 24 fps runs draw the same number of Compose frames in both builds. 60 fps runs present about 22% more frames after.
+- Both builds had drop bursts only during system-wide present stalls of 240-350 ms (`maxPresentGapMs`), the DWM stall described in section 7.
+
+Latency, two sequential runs per build (before / after):
+
+| Step | Before | After |
+|---|---|---|
+| First `loadFile` to first frame | 167, 154 ms | 165, 182 ms |
+| Seek in 1080p24 | 60/68, 44/35 ms | 62/68, 32/35 ms |
+| Next to 4K24 | 285, 270 ms | 268, 256 ms |
+| Seek in 4K24 | 400, 595 ms | 314, 641 ms |
+| Next to Dolby Vision | 1220, 1121 ms | 910, 1350 ms |
+| Seek in Dolby Vision | 1149, 1137 ms | 1158, 1079 ms |
+| Next to HDR10 | 360, 387 ms | 390, 358 ms |
+| Seek in HDR10 | 141, 142 ms | 94, 146 ms |
+| Next to 1080p24 | 167, 164 ms | 189, 182 ms |
+
+### Rejected
+
+- **Swap interval 1 with `DwmFlush` off.** Scrolling was smooth (p95 18-20 ms), but NVIDIA's driver spins in `glFinish` on the EDT until vblank: scroll CPU went from about 28% to 108%, and 1080p60 playback used 128% with 182 mpv drops, because the spinning context also stalled the video render thread's shared context.
+- **Swap interval 1 with `DwmFlush` on.** Both waits stack: p95 35-50 ms.
+- **`skiko.vsync.enabled=false` alone.** No pacing at all: about 800 fps while scrolling.
+- **Other `skiko.*` properties.** None of them affect the Windows GL present path.
+- **Direct3D except while the player is open.** Skiko only switches render API when the `SkiaLayer` is removed and added again. That recreates the HWND and the GPU context, drops Skia's shader and texture caches on every player entry and exit, and the shared mpv GL context would have to be rebuilt before the first frame. Not attempted.
+- **Sharing video into Skiko's Direct3D 12 surface.** Skia's Kotlin `BackendTexture` only offers `makeGL`. It would need a native DLL for D3D11/D3D12 shared textures, `WGL_NV_DX_interop2` and cross-API fences, plus a per-frame copy through a `BackendRenderTarget`. Not attempted.
+- **ANGLE.** Skiko 0.156 does not ship `libEGL`/`libGLESv2`.
+- **`D3DKMTWaitForVerticalBlankEvent`.** `D3DKMTOpenAdapterFromHdc` fails on the indirect (virtual) display used here.
+
+### Open items
+
+- Windows 10 has no compositor clock and keeps the old `DwmFlush` pacing.
+- The scroll harness is synthetic. A sandboxed run of the real home screen was not repeated for this change.
