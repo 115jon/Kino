@@ -57,11 +57,5 @@
 -keep interface com.typesafe.config.** { *; }
 -keep enum com.typesafe.config.** { *; }
 
--keep class io.ktor.client.engine.java.** { *; }
--keep class io.ktor.serialization.kotlinx.json.** { *; }
--keep class coil3.network.ktor3.internal.** { *; }
--keep class dev.whyoleg.cryptography.providers.jdk.** { *; }
--keep class io.ktor.server.config.** { *; }
-
 -keep class org.jetbrains.skiko.SkiaLayer { *; }
 -keep class org.jetbrains.skiko.renderer.** { *; }
