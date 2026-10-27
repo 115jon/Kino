@@ -192,9 +192,7 @@ internal class WindowsMpvPlayerBackend(
         LaunchedEffect(resizeMode) {
             engine.awaitStartedOrClosed()
             if (engine.isReady) {
-                SwingUtilities.invokeLater {
-                    windowState.panelRef?.applyResizeMode(resizeMode)
-                }
+                windowState.panelRef?.applyResizeMode(resizeMode)
             }
         }
 
