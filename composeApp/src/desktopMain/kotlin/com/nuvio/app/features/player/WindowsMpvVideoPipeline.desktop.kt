@@ -1,7 +1,7 @@
 package com.nuvio.app.features.player
 
 internal const val WindowsHdrCompatibilityFilter = "libplacebo=apply_filmgrain=1:peak_detect=1:tonemapping=auto"
-internal const val WindowsFilterCopyHwdec = "auto-copy-safe"
+internal const val WindowsFilterCopyHwdec = "nvdec-copy,d3d11va-copy,dxva2-copy"
 internal const val WindowsDolbyVisionCompatibilityFilter = "libplacebo=apply_dolbyvision=1:apply_filmgrain=1:peak_detect=1:tonemapping=auto"
 
 internal data class WindowsVideoPipelinePlan(
