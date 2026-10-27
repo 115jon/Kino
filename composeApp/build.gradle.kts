@@ -702,7 +702,7 @@ copyWindowsMediaArtwork?.let { task ->
 compose.desktop {
     application {
         mainClass = "com.nuvio.app.DesktopAppKt"
-        jvmArgs += listOf("-XX:ErrorFile=\$APPDIR/../../logs/hs_err_pid%p.log")
+        jvmArgs += listOf("-XX:ErrorFile=\$APPDIR/../../logs/hs_err_pid%p.log", "-XX:+ExplicitGCInvokesConcurrent")
         buildTypes.release.proguard {
             isEnabled.set(true)
             optimize.set(false)
