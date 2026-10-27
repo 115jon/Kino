@@ -68,6 +68,10 @@ internal class MpvPlaybackState {
     @Volatile
     var lastTrackPollEpochMs = 0L
     @Volatile
+    var trackRevision = 0L
+    @Volatile
+    var polledTrackRevision = 0L
+    @Volatile
     var audioTracks = emptyList<AudioTrack>()
     @Volatile
     var subtitleTracks = emptyList<SubtitleTrack>()

@@ -1,6 +1,6 @@
 package com.nuvio.app.features.player
 
-internal const val WindowsPlayerTrackPollIntervalMs = 1_000L
+internal const val WindowsPlayerTrackRefreshIntervalMs = 10_000L
 internal const val WindowsPlayerStartupTimeoutMs = 30_000L
 internal const val WindowsPlayerInitialSeekTimeoutMs = 8_000L
 internal const val WindowsPlayerFallbackPollIntervalMs = 500L

@@ -16,6 +16,7 @@ internal val mpvObservedProperties: List<MpvObservedProperty> = listOf(
     MpvObservedProperty("seeking", MPV_FORMAT_FLAG, notifiesState = true),
     MpvObservedProperty("track-list/count", MPV_FORMAT_INT64, notifiesState = true),
     MpvObservedProperty("aid", MPV_FORMAT_INT64, notifiesState = true),
+    MpvObservedProperty("sid", MPV_FORMAT_INT64, notifiesState = true),
     MpvObservedProperty("volume", MPV_FORMAT_DOUBLE, notifiesState = true),
     MpvObservedProperty("duration", MPV_FORMAT_DOUBLE, notifiesState = true),
     MpvObservedProperty("speed", MPV_FORMAT_DOUBLE, notifiesState = true),
@@ -31,7 +32,11 @@ private val mpvSilentProperties = mpvObservedProperties
     .filterNot { it.notifiesState }
     .mapTo(HashSet()) { it.name }
 
+private val mpvTrackProperties = setOf("track-list/count", "aid", "sid")
+
 internal fun mpvPropertyChangeNotifiesState(name: String): Boolean = name !in mpvSilentProperties
+
+internal fun mpvPropertyChangeAffectsTracks(name: String): Boolean = name in mpvTrackProperties
 
 internal class MpvPropertyCache {
     private val values = ConcurrentHashMap<String, Any>()

@@ -414,6 +414,7 @@ internal class MpvEngine(
                     is MpvClientEvent.PropertyChange -> {
                         properties.update(event.name, event.value)
                         markWindowsAudioDiagnosticsRequested(playback, event.name)
+                        if (mpvPropertyChangeAffectsTracks(event.name)) playback.trackRevision += 1
                         if (mpvPropertyChangeNotifiesState(event.name)) {
                             hasUpdates = true
                             eventCount += 1

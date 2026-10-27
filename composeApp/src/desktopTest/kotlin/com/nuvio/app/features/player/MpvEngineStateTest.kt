@@ -188,7 +188,15 @@ class MpvEngineStateTest {
         assertTrue(mpvPropertyChangeNotifiesState(""))
         assertFalse(mpvPropertyChangeNotifiesState("path"))
         assertFalse(mpvPropertyChangeNotifiesState("vo-configured"))
-        assertEquals(10, mpvObservedProperties.count { it.notifiesState })
+        assertEquals(11, mpvObservedProperties.count { it.notifiesState })
+    }
+
+    @Test
+    fun `track list and track selection changes invalidate the polled tracks`() {
+        assertTrue(mpvPropertyChangeAffectsTracks("track-list/count"))
+        assertTrue(mpvPropertyChangeAffectsTracks("aid"))
+        assertTrue(mpvPropertyChangeAffectsTracks("sid"))
+        assertFalse(mpvPropertyChangeAffectsTracks("pause"))
     }
 
     @Test

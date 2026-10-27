@@ -276,6 +276,7 @@ private fun applyWindowsPlaybackPoll(
 
     if (pollPayload.polledTracks) {
         playback.lastTrackPollEpochMs = System.currentTimeMillis()
+        playback.polledTrackRevision = pollPayload.trackRevision
     }
     playback.audioTracks = pollPayload.audioTracks
     playback.subtitleTracks = pollPayload.subtitleTracks
