@@ -260,7 +260,7 @@ def generate_preview_board(icons: list[tuple[str, Image.Image]]) -> None:
     draw = ImageDraw.Draw(board)
     title_font = ImageFont.truetype(FONT, 34)
     label_font = ImageFont.truetype(FONT, 18)
-    draw.text((margin, 28), "NUVIO / APP ICON CATALOGUE", fill=(245, 245, 247), font=title_font)
+    draw.text((margin, 28), "KINO / APP ICON CATALOGUE", fill=(245, 245, 247), font=title_font)
     draw.text((margin, 70), "6 shortlisted colorways · pure black field", fill=(150, 150, 158), font=label_font)
 
     for index, (label, icon) in enumerate(icons):

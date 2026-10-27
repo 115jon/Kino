@@ -11,9 +11,20 @@ permissions:
   issues: write
   pull-requests: write
 
+concurrency:
+  group: release-please
+  cancel-in-progress: false
+
 jobs:
   release-please:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        component:
+          - desktop
+          - android
     steps:
       - name: Preserve trusted release tools
         env:
@@ -38,15 +49,16 @@ jobs:
         with:
           token: ${{ secrets.RELEASE_TOKEN }}
           target-branch: main
-          config-file: .github/release-please/desktop-config.json
-          manifest-file: .github/release-please/desktop-manifest.json
+          config-file: .github/release-please/${{ matrix.component }}-config.json
+          manifest-file: .github/release-please/${{ matrix.component }}-manifest.json
 
       - name: Read release PR branch
         id: release-pr
         env:
           GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          COMPONENT: ${{ matrix.component }}
         run: |
-          branch=$(gh pr list --repo "$GITHUB_REPOSITORY" --base main --head release-please--branches--main--components--desktop --state open --json headRefName --jq '.[0].headRefName')
+          branch=$(gh pr list --repo "$GITHUB_REPOSITORY" --base main --head "release-please--branches--main--components--$COMPONENT" --state open --json headRefName --jq '.[0].headRefName')
           if [ -n "$branch" ]; then
             echo "branch=$branch" >> "$GITHUB_OUTPUT"
           fi
@@ -68,21 +80,25 @@ jobs:
           git fetch --no-tags origin "refs/heads/$RELEASE_BRANCH:refs/remotes/origin/$RELEASE_BRANCH" "refs/heads/main:refs/remotes/origin/main"
           git checkout -B "$RELEASE_BRANCH" "origin/$RELEASE_BRANCH"
 
-      - name: Synchronize desktop version code
+      - name: Synchronize version code
         if: steps.release-pr.outputs.branch != ''
-        run: node "$RUNNER_TEMP/kino-release-tools/sync-release-version.mjs" --platform=desktop --base-ref=origin/main
+        env:
+          COMPONENT: ${{ matrix.component }}
+        run: node "$RUNNER_TEMP/kino-release-tools/sync-release-version.mjs" --platform="$COMPONENT" --base-ref=origin/main
 
       - name: Push synchronized version code
         if: steps.release-pr.outputs.branch != ''
         env:
+          COMPONENT: ${{ matrix.component }}
           RELEASE_BRANCH: ${{ steps.release-pr.outputs.branch }}
           RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
         run: |
-          if git diff --quiet -- release/versions/desktop.properties; then
+          version_file="release/versions/$COMPONENT.properties"
+          if git diff --quiet -- "$version_file"; then
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add release/versions/desktop.properties
-          git commit -m "chore(release): sync desktop version code"
+          git add "$version_file"
+          git commit -m "chore(release): sync $COMPONENT version code"
           git push origin "HEAD:$RELEASE_BRANCH"

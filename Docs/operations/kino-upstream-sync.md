@@ -20,7 +20,10 @@ Tracking is plain git ancestry:
 upstream `cmp-rewrite` and exits if nothing is new. Otherwise it creates `sync/upstream-<YYYYMMDD>` and tries
 the merge:
 
-- Clean: it runs `scripts/kino/rebrand.mjs` from `main` (committing any new rebranded strings), then
+- Right after the merge it runs `scripts/kino/deleted-paths.mjs apply` from `main`. Any path in
+  `scripts/kino/deleted-paths.txt` that upstream modified (a modify/delete conflict) or newly added is removed again, so
+  those conflicts resolve as deleted. Only conflicts left after that count as conflicts.
+- Clean: it runs `scripts/kino/rebrand.mjs` from `main` (committing any new rebranded strings and deletions), then
   `rebrand.mjs --check` and `verify-release-state.mjs` for android, desktop and ios, pushes the branch and opens
   a PR to `main`. It closes the conflict issue if one is open.
 - Conflicts: it aborts and creates or updates the single open issue "Upstream sync needs a manual merge" with the
@@ -56,16 +59,32 @@ Commits go through the `commit` CLI only (`commit status`, `commit resolve --tak
 - Icons and branding: launcher icons, splash, `app_logo*.png`, `app_logo_wordmark.png`, Android `strings.xml`
   app names, `Theme.Nuvio` colors.
 - `desktop/`, `composeApp/src/desktopMain/`, `composeApp/src/desktopTest/`, `release/`.
-- Our workflows (`android-release`, `desktop-release`, `platform-checks`, `release-please`, `upstream-sync`), and
-  upstream workflows we deleted (`ios-test-build`, `pr-full-debug-build*`, `update-store-source`,
-  `discontinue-legacy-main`) stay deleted.
-- `MPVKit/` stays vendored. `iosApp/Configuration/Version.xcconfig` stays deleted. `scripts/update-store-source.py`
-  stays deleted; `store.json` is kept because upstream rewrites it every release.
+- Our workflows (`android-release`, `desktop-release`, `platform-checks`, `release-please`, `upstream-sync`), the
+  release-please configs and manifests in `.github/release-please/`, and `.github/PULL_REQUEST_TEMPLATE.md` (short
+  Summary and Testing template).
+- Paths in `scripts/kino/deleted-paths.txt` stay deleted (see below).
+- `MPVKit/` stays vendored, including its own `.github/`. `store.json` is kept because upstream rewrites it every
+  release.
 - Updater: `AppUpdaterRepository` points at `115jon/Kino` releases, tags `android-v*` and `desktop-v*`, and the
   `release-manifest.json` asset.
 - Android: one universal APK with no ABI splits, application ID `site.x115jon.kino`.
 - Product scope (below): `KinoFeaturePolicy`, `KinoMemberAccess`, and the flags set to `false` in every
   `AppFeaturePolicy` actual.
+
+## Kino-deleted paths
+
+`scripts/kino/deleted-paths.txt` lists what Kino removed from upstream, one path per line: exact files, directories
+(everything below), or a `*` within one path segment. Today that covers upstream's contribution process
+(`CONTRIBUTING.md`, `.github/ISSUE_TEMPLATE/`, the PR template check, the stale, unlabeled and needs-info issue
+workflows, any `FUNDING.yml` and `CODE_OF_CONDUCT.md`), the workflows listed above that Kino dropped,
+`scripts/update-store-source.py`, `iosApp/Configuration/Version.xcconfig`, and the orphan gitlinks `libass-android`,
+`vendor/TorrServer` and `vendor/quickjs-kt`.
+
+- Delete something else for good: remove it with the normal commit flow and add its path to the list in the same PR.
+- `node scripts/kino/deleted-paths.mjs apply` removes listed paths that are tracked (`git rm`, so it also resolves
+  modify/delete conflicts mid-merge); `check` lists them and exits 1. `rebrand.mjs` runs the same logic: plain runs
+  remove, `--check` fails.
+- Keep `LICENSE` and `FORK_NOTICE.md`; they are never listed.
 
 ## Take theirs
 
@@ -96,8 +115,9 @@ Kino is its own app: a user logs in and watches. After each merge, check that no
 ./gradlew -Pnuvio.android.distribution=full :composeApp:compileAndroidMain --console=plain
 ./gradlew :composeApp:compileWindowsMediaSession --console=plain
 node --test scripts/versioning.test.mjs
-node --test scripts/kino/rebrand.test.mjs
+node --test scripts/kino/rebrand.test.mjs scripts/kino/deleted-paths.test.mjs
 node scripts/kino/rebrand.mjs --check
+node scripts/kino/deleted-paths.mjs check
 ```
 
 Run `compileWindowsMediaSession` from a shell initialised with the MSVC environment (`vcvars64.bat` or a

@@ -45,6 +45,8 @@ jobs:
           git show HEAD:scripts/versioning.mjs > "$tools/versioning.mjs"
           git show HEAD:scripts/verify-release-state.mjs > "$tools/verify-release-state.mjs"
           git show HEAD:scripts/kino/rebrand.mjs > "$tools/rebrand.mjs"
+          git show HEAD:scripts/kino/deleted-paths.mjs > "$tools/deleted-paths.mjs"
+          git show HEAD:scripts/kino/deleted-paths.txt > "$tools/deleted-paths.txt"
           git rev-parse HEAD > "$tools/baseline-sha"
 
       - name: Fetch upstream
@@ -74,18 +76,20 @@ jobs:
           fi
           git switch -c "$branch"
           echo "branch=$branch" >> "$GITHUB_OUTPUT"
-          if git merge --no-ff --no-commit "$UPSTREAM_SHA"; then
-            git commit --no-edit
-            echo "clean=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          git diff --name-only --diff-filter=U > "$RUNNER_TEMP/conflicts.txt"
-          git merge --abort
-          if [ ! -s "$RUNNER_TEMP/conflicts.txt" ]; then
-            echo "merge failed without conflicted paths" >&2
+          git merge --no-ff --no-commit "$UPSTREAM_SHA" || true
+          if [ ! -f "$(git rev-parse --git-path MERGE_HEAD)" ]; then
+            echo "merge did not start" >&2
             exit 1
           fi
-          echo "clean=false" >> "$GITHUB_OUTPUT"
+          node "$RUNNER_TEMP/kino-tools/deleted-paths.mjs" apply
+          git diff --name-only --diff-filter=U > "$RUNNER_TEMP/conflicts.txt"
+          if [ -s "$RUNNER_TEMP/conflicts.txt" ]; then
+            git merge --abort
+            echo "clean=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git commit --no-edit
+          echo "clean=true" >> "$GITHUB_OUTPUT"
 
       - name: Report conflicts in the sync issue
         if: steps.merge.outputs.clean == 'false'
@@ -120,7 +124,7 @@ jobs:
         run: |
           tools="$RUNNER_TEMP/kino-tools"
           node "$tools/rebrand.mjs"
-          if ! git diff --quiet; then
+          if ! git diff --quiet HEAD; then
             git commit -am "fix(i18n): rebrand new upstream strings"
           fi
           node "$tools/rebrand.mjs" --check

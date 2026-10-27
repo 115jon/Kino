@@ -175,8 +175,8 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Test the rebrand script
-        run: node --test scripts/kino/rebrand.test.mjs
+      - name: Test the Kino sync scripts
+        run: node --test scripts/kino/rebrand.test.mjs scripts/kino/deleted-paths.test.mjs
 
-      - name: Check user-visible strings say Kino
+      - name: Check user-visible strings say Kino and Kino-deleted files stay deleted
         run: node scripts/kino/rebrand.mjs --check

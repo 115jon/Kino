@@ -5,9 +5,12 @@ import {
   compareVersions,
   determineBump,
   getPlatformTag,
+  getReleaseFile,
   incrementVersion,
   isReleaseStateAtLeast,
+  readReleaseState,
   synchronizeReleaseState,
+  writeReleaseState,
 } from "./versioning.mjs";
 import { createReleaseManifest } from "./release-manifest.mjs";
 
@@ -102,4 +105,28 @@ test("creates a platform-specific release manifest", () => {
       assets: [{ name: "Kino-Android-0.3.0.apk", sizeBytes: 123, sha256: "abc" }],
     },
   );
+});
+
+function androidProperties(version, build) {
+  return [
+    "# x-release-please-start-version",
+    `versionName=${version}`,
+    "# x-release-please-end",
+    `versionCode=${build}`,
+    "",
+  ].join("\n");
+}
+
+test("reads and writes android version metadata between release-please markers", () => {
+  const content = androidProperties("0.2.24", 96);
+  assert.deepEqual(readReleaseState("android", content), { version: "0.2.24", build: 96 });
+  assert.equal(
+    writeReleaseState("android", content, { version: "0.3.0", build: 97 }),
+    androidProperties("0.3.0", 97),
+  );
+});
+
+test("keeps a canonical version file for each release-please platform", () => {
+  assert.equal(getReleaseFile("android").canonicalFile, "release/versions/android.version");
+  assert.equal(getReleaseFile("desktop").canonicalFile, "release/versions/desktop.version");
 });

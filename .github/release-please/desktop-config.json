@@ -6,6 +6,27 @@
     ".": {
       "component": "desktop",
       "changelog-path": "CHANGELOG.md",
+      "exclude-paths": [
+        ".github",
+        "Docs",
+        "MPVKit",
+        "androidApp",
+        "iosApp",
+        "composeApp/src/androidFull",
+        "composeApp/src/androidFullHostTest",
+        "composeApp/src/androidHostTest",
+        "composeApp/src/androidMain",
+        "composeApp/src/androidPlaystore",
+        "composeApp/src/iosAppStore",
+        "composeApp/src/iosFull",
+        "composeApp/src/iosMain",
+        "composeApp/src/iosTest",
+        "composeApp/src/nativeInterop",
+        "release/versions/android.properties",
+        "release/versions/android.version",
+        "release/versions/ios.xcconfig",
+        "CHANGELOG-android.md"
+      ],
       "extra-files": [
         "release/versions/desktop.properties"
       ],
