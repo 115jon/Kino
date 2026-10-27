@@ -3,6 +3,8 @@ import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
+import { applyDeletions, listTrackedDeleted } from "./deleted-paths.mjs";
+
 export const STRING_FILES =
   /^(composeApp|androidApp)\/src\/[^/]+\/(composeResources|res)\/values[^/]*\/[^/]*strings[^/]*\.xml$/;
 
@@ -74,7 +76,10 @@ function main() {
     }
   }
   console.log(`${check ? "would change" : "changed"} ${strings} strings in ${files} files`);
-  if (check && strings > 0) process.exit(1);
+  const deleted = check ? listTrackedDeleted() : applyDeletions();
+  for (const file of deleted) console.log(`${check ? "Kino deleted this path" : "deleted"}: ${file}`);
+  console.log(`${check ? "found" : "removed"} ${deleted.length} Kino-deleted paths`);
+  if (check && (strings > 0 || deleted.length > 0)) process.exit(1);
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) main();
