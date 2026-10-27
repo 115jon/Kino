@@ -34,6 +34,11 @@ private val perfProperties = listOf(
     "avsync",
     "time-pos",
     "pause",
+    "speed",
+    "aid",
+    "sid",
+    "current-tracks/sub/codec",
+    "current-tracks/sub/external",
 )
 
 @Composable

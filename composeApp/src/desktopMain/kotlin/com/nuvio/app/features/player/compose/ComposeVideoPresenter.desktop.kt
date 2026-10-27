@@ -27,7 +27,7 @@ internal class ComposeVideoPresenter(
         check(SwingUtilities.isEventDispatchThread())
         val skiko = SkikoGlContext.find(window) ?: return "skia layer not found"
         val shared = SharedGlContexts.create(skiko).getOrElse { return it.message ?: "shared gl context unavailable" }
-        val frames = VideoFrameRing(shared, stats)
+        val frames = VideoFrameRing(shared, stats) { visible.value }
         contexts = shared
         ring = frames
         renderThread = ComposeVideoRenderThread(engine, shared, frames, stats, renderCallbacks).also { it.start() }

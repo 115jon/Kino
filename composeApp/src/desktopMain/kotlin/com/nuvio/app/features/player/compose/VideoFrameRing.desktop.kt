@@ -23,6 +23,7 @@ internal class VideoFrameSlot(
 internal class VideoFrameRing(
     private val contexts: SharedGlContexts,
     private val stats: ComposeVideoStats,
+    private val isPresenting: () -> Boolean,
 ) {
     private val lock = Any()
     private var slots: List<VideoFrameSlot> = emptyList()
@@ -75,7 +76,7 @@ internal class VideoFrameRing(
             composeVideoTrace("compose video frame fence timed out")
         }
         synchronized(lock) {
-            if (latest != null && latest !== displayed) stats.recordUnshownFrame()
+            if (latest != null && latest !== displayed && isPresenting()) stats.recordUnshownFrame()
             latest = slot
             publishedFrames += 1
         }
