@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Menu
 import androidx.compose.material3.Icon
@@ -79,7 +80,7 @@ private fun SettingsCard(
     Surface(
         modifier = modifier.fillMaxWidth(),
         color = tokens.colors.surface,
-        shape = if (isTablet) RoundedCornerShape(NuvioTokens.Radius.xl) else tokens.shapes.compactCard,
+        shape = settingsRowMetrics(isTablet).cardShape,
         border = BorderStroke(
             tokens.borders.hairline,
             tokens.colors.borderSubtle,
@@ -107,7 +108,7 @@ internal fun SettingsGroup(
 internal fun SettingsGroupDivider(isTablet: Boolean) {
     val tokens = MaterialTheme.nuvio
     HorizontalDivider(
-        modifier = Modifier.padding(start = if (isTablet) NuvioTokens.Space.s80 - NuvioTokens.Space.s2 else NuvioTokens.Space.s64 + NuvioTokens.Space.s2),
+        modifier = Modifier.padding(start = settingsRowMetrics(isTablet).dividerInset),
         thickness = tokens.borders.hairline,
         color = tokens.colors.borderSubtle,
     )
@@ -147,7 +148,7 @@ internal fun TabletPageHeader(
             }
             Text(
                 text = title,
-                style = MaterialTheme.typography.headlineLarge,
+                style = settingsPageTitleStyle(),
                 color = tokens.colors.textPrimary,
                 fontWeight = FontWeight.SemiBold,
             )
@@ -242,13 +243,15 @@ internal fun SettingsNavigationRow(
     onClick: () -> Unit,
 ) {
     val tokens = MaterialTheme.nuvio
-    val iconSize = if (isTablet) 42.dp else 36.dp
-    val verticalPadding = if (isTablet) 16.dp else 14.dp
-    val horizontalPadding = if (isTablet) 20.dp else 16.dp
+    val metrics = settingsRowMetrics(isTablet)
+    val iconSize = metrics.iconSize
+    val verticalPadding = metrics.verticalPadding
+    val horizontalPadding = metrics.horizontalPadding
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .then(metrics.interaction)
             .clickable(enabled = enabled, onClick = onClick)
             .padding(horizontal = horizontalPadding, vertical = verticalPadding)
             .alpha(if (enabled) NuvioTokens.Opacity.visible else tokens.opacity.medium),
@@ -277,7 +280,7 @@ internal fun SettingsNavigationRow(
                             androidx.compose.foundation.Image(
                                 painter = iconPainter,
                                 contentDescription = null,
-                                modifier = Modifier.size(if (isTablet) 28.dp else 24.dp),
+                                modifier = Modifier.size(metrics.painterSize),
                                 contentScale = ContentScale.Fit,
                             )
                         } else if (icon != null) {
@@ -289,20 +292,19 @@ internal fun SettingsNavigationRow(
                         }
                     }
                 }
-                Spacer(modifier = Modifier.width(if (isTablet) 16.dp else 14.dp))
+                Spacer(modifier = Modifier.width(metrics.iconGap))
             }
             Column {
                 Text(
                     text = title,
-                    style = MaterialTheme.typography.bodyLarge,
+                    style = metrics.titleStyle,
                     color = tokens.colors.textPrimary,
-                    fontWeight = FontWeight.Medium,
                 )
                 if (!description.isNullOrBlank()) {
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
                         text = description,
-                        style = MaterialTheme.typography.bodyMedium,
+                        style = metrics.descriptionStyle,
                         color = tokens.colors.textMuted,
                         modifier = Modifier.alpha(0.92f),
                     )
@@ -310,6 +312,16 @@ internal fun SettingsNavigationRow(
             }
         }
         trailingContent?.invoke(this)
+        if (metrics.showChevron) {
+            Icon(
+                imageVector = Icons.Rounded.ChevronRight,
+                contentDescription = null,
+                tint = tokens.colors.textMuted,
+                modifier = Modifier
+                    .padding(start = NuvioTokens.Space.s8)
+                    .size(tokens.icons.md),
+            )
+        }
     }
 }
 
@@ -320,15 +332,17 @@ internal fun SettingsSwitchRow(
     checked: Boolean,
     enabled: Boolean = true,
     isTablet: Boolean,
-    horizontalPadding: Dp = if (isTablet) 20.dp else 16.dp,
+    horizontalPadding: Dp = settingsRowMetrics(isTablet).horizontalPadding,
     onCheckedChange: (Boolean) -> Unit,
 ) {
     val tokens = MaterialTheme.nuvio
-    val verticalPadding = if (isTablet) 16.dp else 14.dp
+    val metrics = settingsRowMetrics(isTablet)
+    val verticalPadding = metrics.verticalPadding
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .then(metrics.interaction)
             .clickable(enabled = enabled) { onCheckedChange(!checked) }
             .padding(horizontal = horizontalPadding, vertical = verticalPadding),
         horizontalArrangement = Arrangement.Start,
@@ -344,14 +358,13 @@ internal fun SettingsSwitchRow(
         ) {
             Text(
                 text = title,
-                style = MaterialTheme.typography.bodyLarge,
+                style = metrics.titleStyle,
                 color = tokens.colors.textPrimary,
-                fontWeight = FontWeight.Medium,
             )
             if (!description.isNullOrBlank()) {
                 Text(
                     text = description,
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = metrics.descriptionStyle,
                     color = tokens.colors.textMuted,
                 )
             }
@@ -381,25 +394,25 @@ internal fun SettingsChipRow(
     chips: @Composable FlowRowScope.() -> Unit,
 ) {
     val tokens = MaterialTheme.nuvio
+    val metrics = settingsRowMetrics(isTablet)
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .padding(
-                horizontal = if (isTablet) 20.dp else 16.dp,
-                vertical = if (isTablet) 16.dp else 14.dp,
+                horizontal = metrics.horizontalPadding,
+                vertical = metrics.verticalPadding,
             ),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(
                 text = title,
-                style = MaterialTheme.typography.bodyLarge,
+                style = metrics.titleStyle,
                 color = tokens.colors.textPrimary,
-                fontWeight = FontWeight.Medium,
             )
             Text(
                 text = description,
-                style = MaterialTheme.typography.bodyMedium,
+                style = metrics.descriptionStyle,
                 color = tokens.colors.textMuted,
             )
         }

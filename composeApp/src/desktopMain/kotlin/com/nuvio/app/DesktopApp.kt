@@ -1,5 +1,7 @@
 package com.nuvio.app
 
+import androidx.compose.material3.LocalMinimumInteractiveComponentSize
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.awt.ComposeWindow
@@ -24,6 +26,7 @@ import java.awt.Color as AwtColor
 import java.awt.EventQueue
 
 private val DesktopWindowBackground = AwtColor(0x0C, 0x0C, 0x0C)
+private val DesktopMinimumInteractiveSize = 40.dp
 private val singleInstanceLogger = Logger.withTag("DesktopSingleInstance")
 
 internal fun restoredDesktopWindowState(extendedState: Int): Int =
@@ -148,7 +151,9 @@ fun main() {
                     prewarmDesktopPlaybackBackend()
                 }
 
-                App()
+                CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides DesktopMinimumInteractiveSize) {
+                    App()
+                }
             }
         }
     } finally {

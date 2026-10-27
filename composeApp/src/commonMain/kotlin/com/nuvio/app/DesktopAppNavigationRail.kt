@@ -85,6 +85,7 @@ internal fun DesktopAppNavigationRail(
                     onProfileSelected = onProfileSelected,
                     onAddProfileRequested = onAddProfileRequested,
                     modifier = Modifier.size(28.dp),
+                    expandOnClick = true,
                 )
             }
         },

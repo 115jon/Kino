@@ -46,7 +46,16 @@ fun NuvioModalBottomSheet(
     fullHeight: Boolean = false,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    if (usesNativeNuvioBottomSheet) {
+    if (sheetsOpenAsDesktopDialogs) {
+        NuvioDesktopSheetDialog(
+            onDismissRequest = onDismissRequest,
+            modifier = modifier,
+            containerColor = containerColor,
+            contentColor = contentColor,
+            fullHeight = fullHeight,
+            content = content,
+        )
+    } else if (usesNativeNuvioBottomSheet) {
         NuvioNativeModalBottomSheet(
             onDismissRequest = onDismissRequest,
             modifier = modifier,

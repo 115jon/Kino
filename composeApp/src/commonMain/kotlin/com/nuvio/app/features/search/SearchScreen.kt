@@ -264,14 +264,15 @@ fun SearchScreen(
                         modifier = Modifier.padding(horizontal = 16.dp),
                     )
                     androidx.compose.foundation.layout.Spacer(modifier = Modifier.height(6.dp))
-                    androidx.compose.foundation.layout.Box(modifier = Modifier.padding(horizontal = 16.dp)) {
+                    androidx.compose.foundation.layout.Box(modifier = Modifier.padding(horizontal = 16.dp).searchFieldFrame()) {
                         NuvioInputField(
                             value = query,
                             onValueChange = { query = it },
                             placeholder = stringResource(Res.string.compose_search_placeholder),
                             modifier = Modifier
                                 .focusRequester(focusRequester)
-                                .onFocusChanged { isSearchFocused = it.isFocused },
+                                .onFocusChanged { isSearchFocused = it.isFocused }
+                                .clearSearchOnEscape(enabled = query.isNotBlank()) { query = "" },
                             trailingContent = if (query.isNotBlank()) {
                                 {
                                     IconButton(onClick = { query = "" }) {
