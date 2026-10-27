@@ -56,6 +56,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import co.touchlab.kermit.Logger
+import com.nuvio.app.core.ui.TitleLogoImage
 import com.nuvio.app.core.ui.heroStretchHeight
 import com.nuvio.app.core.ui.LocalVerticalBarPadding
 import com.nuvio.app.core.ui.ScreenActivityEffect
@@ -439,7 +440,7 @@ private fun HeroContentBlock(
         horizontalAlignment = if (layout.isTablet) Alignment.Start else Alignment.CenterHorizontally,
     ) {
         if (logoUrl != null && !logoLoadError) {
-            AsyncImage(
+            TitleLogoImage(
                 model = logoUrl,
                 contentDescription = item.name,
                 modifier = Modifier

@@ -31,6 +31,7 @@ import com.nuvio.app.core.sync.SyncManager
 import com.nuvio.app.core.ui.LocalVerticalBarPadding
 import com.nuvio.app.core.ui.NativeProfileSwitcherController
 import com.nuvio.app.core.ui.NativeTabBridge
+import com.nuvio.app.core.ui.NuvioDarkTheme
 import com.nuvio.app.core.ui.NuvioLoadingIndicator
 import com.nuvio.app.core.ui.NuvioTokens
 import com.nuvio.app.core.ui.PlatformBackHandler
@@ -429,12 +430,14 @@ internal fun AppGate(
                     }
                 }
                 AppGateScreen.Auth.name -> {
-                    AuthScreen(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(MaterialTheme.nuvio.colors.background)
-                            .padding(LocalVerticalBarPadding.current),
-                    )
+                    NuvioDarkTheme {
+                        AuthScreen(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(MaterialTheme.nuvio.colors.background)
+                                .padding(LocalVerticalBarPadding.current),
+                        )
+                    }
                 }
                 AppGateScreen.ProfileSelection.name -> {
                     Box(

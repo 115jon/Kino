@@ -100,6 +100,13 @@ internal actual object ThemeSettingsStorage {
         DesktopPreferences.putString(preferencesName, ProfileScopedKey.of(navBarStyleKey), styleKey)
     }
 
+    actual fun loadThemeMode(): String? =
+        DesktopPreferences.getString(preferencesName, "theme_mode")
+
+    actual fun saveThemeMode(mode: String) {
+        DesktopPreferences.putString(preferencesName, "theme_mode", mode)
+    }
+
     actual fun exportToSyncPayload(): JsonObject = buildJsonObject {
         loadSelectedTheme()?.let { put(selectedThemeKey, encodeSyncString(it)) }
         loadAmoledEnabled()?.let { put(amoledEnabledKey, encodeSyncBoolean(it)) }

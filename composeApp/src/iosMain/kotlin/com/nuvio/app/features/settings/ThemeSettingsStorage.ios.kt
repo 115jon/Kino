@@ -122,6 +122,13 @@ actual object ThemeSettingsStorage {
         NSUserDefaults.standardUserDefaults.setObject(styleKey, forKey = ProfileScopedKey.of(navBarStyleKey))
     }
 
+    actual fun loadThemeMode(): String? =
+        NSUserDefaults.standardUserDefaults.stringForKey("theme_mode")
+
+    actual fun saveThemeMode(mode: String) {
+        NSUserDefaults.standardUserDefaults.setObject(mode, forKey = "theme_mode")
+    }
+
     actual fun exportToSyncPayload(): JsonObject = buildJsonObject {
         loadSelectedTheme()?.let { put(selectedThemeKey, encodeSyncString(it)) }
         loadCustomThemeColors()?.let { put(customThemeColorsKey, encodeSyncString(it)) }

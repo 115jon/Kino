@@ -42,15 +42,15 @@ internal class SkikoGlContext private constructor(
             val root = window ?: return null
             return findSkiaLayer(root)?.let(::SkikoGlContext)
         }
-
-        private fun findSkiaLayer(container: Container): SkiaLayer? {
-            container.components.forEach { component ->
-                if (component is SkiaLayer) return component
-                if (component is Container) findSkiaLayer(component)?.let { return it }
-            }
-            return null
-        }
     }
+}
+
+internal fun findSkiaLayer(container: Container): SkiaLayer? {
+    container.components.forEach { component ->
+        if (component is SkiaLayer) return component
+        if (component is Container) findSkiaLayer(component)?.let { return it }
+    }
+    return null
 }
 
 private val fieldCache = ConcurrentHashMap<Pair<Class<*>, String>, Field>()

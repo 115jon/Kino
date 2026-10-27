@@ -17,6 +17,7 @@ import com.nuvio.app.core.ui.NuvioTheme
 import com.nuvio.app.core.ui.configurePlatformImageLoader
 import com.nuvio.app.core.ui.platformProvidesImageLoader
 import com.nuvio.app.features.settings.ThemeSettingsRepository
+import com.nuvio.app.features.settings.rememberDarkThemeEnabled
 import com.nuvio.app.navigation.AppRoute
 import com.nuvio.app.navigation.TabsRoute
 
@@ -98,8 +99,9 @@ internal fun AppEnvironment(content: @Composable () -> Unit) {
     }.collectAsStateWithLifecycle()
 
     val customThemeColors by ThemeSettingsRepository.customThemeColors.collectAsStateWithLifecycle()
+    val darkTheme = rememberDarkThemeEnabled()
 
-    NuvioTheme(appTheme = selectedTheme, amoled = amoledEnabled, customThemeColors = customThemeColors) {
+    NuvioTheme(darkTheme = darkTheme, appTheme = selectedTheme, amoled = amoledEnabled, customThemeColors = customThemeColors) {
         content()
     }
 }
