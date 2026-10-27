@@ -43,6 +43,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -54,6 +55,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -96,6 +100,7 @@ import kotlin.math.absoluteValue
 import kotlin.math.roundToInt
 
 private val log = Logger.withTag("SeriesContent")
+private const val DesktopEpisodeBatchSize = 24
 
 @Composable
 fun DetailSeriesContent(
@@ -386,11 +391,15 @@ private fun DesktopEpisodeGrid(
     onEpisodeClick: ((MetaVideo) -> Unit)?,
     onEpisodeLongPress: ((MetaVideo) -> Unit)?,
 ) {
+    val windowHeight = LocalWindowInfo.current.containerSize.height
+    var renderedCount by remember(episodes) {
+        mutableIntStateOf(minOf(episodes.size, DesktopEpisodeBatchSize))
+    }
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(sizing.cardGap),
     ) {
-        episodes.forEach { episode ->
+        episodes.take(renderedCount).forEach { episode ->
             val episodeVideoId = buildPlaybackVideoId(
                 parentMetaId = parentMetaId,
                 seasonNumber = episode.season,
@@ -414,6 +423,17 @@ private fun DesktopEpisodeGrid(
                 sizing = sizing,
                 onClick = { onEpisodeClick?.invoke(episode) },
                 onLongPress = { onEpisodeLongPress?.invoke(episode) },
+            )
+        }
+        if (renderedCount < episodes.size) {
+            Spacer(
+                modifier = Modifier
+                    .height(1.dp)
+                    .onGloballyPositioned { coordinates ->
+                        if (coordinates.positionInWindow().y < windowHeight * 2) {
+                            renderedCount = minOf(episodes.size, renderedCount + DesktopEpisodeBatchSize)
+                        }
+                    },
             )
         }
     }
