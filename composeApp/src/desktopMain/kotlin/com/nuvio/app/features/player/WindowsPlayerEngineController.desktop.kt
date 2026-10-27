@@ -96,15 +96,11 @@ internal class WindowsPlayerEngineController(
     }
 
     override fun clearExternalSubtitle() {
-        SwingUtilities.invokeLater {
-            windowState.panelRef?.clearExternalSubtitles()
-        }
+        windowState.panelRef?.clearExternalSubtitles()
     }
 
     override fun clearExternalSubtitleAndSelect(trackIndex: Int) {
-        SwingUtilities.invokeLater {
-            windowState.panelRef?.clearExternalSubtitlesAndSelect(trackIndex)
-        }
+        windowState.panelRef?.clearExternalSubtitlesAndSelect(trackIndex)
     }
 
     override fun applySubtitleStyle(style: SubtitleStyleState) {

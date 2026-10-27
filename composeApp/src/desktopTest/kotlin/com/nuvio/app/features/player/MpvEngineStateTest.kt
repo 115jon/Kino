@@ -32,18 +32,29 @@ class MpvEngineStateTest {
 
     @Test
     fun `pipeline filters match each compatibility mode`() {
-        assertEquals("", windowsVideoPipelineFilter(DesktopVideoPipelineMode.Standard))
-        assertEquals(WindowsHdrCompatibilityFilter, windowsVideoPipelineFilter(DesktopVideoPipelineMode.HdrCompatibility))
+        val display = WindowsVideoOutputTarget.Display
+        assertEquals("", windowsVideoPipelineFilter(DesktopVideoPipelineMode.Standard, display))
+        assertEquals(WindowsHdrCompatibilityFilter, windowsVideoPipelineFilter(DesktopVideoPipelineMode.HdrCompatibility, display))
         assertEquals(
             WindowsDolbyVisionCompatibilityFilter,
-            windowsVideoPipelineFilter(DesktopVideoPipelineMode.DolbyVisionCompatibility),
+            windowsVideoPipelineFilter(DesktopVideoPipelineMode.DolbyVisionCompatibility, display),
         )
         assertTrue("apply_dolbyvision=1" in WindowsDolbyVisionCompatibilityFilter)
     }
 
     @Test
+    fun `sdr textures tone map only dolby vision in libplacebo`() {
+        val sdr = WindowsVideoOutputTarget.SdrTexture
+        assertEquals("", windowsVideoPipelineFilter(DesktopVideoPipelineMode.Standard, sdr))
+        assertEquals("", windowsVideoPipelineFilter(DesktopVideoPipelineMode.HdrCompatibility, sdr))
+        assertEquals(WindowsDolbyVisionSdrFilter, windowsVideoPipelineFilter(DesktopVideoPipelineMode.DolbyVisionCompatibility, sdr))
+        assertTrue(WindowsDolbyVisionSdrFilter.startsWith(WindowsDolbyVisionCompatibilityFilter))
+        assertTrue("format=yuv420p" in WindowsDolbyVisionSdrFilter)
+    }
+
+    @Test
     fun `sdr video keeps the plain pipeline`() {
-        val plan = planWindowsVideoPipeline(diagnostics(), MpvPlaybackState())
+        val plan = planWindowsVideoPipeline(diagnostics(), MpvPlaybackState(), WindowsVideoOutputTarget.Display)
 
         assertEquals(DesktopVideoPipelineMode.Standard, plan?.decision?.mode)
         assertEquals("", plan?.filterSpec)
@@ -54,6 +65,7 @@ class MpvEngineStateTest {
         val plan = planWindowsVideoPipeline(
             diagnostics(pixelFormat = "p010", primaries = "bt.2020", transfer = "pq"),
             MpvPlaybackState(),
+            WindowsVideoOutputTarget.Display,
         )
 
         assertEquals(DesktopVideoPipelineMode.HdrCompatibility, plan?.decision?.mode)
@@ -62,7 +74,7 @@ class MpvEngineStateTest {
 
     @Test
     fun `dolby vision metadata selects the dolby vision filter`() {
-        val plan = planWindowsVideoPipeline(diagnostics(dolbyVision = "dvhe.08"), MpvPlaybackState())
+        val plan = planWindowsVideoPipeline(diagnostics(dolbyVision = "dvhe.08"), MpvPlaybackState(), WindowsVideoOutputTarget.Display)
 
         assertEquals(DesktopVideoPipelineMode.DolbyVisionCompatibility, plan?.decision?.mode)
         assertEquals(WindowsDolbyVisionCompatibilityFilter, plan?.filterSpec)
@@ -72,7 +84,7 @@ class MpvEngineStateTest {
     fun `stream profile dolby vision wins over sdr video params`() {
         val state = MpvPlaybackState().apply { streamHasDolbyVision = true }
 
-        val plan = planWindowsVideoPipeline(diagnostics(), state)
+        val plan = planWindowsVideoPipeline(diagnostics(), state, WindowsVideoOutputTarget.Display)
 
         assertEquals(DesktopVideoPipelineMode.DolbyVisionCompatibility, plan?.decision?.mode)
     }
@@ -80,12 +92,12 @@ class MpvEngineStateTest {
     @Test
     fun `pipeline is not planned without video params or for an unchanged signature`() {
         val state = MpvPlaybackState()
-        assertNull(planWindowsVideoPipeline(diagnostics(pixelFormat = null), state))
+        assertNull(planWindowsVideoPipeline(diagnostics(pixelFormat = null), state, WindowsVideoOutputTarget.Display))
 
-        val first = planWindowsVideoPipeline(diagnostics(), state)
+        val first = planWindowsVideoPipeline(diagnostics(), state, WindowsVideoOutputTarget.Display)
         state.lastVideoDiagnosticsSignature = first?.signature
 
-        assertNull(planWindowsVideoPipeline(diagnostics(), state))
+        assertNull(planWindowsVideoPipeline(diagnostics(), state, WindowsVideoOutputTarget.Display))
     }
 
     @Test
@@ -96,14 +108,45 @@ class MpvEngineStateTest {
         client.properties["video-params/gamma"] = "pq"
         val state = MpvPlaybackState()
 
-        configureWindowsVideoPipeline(client, state, "test")
-        configureWindowsVideoPipeline(client, state, "test")
+        configureWindowsVideoPipeline(client, state, WindowsVideoOutputTarget.Display, "test")
+        configureWindowsVideoPipeline(client, state, WindowsVideoOutputTarget.Display, "test")
 
-        assertEquals(listOf("set vf=$WindowsHdrCompatibilityFilter"), client.snapshotCalls())
+        assertEquals(listOf("set file-local-options/vf=$WindowsHdrCompatibilityFilter"), client.snapshotCalls())
         assertEquals(DesktopVideoPipelineMode.HdrCompatibility, state.videoPipelineMode)
-        resetWindowsVideoPipeline(client, state)
+        resetWindowsVideoPipeline(state)
         assertNull(state.lastVideoDiagnosticsSignature)
+        assertEquals("", state.appliedVideoFilter)
         assertEquals(DesktopVideoPipelineMode.Standard, state.videoPipelineMode)
+    }
+
+    @Test
+    fun `sdr video does not rebuild an empty filter chain`() {
+        val client = FakeMpvClient()
+        client.properties["video-params/pixelformat"] = "nv12"
+
+        configureWindowsVideoPipeline(client, MpvPlaybackState(), WindowsVideoOutputTarget.SdrTexture, "test")
+
+        assertEquals(emptyList(), client.snapshotCalls())
+    }
+
+    @Test
+    fun `container dolby vision is planned before the first decoded frame`() {
+        val client = FakeMpvClient()
+        client.properties["current-tracks/video/dolby-vision-profile"] = "8"
+        val state = MpvPlaybackState()
+
+        configureWindowsVideoPipeline(client, state, WindowsVideoOutputTarget.SdrTexture, "file-loaded")
+        client.properties["video-params/pixelformat"] = "p010"
+        configureWindowsVideoPipeline(client, state, WindowsVideoOutputTarget.SdrTexture, "poll")
+
+        assertEquals(
+            listOf(
+                "set file-local-options/hwdec=$WindowsFilterCopyHwdec",
+                "set file-local-options/vf=$WindowsDolbyVisionSdrFilter",
+            ),
+            client.snapshotCalls(),
+        )
+        assertEquals(DesktopVideoPipelineMode.DolbyVisionCompatibility, state.videoPipelineMode)
     }
 
     @Test
@@ -113,16 +156,15 @@ class MpvEngineStateTest {
         client.properties["video-params/hw-pixelformat"] = "p010"
         client.properties["video-params/primaries"] = "bt.2020"
         client.properties["video-params/gamma"] = "pq"
-        val state = MpvPlaybackState().apply { configuredHwdec = "nvdec,d3d11va-copy" }
+        val state = MpvPlaybackState()
 
-        configureWindowsVideoPipeline(client, state, "test")
-        resetWindowsVideoPipeline(client, state)
+        configureWindowsVideoPipeline(client, state, WindowsVideoOutputTarget.Display, "test")
+        resetWindowsVideoPipeline(state)
 
         assertEquals(
             listOf(
-                "set hwdec=$WindowsFilterCopyHwdec",
-                "set vf=$WindowsHdrCompatibilityFilter",
-                "set hwdec=nvdec,d3d11va-copy",
+                "set file-local-options/hwdec=$WindowsFilterCopyHwdec",
+                "set file-local-options/vf=$WindowsHdrCompatibilityFilter",
             ),
             client.snapshotCalls(),
         )
@@ -131,10 +173,12 @@ class MpvEngineStateTest {
 
     @Test
     fun `filters on system frames keep the configured decoder`() {
-        assertFalse(shouldForceWindowsCopyHwdec(WindowsHdrCompatibilityFilter, null, alreadyForced = false))
-        assertFalse(shouldForceWindowsCopyHwdec("", "p010", alreadyForced = false))
-        assertFalse(shouldForceWindowsCopyHwdec(WindowsHdrCompatibilityFilter, "p010", alreadyForced = true))
-        assertTrue(shouldForceWindowsCopyHwdec(WindowsHdrCompatibilityFilter, "p010", alreadyForced = false))
+        val filter = WindowsHdrCompatibilityFilter
+        assertFalse(shouldForceWindowsCopyHwdec(filter, "p010", null, alreadyForced = false))
+        assertFalse(shouldForceWindowsCopyHwdec("", "cuda", "p010", alreadyForced = false))
+        assertFalse(shouldForceWindowsCopyHwdec(filter, "cuda", "p010", alreadyForced = true))
+        assertTrue(shouldForceWindowsCopyHwdec(filter, "cuda", "p010", alreadyForced = false))
+        assertTrue(shouldForceWindowsCopyHwdec(filter, null, null, alreadyForced = false))
     }
 
     @Test
@@ -144,7 +188,15 @@ class MpvEngineStateTest {
         assertTrue(mpvPropertyChangeNotifiesState(""))
         assertFalse(mpvPropertyChangeNotifiesState("path"))
         assertFalse(mpvPropertyChangeNotifiesState("vo-configured"))
-        assertEquals(10, mpvObservedProperties.count { it.notifiesState })
+        assertEquals(11, mpvObservedProperties.count { it.notifiesState })
+    }
+
+    @Test
+    fun `track list and track selection changes invalidate the polled tracks`() {
+        assertTrue(mpvPropertyChangeAffectsTracks("track-list/count"))
+        assertTrue(mpvPropertyChangeAffectsTracks("aid"))
+        assertTrue(mpvPropertyChangeAffectsTracks("sid"))
+        assertFalse(mpvPropertyChangeAffectsTracks("pause"))
     }
 
     @Test

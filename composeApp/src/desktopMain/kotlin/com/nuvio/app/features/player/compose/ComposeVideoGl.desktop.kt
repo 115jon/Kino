@@ -20,7 +20,6 @@ internal const val GL_FRAMEBUFFER = 0x8D40
 internal const val GL_COLOR_ATTACHMENT0 = 0x8CE0
 internal const val GL_FRAMEBUFFER_COMPLETE = 0x8CD5
 internal const val GL_FRAMEBUFFER_BINDING = 0x8CA6
-internal const val GL_TEXTURE_BINDING_2D = 0x8069
 internal const val GL_COLOR_BUFFER_BIT = 0x4000
 internal const val GL_VENDOR = 0x1F00
 internal const val GL_RENDERER = 0x1F01
@@ -50,13 +49,11 @@ internal interface OpenGl32Library : Library {
     )
     fun glGetIntegerv(name: Int, values: IntArray)
     fun glGetString(name: Int): Pointer?
-    fun glGetError(): Int
     fun glFlush()
     fun glViewport(x: Int, y: Int, width: Int, height: Int)
     fun glClearColor(red: Float, green: Float, blue: Float, alpha: Float)
     fun glClear(mask: Int)
     fun wglGetCurrentContext(): Pointer?
-    fun wglGetCurrentDC(): Pointer?
     fun wglMakeCurrent(hdc: Pointer?, hglrc: Pointer?): Boolean
     fun wglDeleteContext(hglrc: Pointer?): Boolean
 

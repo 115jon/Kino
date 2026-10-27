@@ -23,6 +23,9 @@ internal class ComposeVideoPresenter(
     @Volatile
     private var released = false
 
+    @Volatile
+    private var restartAtNs = 0L
+
     fun start(window: Window): String? {
         check(SwingUtilities.isEventDispatchThread())
         val skiko = SkikoGlContext.find(window) ?: return "skia layer not found"
@@ -43,6 +46,7 @@ internal class ComposeVideoPresenter(
     }
 
     fun onPlaybackRestart(generation: Long) {
+        restartAtNs = System.nanoTime()
         tracker.onPlaybackRestart(generation)
         renderThread?.requestRender(force = true)
     }
@@ -100,6 +104,11 @@ internal class ComposeVideoPresenter(
 
         override fun onFramePublished() {
             frameSerial.intValue += 1
+            val restartedAtNs = restartAtNs
+            if (restartedAtNs != 0L) {
+                restartAtNs = 0L
+                composeVideoTrace("compose video restart frame ms=${(System.nanoTime() - restartedAtNs) / 1_000_000}")
+            }
             if (!visible.value && tracker.shouldReveal(engine.playback)) {
                 visible.value = true
                 composeVideoTrace("compose video visible=true generation=${engine.playback.sourceGeneration}")

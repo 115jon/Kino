@@ -87,7 +87,7 @@ internal class MpvLoadSequencer(
                 desktopPlayerTrace("$tracePrefix video header setup failed result=$videoHeadersResult")
                 return@withLock
             }
-            resetWindowsVideoPipeline(client, playback)
+            resetWindowsVideoPipeline(playback)
             desktopPlayerTrace(
                 "$tracePrefix loadFile host=${playbackUrlForLog(url)} " +
                     "effectiveHost=${playbackUrlForLog(resolved.url)} " +

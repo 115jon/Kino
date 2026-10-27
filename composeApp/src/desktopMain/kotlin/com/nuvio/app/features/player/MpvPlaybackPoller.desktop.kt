@@ -11,6 +11,7 @@ internal data class WindowsPlaybackPollResult(
     val volumeLevel: PlayerAudioLevel,
     val videoOutputReady: Boolean,
     val polledTracks: Boolean,
+    val trackRevision: Long,
     val errorMessage: String?,
     val terminalPlaybackError: String?,
     val startupStalled: Boolean,
@@ -105,7 +106,7 @@ internal fun MpvEngine.pollPlayback(
         eofReached = eofReached,
     )
     val videoPipelineLog = if (isPlayerLoading || positionMs == 0L) {
-        configureWindowsVideoPipeline(client, state, "poll")
+        configureWindowsVideoPipeline(client, state, videoOutputTarget, "poll")
     } else {
         null
     }
@@ -156,8 +157,9 @@ internal fun MpvEngine.pollPlayback(
     state.startupStalled = startupState.isStalled
     state.hasLoadedMedia = state.hasLoadedMedia || hasLoadedMedia
     val startupStalled = startupState.isStalled
-    val shouldPollTracks =
-        nowEpochMs - state.lastTrackPollEpochMs >= WindowsPlayerTrackPollIntervalMs
+    val trackRevision = state.trackRevision
+    val shouldPollTracks = trackRevision != state.polledTrackRevision ||
+        nowEpochMs - state.lastTrackPollEpochMs >= WindowsPlayerTrackRefreshIntervalMs
     val audioDiagnostics = if (
         (!pendingLoad && path != null && (shouldPollTracks || isPlayerLoading || positionMs == 0L)) ||
         (!pendingLoad && state.audioDiagnosticsRequested) ||
@@ -210,6 +212,7 @@ internal fun MpvEngine.pollPlayback(
             volumeLevel = toPlayerAudioLevel(volumePercent),
             videoOutputReady = videoOutputReady,
             polledTracks = shouldPollTracks,
+            trackRevision = trackRevision,
             errorMessage = if (pendingLoad) null else error?.takeIf { it.isNotBlank() },
             terminalPlaybackError = state.terminalPlaybackError
                 ?.takeIf { state.terminalPlaybackErrorGeneration == pollGeneration },

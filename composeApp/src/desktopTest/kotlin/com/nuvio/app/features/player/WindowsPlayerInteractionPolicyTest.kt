@@ -40,15 +40,6 @@ class WindowsPlayerInteractionPolicyTest {
     }
 
     @Test
-    fun `native DirectX surface is the default and embedded surface is explicit`() {
-        assertEquals(true, shouldUseNativeWindowsVideoSurface(null))
-        assertEquals(false, shouldUseNativeWindowsVideoSurface("embedded"))
-        assertEquals(false, shouldUseNativeWindowsVideoSurface("opengl"))
-        assertEquals(true, shouldUseNativeWindowsVideoSurface("native"))
-        assertEquals(true, shouldUseNativeWindowsVideoSurface("d3d11"))
-    }
-
-    @Test
     fun `native player interop surface uses the desktop window clear color`() {
         assertEquals(0xFF0C0C0CL, windowsPlayerInteropBackgroundArgb())
     }

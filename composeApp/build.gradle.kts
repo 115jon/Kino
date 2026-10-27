@@ -317,26 +317,6 @@ val copyWindowsMediaArtwork = if (isWindowsHost) {
 } else {
     null
 }
-val joglVersion = libs.versions.jogl.get()
-val windowsJoglCore = configurations.detachedConfiguration(
-    dependencies.create("org.jogamp.jogl:jogl-all:$joglVersion")
-)
-val stripWindowsJoglJar = tasks.register<Zip>("stripWindowsJoglJar") {
-    destinationDirectory.set(layout.buildDirectory.dir("stripped-jars"))
-    archiveFileName.set("jogl-all-$joglVersion-windows.jar")
-    archiveExtension.set("jar")
-    duplicatesStrategy = org.gradle.api.file.DuplicatesStrategy.EXCLUDE
-    from({ zipTree(windowsJoglCore.singleFile) })
-    exclude(
-        "com/jogamp/nativewindow/javafx/**",
-        "com/jogamp/nativewindow/swt/**",
-        "com/jogamp/newt/javafx/**",
-        "com/jogamp/newt/swt/**",
-        "com/jogamp/opengl/swt/**",
-        "jogamp/newt/javafx/**",
-        "jogamp/newt/swt/**",
-    )
-}
 val requestedReleasePlatform = providers.gradleProperty("kino.release.platform").orNull?.trim()?.lowercase()
 val inferredReleasePlatform = when {
     gradle.startParameter.taskNames.any { taskName -> taskName.contains("ios", ignoreCase = true) } -> "ios"
@@ -567,6 +547,7 @@ kotlin {
             kotlin.srcDir(generatedRuntimeConfigDir)
         }
         val desktopMain by getting {
+            resources.exclude("win32-x86-64/mpv.dll")
             if (isWindowsHost) {
                 resources.srcDir(layout.buildDirectory.dir("generated/windows-media-session"))
                 resources.srcDir(layout.buildDirectory.dir("generated/windows-media-artwork"))
@@ -576,15 +557,6 @@ kotlin {
                 implementation(libs.ktor.client.java)
                 implementation(libs.kotlinx.coroutines.swing)
                 implementation(libs.jna)
-                if (isWindowsHost) {
-                    implementation(files(stripWindowsJoglJar.flatMap { it.archiveFile }))
-                    implementation("org.jogamp.gluegen:gluegen-rt:$joglVersion")
-                    implementation("org.jogamp.jogl:jogl-all:$joglVersion:natives-windows-amd64")
-                    implementation("org.jogamp.gluegen:gluegen-rt:$joglVersion:natives-windows-amd64")
-                } else {
-                    implementation(libs.jogl.all)
-                    implementation(libs.gluegen.rt)
-                }
             }
         }
         androidMain {
@@ -702,7 +674,7 @@ copyWindowsMediaArtwork?.let { task ->
 compose.desktop {
     application {
         mainClass = "com.nuvio.app.DesktopAppKt"
-        jvmArgs += listOf("-XX:ErrorFile=\$APPDIR/../../logs/hs_err_pid%p.log")
+        jvmArgs += listOf("-XX:ErrorFile=\$APPDIR/../../logs/hs_err_pid%p.log", "-XX:+ExplicitGCInvokesConcurrent")
         buildTypes.release.proguard {
             isEnabled.set(true)
             optimize.set(false)
@@ -731,6 +703,21 @@ compose.desktop {
 }
 
 apply(from = "desktop-release-bytecode.gradle.kts")
+
+val desktopTestCompilation = kotlin.targets.getByName("desktop").compilations.getByName("test")
+
+tasks.register<JavaExec>("runPlayerHarness") {
+    description = "Plays local media through the Windows player without the app shell."
+    dependsOn(desktopTestCompilation.compileAllTaskName)
+    classpath(desktopTestCompilation.output.allOutputs, desktopTestCompilation.runtimeDependencyFiles)
+    mainClass.set("com.nuvio.app.features.player.harness.PlayerHarnessKt")
+    jvmArgs(providers.gradleProperty("kino.harness.jvmArgs").orNull?.split(' ')?.filter(String::isNotBlank).orEmpty())
+    systemProperties(
+        System.getProperties().stringPropertyNames()
+            .filter { it.startsWith("kino.") || it.startsWith("skiko.") }
+            .associateWith(System::getProperty),
+    )
+}
 
 val bootIosTestSimulator by tasks.registering(Exec::class) {
     val device = tasks.named<KotlinNativeSimulatorTest>("iosSimulatorArm64Test").flatMap { it.device }

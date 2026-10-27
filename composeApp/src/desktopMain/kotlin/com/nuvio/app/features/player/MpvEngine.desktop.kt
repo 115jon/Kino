@@ -1,6 +1,8 @@
 package com.nuvio.app.features.player
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import java.util.concurrent.locks.ReentrantLock
@@ -25,6 +27,7 @@ internal class MpvEngine(
     private val tracePrefix: String,
     private val clientFactory: () -> MpvClient,
     private val dispatcher: MpvEngineDispatcher = MpvCommandThread(),
+    val videoOutputTarget: WindowsVideoOutputTarget = WindowsVideoOutputTarget.Display,
     urlResolver: MpvUrlResolver = defaultMpvUrlResolver,
     resolutionContext: CoroutineContext = Dispatchers.IO,
 ) {
@@ -33,8 +36,14 @@ internal class MpvEngine(
     val playback = MpvPlaybackState()
     val properties = MpvPropertyCache()
 
+    private val settled = MutableStateFlow(false)
+
     @Volatile
     var isClosed = false
+        set(value) {
+            field = value
+            if (value) settled.value = true
+        }
 
     @Volatile
     var perfCollector: DesktopBackendPerfCollector? = null
@@ -67,7 +76,6 @@ internal class MpvEngine(
         val created = clientFactory()
         try {
             val options = mpvEngineOptions(output)
-            playback.configuredHwdec = options.lastOrNull { it.name == "hwdec" }?.value
             options.forEach { option ->
                 val result = created.setOption(option.name, option.value)
                 desktopPlayerTrace("mpv option name=${option.name} value=${option.value} result=$result")
@@ -89,6 +97,7 @@ internal class MpvEngine(
             created.setWakeupListener { pump.request() }
             this.output = output
             client = created
+            settled.value = true
             pump.request()
         } catch (error: Throwable) {
             eventPump?.closeAndAwait()
@@ -98,6 +107,10 @@ internal class MpvEngine(
             dispatcher.shutdown()
             throw error
         }
+    }
+
+    suspend fun awaitStartedOrClosed() {
+        settled.first { it }
     }
 
     fun closeEvents() {
@@ -254,10 +267,6 @@ internal class MpvEngine(
         }
     }
 
-    fun setAudioDelayMs(delayMs: Long) {
-        setProperty("audio-delay", (delayMs / 1000.0).toString())
-    }
-
     fun setSubtitleDelayMs(delayMs: Long) {
         setProperty("sub-delay", (delayMs / 1000.0).toString())
     }
@@ -401,6 +410,7 @@ internal class MpvEngine(
                     is MpvClientEvent.PropertyChange -> {
                         properties.update(event.name, event.value)
                         markWindowsAudioDiagnosticsRequested(playback, event.name)
+                        if (mpvPropertyChangeAffectsTracks(event.name)) playback.trackRevision += 1
                         if (mpvPropertyChangeNotifiesState(event.name)) {
                             hasUpdates = true
                             eventCount += 1
@@ -423,7 +433,7 @@ internal class MpvEngine(
                         if (event.id == MPV_EVENT_FILE_LOADED) {
                             desktopPlayerTrace("mpv event id=${event.id} error=${event.error} applying subtitle style")
                             applyWindowsMpvSubtitleStyle(current, playback.subtitleStyle)
-                            configureWindowsVideoPipeline(current, playback, "file-loaded")
+                            configureWindowsVideoPipeline(current, playback, videoOutputTarget, "file-loaded")
                         }
                         hasUpdates = true
                         eventCount += 1
