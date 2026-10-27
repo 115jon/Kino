@@ -113,7 +113,7 @@ private fun desktopPlaybackBackend(): DesktopPlaybackBackend {
     return if (osName.contains("mac")) {
         MacOSMpvPlayerBackend
     } else if (osName.contains("win")) {
-        WindowsMpvPlayerBackend
+        WindowsMpvPlayerBackend()
     } else {
         UnsupportedDesktopPlaybackBackend(osName.ifBlank { "unknown" })
     }

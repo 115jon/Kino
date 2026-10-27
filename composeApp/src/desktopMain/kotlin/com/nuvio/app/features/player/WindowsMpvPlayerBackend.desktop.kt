@@ -23,7 +23,9 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.withContext
 import javax.swing.SwingUtilities
 
-internal object WindowsMpvPlayerBackend : DesktopPlaybackBackend {
+internal class WindowsMpvPlayerBackend(
+    private val urlResolver: MpvUrlResolver = defaultMpvUrlResolver,
+) : DesktopPlaybackBackend {
     @Composable
     override fun PlayerSurface(
         sourceUrl: String,
@@ -79,6 +81,7 @@ internal object WindowsMpvPlayerBackend : DesktopPlaybackBackend {
                         else -> "embedded panel"
                     },
                     clientFactory = ::createJnaMpvClient,
+                    urlResolver = urlResolver,
                 ).apply { perfCollector = backendPerfStats },
             )
         }
