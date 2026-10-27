@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_appearance_theme_mode">Theme mode</string>
+    <string name="settings_appearance_theme_mode_system">System</string>
+    <string name="settings_appearance_theme_mode_light">Light</string>
+    <string name="settings_appearance_theme_mode_dark">Dark</string>
+</resources>

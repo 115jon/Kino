@@ -132,6 +132,16 @@ actual object ThemeSettingsStorage {
             ?.apply()
     }
 
+    actual fun loadThemeMode(): String? =
+        preferences?.getString("theme_mode", null)
+
+    actual fun saveThemeMode(mode: String) {
+        preferences
+            ?.edit()
+            ?.putString("theme_mode", mode)
+            ?.apply()
+    }
+
     actual fun exportToSyncPayload(): JsonObject = buildJsonObject {
         loadSelectedTheme()?.let { put(selectedThemeKey, encodeSyncString(it)) }
         loadCustomThemeColors()?.let { put(customThemeColorsKey, encodeSyncString(it)) }
