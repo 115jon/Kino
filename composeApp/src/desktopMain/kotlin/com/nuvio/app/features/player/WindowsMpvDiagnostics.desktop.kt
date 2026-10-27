@@ -50,7 +50,7 @@ internal data class MpvVideoDiagnostics(
         transfer = transfer,
         matrix = matrix,
         signalPeak = signalPeak?.toDoubleOrNull(),
-        dolbyVision = dolbyVision,
+        dolbyVision = dolbyVision?.let { profile -> "dolby vision profile $profile" },
         externalHdrLike = state.streamIsHdrLike,
         externalDolbyVision = state.streamHasDolbyVision,
     )
@@ -70,7 +70,7 @@ internal fun readMpvVideoDiagnostics(
     matrix = client.readNonBlankProperty("video-params/colormatrix"),
     levels = client.readNonBlankProperty("video-params/colorlevels"),
     signalPeak = client.readNonBlankProperty("video-params/sig-peak"),
-    dolbyVision = client.readNonBlankProperty("video-params/dolby-vision"),
+    dolbyVision = client.readNonBlankProperty("current-tracks/video/dolby-vision-profile"),
 )
 
 internal fun readMpvAudioDiagnostics(

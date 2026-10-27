@@ -111,11 +111,42 @@ class MpvEngineStateTest {
         configureWindowsVideoPipeline(client, state, WindowsVideoOutputTarget.Display, "test")
         configureWindowsVideoPipeline(client, state, WindowsVideoOutputTarget.Display, "test")
 
-        assertEquals(listOf("set vf=$WindowsHdrCompatibilityFilter"), client.snapshotCalls())
+        assertEquals(listOf("set file-local-options/vf=$WindowsHdrCompatibilityFilter"), client.snapshotCalls())
         assertEquals(DesktopVideoPipelineMode.HdrCompatibility, state.videoPipelineMode)
-        resetWindowsVideoPipeline(client, state)
+        resetWindowsVideoPipeline(state)
         assertNull(state.lastVideoDiagnosticsSignature)
+        assertEquals("", state.appliedVideoFilter)
         assertEquals(DesktopVideoPipelineMode.Standard, state.videoPipelineMode)
+    }
+
+    @Test
+    fun `sdr video does not rebuild an empty filter chain`() {
+        val client = FakeMpvClient()
+        client.properties["video-params/pixelformat"] = "nv12"
+
+        configureWindowsVideoPipeline(client, MpvPlaybackState(), WindowsVideoOutputTarget.SdrTexture, "test")
+
+        assertEquals(emptyList(), client.snapshotCalls())
+    }
+
+    @Test
+    fun `container dolby vision is planned before the first decoded frame`() {
+        val client = FakeMpvClient()
+        client.properties["current-tracks/video/dolby-vision-profile"] = "8"
+        val state = MpvPlaybackState()
+
+        configureWindowsVideoPipeline(client, state, WindowsVideoOutputTarget.SdrTexture, "file-loaded")
+        client.properties["video-params/pixelformat"] = "p010"
+        configureWindowsVideoPipeline(client, state, WindowsVideoOutputTarget.SdrTexture, "poll")
+
+        assertEquals(
+            listOf(
+                "set file-local-options/hwdec=$WindowsFilterCopyHwdec",
+                "set file-local-options/vf=$WindowsDolbyVisionSdrFilter",
+            ),
+            client.snapshotCalls(),
+        )
+        assertEquals(DesktopVideoPipelineMode.DolbyVisionCompatibility, state.videoPipelineMode)
     }
 
     @Test
@@ -125,16 +156,15 @@ class MpvEngineStateTest {
         client.properties["video-params/hw-pixelformat"] = "p010"
         client.properties["video-params/primaries"] = "bt.2020"
         client.properties["video-params/gamma"] = "pq"
-        val state = MpvPlaybackState().apply { configuredHwdec = "nvdec,d3d11va-copy" }
+        val state = MpvPlaybackState()
 
         configureWindowsVideoPipeline(client, state, WindowsVideoOutputTarget.Display, "test")
-        resetWindowsVideoPipeline(client, state)
+        resetWindowsVideoPipeline(state)
 
         assertEquals(
             listOf(
-                "set hwdec=$WindowsFilterCopyHwdec",
-                "set vf=$WindowsHdrCompatibilityFilter",
-                "set hwdec=nvdec,d3d11va-copy",
+                "set file-local-options/hwdec=$WindowsFilterCopyHwdec",
+                "set file-local-options/vf=$WindowsHdrCompatibilityFilter",
             ),
             client.snapshotCalls(),
         )
@@ -143,10 +173,12 @@ class MpvEngineStateTest {
 
     @Test
     fun `filters on system frames keep the configured decoder`() {
-        assertFalse(shouldForceWindowsCopyHwdec(WindowsHdrCompatibilityFilter, null, alreadyForced = false))
-        assertFalse(shouldForceWindowsCopyHwdec("", "p010", alreadyForced = false))
-        assertFalse(shouldForceWindowsCopyHwdec(WindowsHdrCompatibilityFilter, "p010", alreadyForced = true))
-        assertTrue(shouldForceWindowsCopyHwdec(WindowsHdrCompatibilityFilter, "p010", alreadyForced = false))
+        val filter = WindowsHdrCompatibilityFilter
+        assertFalse(shouldForceWindowsCopyHwdec(filter, "p010", null, alreadyForced = false))
+        assertFalse(shouldForceWindowsCopyHwdec("", "cuda", "p010", alreadyForced = false))
+        assertFalse(shouldForceWindowsCopyHwdec(filter, "cuda", "p010", alreadyForced = true))
+        assertTrue(shouldForceWindowsCopyHwdec(filter, "cuda", "p010", alreadyForced = false))
+        assertTrue(shouldForceWindowsCopyHwdec(filter, null, null, alreadyForced = false))
     }
 
     @Test

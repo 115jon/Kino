@@ -33,7 +33,7 @@ internal fun planWindowsVideoPipeline(
     state: MpvPlaybackState,
     target: WindowsVideoOutputTarget,
 ): WindowsVideoPipelinePlan? {
-    if (diagnostics.pixelFormat.isNullOrBlank()) return null
+    if (diagnostics.pixelFormat.isNullOrBlank() && diagnostics.dolbyVision.isNullOrBlank()) return null
     val signature = diagnostics.signature()
     if (signature == state.lastVideoDiagnosticsSignature) return null
     val decision = selectDesktopVideoPipeline(diagnostics.toMetadata(state))
@@ -52,13 +52,22 @@ internal fun configureWindowsVideoPipeline(
 ): String? {
     val diagnostics = readMpvVideoDiagnostics(client)
     val plan = planWindowsVideoPipeline(diagnostics, state, target) ?: return null
-    val forceCopy = shouldForceWindowsCopyHwdec(plan.filterSpec, diagnostics.hardwarePixelFormat, state.hwdecCopyForced)
+    val forceCopy = shouldForceWindowsCopyHwdec(
+        filterSpec = plan.filterSpec,
+        pixelFormat = diagnostics.pixelFormat,
+        hardwarePixelFormat = diagnostics.hardwarePixelFormat,
+        alreadyForced = state.hwdecCopyForced,
+    )
     if (forceCopy) {
         state.hwdecCopyForced = true
-        val hwdecResult = client.setProperty("hwdec", WindowsFilterCopyHwdec)
+        val hwdecResult = client.setProperty("file-local-options/hwdec", WindowsFilterCopyHwdec)
         desktopPlayerTrace("video pipeline hwdec=$WindowsFilterCopyHwdec reason=filter-needs-system-frames result=$hwdecResult")
     }
-    val result = client.setProperty("vf", plan.filterSpec)
+    val result = if (plan.filterSpec == state.appliedVideoFilter) {
+        0
+    } else {
+        client.setProperty("file-local-options/vf", plan.filterSpec).also { state.appliedVideoFilter = plan.filterSpec }
+    }
     state.lastVideoDiagnosticsSignature = plan.signature
     state.videoPipelineMode = plan.decision.mode
     val logMessage =
@@ -70,15 +79,14 @@ internal fun configureWindowsVideoPipeline(
 
 internal fun shouldForceWindowsCopyHwdec(
     filterSpec: String,
+    pixelFormat: String?,
     hardwarePixelFormat: String?,
     alreadyForced: Boolean,
-): Boolean = !alreadyForced && filterSpec.isNotBlank() && !hardwarePixelFormat.isNullOrBlank()
+): Boolean = !alreadyForced && filterSpec.isNotBlank() && (hardwarePixelFormat != null || pixelFormat == null)
 
-internal fun resetWindowsVideoPipeline(client: MpvClient, state: MpvPlaybackState) {
-    if (state.hwdecCopyForced) {
-        state.hwdecCopyForced = false
-        state.configuredHwdec?.let { hwdec -> client.setProperty("hwdec", hwdec) }
-    }
+internal fun resetWindowsVideoPipeline(state: MpvPlaybackState) {
+    state.hwdecCopyForced = false
+    state.appliedVideoFilter = ""
     state.lastVideoDiagnosticsSignature = null
     state.videoPipelineMode = DesktopVideoPipelineMode.Standard
     desktopPlayerTrace("video pipeline reset")

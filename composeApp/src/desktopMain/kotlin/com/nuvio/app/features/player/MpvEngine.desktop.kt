@@ -68,7 +68,6 @@ internal class MpvEngine(
         val created = clientFactory()
         try {
             val options = mpvEngineOptions(output)
-            playback.configuredHwdec = options.lastOrNull { it.name == "hwdec" }?.value
             options.forEach { option ->
                 val result = created.setOption(option.name, option.value)
                 desktopPlayerTrace("mpv option name=${option.name} value=${option.value} result=$result")

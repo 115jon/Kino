@@ -53,7 +53,7 @@ internal class MpvPlaybackState {
     @Volatile
     var videoPipelineMode = DesktopVideoPipelineMode.Standard
     @Volatile
-    var configuredHwdec: String? = null
+    var appliedVideoFilter = ""
     @Volatile
     var hwdecCopyForced = false
     val audioDiagnosticsRateLimiter = WindowsAudioDiagnosticsRateLimiter()
