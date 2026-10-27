@@ -1192,7 +1192,7 @@ private fun ArtworkPanel(
 private fun continueWatchingBadgeBackground(item: ContinueWatchingItem): Color = when {
     item.isNewSeasonRelease -> ContinueWatchingNewSeasonBadgeColor
     item.isReleaseAlert -> ContinueWatchingNewEpisodeBadgeColor
-    else -> MaterialTheme.colorScheme.background.copy(alpha = 0.80f)
+    else -> Color.Black.copy(alpha = 0.72f)
 }
 
 @Composable
