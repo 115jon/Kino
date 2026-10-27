@@ -709,6 +709,9 @@ compose.desktop {
             obfuscate.set(false)
             configurationFiles.from(project.file("desktop-proguard-rules.pro"))
         }
+        buildTypes.release.aot {
+            mode = org.jetbrains.compose.desktop.application.dsl.AotMode.AppCdsAuto
+        }
         nativeDistributions {
             packageName = "Kino"
             packageVersion = releaseAppVersionName
