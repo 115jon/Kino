@@ -1,23 +1,22 @@
 package com.nuvio.app.desktop
 
 import java.nio.charset.StandardCharsets
-import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
 import java.util.Base64
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.io.path.createDirectories
 import kotlin.io.path.deleteExisting
 import kotlin.io.path.exists
-import kotlin.io.path.inputStream
 import kotlin.io.path.isDirectory
 import kotlin.io.path.listDirectoryEntries
-import kotlin.io.path.outputStream
 import kotlin.io.path.readText
 import kotlin.io.path.writeText
 
 internal object DesktopPreferences {
     private const val setSeparator = "\u001F"
     private val keyEncoder = Base64.getUrlEncoder().withoutPadding()
+    private val namespaceDirs = ConcurrentHashMap<String, Path>()
 
     private val rootDir: Path by lazy {
         Paths.get(
@@ -32,18 +31,13 @@ internal object DesktopPreferences {
     }
 
     private fun namespaceDir(namespace: String): Path =
-        rootDir.resolve(encodePathPart(namespace)).apply {
-            createDirectories()
-        }
+        namespaceDirs.getOrPut(namespace) { rootDir.resolve(encodePathPart(namespace)) }
 
     private fun keyFile(namespace: String, key: String): Path =
         namespaceDir(namespace).resolve(encodePathPart(key))
 
     private fun encodePathPart(value: String): String =
         keyEncoder.encodeToString(value.toByteArray(StandardCharsets.UTF_8))
-
-    fun contains(namespace: String, key: String): Boolean =
-        keyFile(namespace, key).exists()
 
     fun getString(namespace: String, key: String): String? =
         keyFile(namespace, key)
@@ -52,7 +46,9 @@ internal object DesktopPreferences {
 
     @Synchronized
     fun putString(namespace: String, key: String, value: String) {
-        keyFile(namespace, key).writeText(value, StandardCharsets.UTF_8)
+        keyFile(namespace, key)
+            .apply { parent.createDirectories() }
+            .writeText(value, StandardCharsets.UTF_8)
     }
 
     fun putNullableString(namespace: String, key: String, value: String?) {
