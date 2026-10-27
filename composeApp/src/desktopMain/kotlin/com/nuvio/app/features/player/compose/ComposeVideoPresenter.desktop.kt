@@ -44,7 +44,7 @@ internal class ComposeVideoPresenter(
 
     fun onPlaybackRestart(generation: Long) {
         tracker.onPlaybackRestart(generation)
-        renderThread?.requestRender(force = false)
+        renderThread?.requestRender(force = true)
     }
 
     fun hide() {
