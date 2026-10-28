@@ -1,9 +1,11 @@
 package com.nuvio.app.features.player
 
 import javax.swing.SwingUtilities
+import kotlinx.coroutines.flow.StateFlow
 
 internal class WindowsPlayerCallbacks {
     @Volatile var onClose: (() -> Unit)? = null
+    @Volatile var onShortcut: ((PlayerShortcut) -> Boolean)? = null
 }
 
 internal class WindowsPlayerEngineController(
@@ -48,6 +50,23 @@ internal class WindowsPlayerEngineController(
         SwingUtilities.invokeLater {
             windowState.panelRef?.toggleFullScreen()
         }
+    }
+
+    override val fullscreen: StateFlow<Boolean> get() = windowState.fullscreen
+
+    override fun exitFullscreen() {
+        SwingUtilities.invokeLater {
+            windowState.panelRef?.exitFullScreen()
+        }
+    }
+
+    override fun setOnShortcutCallback(callback: ((PlayerShortcut) -> Boolean)?) {
+        callbacks.onShortcut = callback
+    }
+
+    override fun setSubtitlesVisible(visible: Boolean): Boolean {
+        engine.setProperty("sub-visibility", if (visible) "yes" else "no")
+        return true
     }
 
     override fun requestInteractionFocus() {

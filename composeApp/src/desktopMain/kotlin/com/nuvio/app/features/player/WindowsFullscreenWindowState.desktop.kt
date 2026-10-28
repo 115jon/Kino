@@ -53,7 +53,9 @@ internal data class WindowedPresentationState(
     val style: Long?,
 )
 
-internal class FullscreenWindowState {
+internal class FullscreenWindowState(
+    private val onActiveChanged: (Boolean) -> Unit = {},
+) {
     var activeDevice: GraphicsDevice? = null
     var windowedState: WindowedPresentationState? = null
     private var activeWindow: Window? = null
@@ -87,9 +89,11 @@ internal class FullscreenWindowState {
             window.bounds = targetDevice.defaultConfiguration.bounds
             window.validate()
         }
+        onActiveChanged(true)
     }
 
     fun exit(window: Window?) {
+        val wasActive = this.activeWindow != null
         val activeWindow = this.activeWindow ?: window ?: activeDevice?.fullScreenWindow
         val device = activeDevice
         if (device != null && (usesExclusiveFallback || device.fullScreenWindow === activeWindow)) {
@@ -114,6 +118,7 @@ internal class FullscreenWindowState {
         this.activeWindow = null
         windowedState = null
         usesExclusiveFallback = false
+        if (wasActive) onActiveChanged(false)
     }
 
     fun isActive(window: Window): Boolean = activeWindow === window

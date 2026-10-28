@@ -121,6 +121,7 @@ internal fun PlayerControlsShell(
     showVolumeControl: Boolean = false,
     onVolumeChanged: (Float) -> Unit = {},
     showFullscreenControl: Boolean = false,
+    isFullscreen: Boolean = false,
     onFullscreenClick: () -> Unit = {},
     desktopLayout: Boolean = false,
     onSeekBack: () -> Unit,
@@ -394,6 +395,7 @@ internal fun PlayerControlsShell(
                                 showVolumeControl = showVolumeControl,
                                 onVolumeChanged = onVolumeChanged,
                                 showFullscreenControl = showFullscreenControl,
+                                isFullscreen = isFullscreen,
                                 onFullscreenClick = onFullscreenClick,
                             )
                         }
@@ -407,6 +409,7 @@ internal fun PlayerControlsShell(
                     showVolumeControl = showVolumeControl,
                     onVolumeChanged = onVolumeChanged,
                     showFullscreenControl = showFullscreenControl,
+                    isFullscreen = isFullscreen,
                     onFullscreenClick = onFullscreenClick,
                     modifier = Modifier
                         .align(Alignment.BottomEnd)

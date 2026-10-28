@@ -1,7 +1,8 @@
 package com.nuvio.app.features.player
 
 internal val PlayerScreenRuntime.hasOpenPlayerOverlay: Boolean
-    get() = showSourcesPanel ||
+    get() = showShortcutHelp ||
+        showSourcesPanel ||
         showEpisodesPanel ||
         showSubmitIntroModal ||
         showSwitchEngineConfirm ||

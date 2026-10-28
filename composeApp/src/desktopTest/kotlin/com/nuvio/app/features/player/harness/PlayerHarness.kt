@@ -32,6 +32,7 @@ import java.lang.management.ManagementFactory
 import javax.imageio.ImageIO
 import java.time.LocalTime
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 private object HarnessLogWriter : LogWriter() {
     override fun log(severity: Severity, message: String, tag: String, throwable: Throwable?) {
@@ -44,7 +45,7 @@ private val localFileResolver = MpvUrlResolver { url, audioUrl, headers, _ ->
     WindowsResolvedPlaybackUrls(url, audioUrl, headers, headers)
 }
 
-private fun harnessLog(message: String) {
+internal fun harnessLog(message: String) {
     println("${LocalTime.now()} harness $message")
 }
 
@@ -111,7 +112,7 @@ fun main() {
                     initialPositionMs = null,
                     initialPositionRequestKey = null,
                     onInitialPositionHandled = { _, _ -> },
-                    overlayContent = {},
+                    overlayContent = { HarnessOverlay(controller) },
                     onControllerReady = { controller = it },
                     onSnapshot = { snapshot ->
                         if (snapshot.isPlaying != lastPlaying) {
@@ -127,6 +128,8 @@ fun main() {
             }
             LaunchedEffect(controller != null) {
                 val active = controller ?: return@LaunchedEffect
+                active.setOnShortcutCallback { shortcut -> handleHarnessShortcut(active, shortcut) }
+                launch { active.fullscreen.collect { harnessLog("fullscreen=$it") } }
                 val cpu = CpuMeter()
                 script.forEach { step ->
                     val argument = step.drop(step.indexOfFirst { it.isDigit() || it == '-' }.takeIf { it >= 0 } ?: step.length)
@@ -154,6 +157,14 @@ fun main() {
                             val target = File(System.getProperty("kino.harness.shots", "."), "${step.removePrefix("shot")}.png")
                             ImageIO.write(Robot().createScreenCapture(bounds), "png", target)
                             harnessLog("shot ${target.absolutePath}")
+                        }
+                        step.startsWith("shiftkey") -> {
+                            harnessLog("action shift key code=$argument")
+                            pressKey(window, argument.toInt(), java.awt.event.KeyEvent.SHIFT_DOWN_MASK)
+                        }
+                        step.startsWith("key") -> {
+                            harnessLog("action key code=$argument")
+                            pressKey(window, argument.toInt())
                         }
                         step == "pause" -> active.pause()
                         step == "play" -> active.play()

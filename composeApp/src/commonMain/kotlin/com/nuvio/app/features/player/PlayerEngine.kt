@@ -2,6 +2,9 @@ package com.nuvio.app.features.player
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 interface PlayerEngineController {
     val playbackEngine: AndroidPlaybackEngine? get() = null
@@ -19,6 +22,10 @@ interface PlayerEngineController {
     fun setVolumeLevel(level: Float): PlayerAudioLevel? = null
     fun supportsFullscreenToggle(): Boolean = false
     fun toggleFullscreen() {}
+    val fullscreen: StateFlow<Boolean> get() = NotFullscreen
+    fun exitFullscreen() {}
+    fun setOnShortcutCallback(callback: ((PlayerShortcut) -> Boolean)?) {}
+    fun setSubtitlesVisible(visible: Boolean): Boolean = false
     fun requestInteractionFocus() {}
     fun setStreamProfileInfo(
         profileSummary: String?,
@@ -107,6 +114,8 @@ interface PlayerEngineController {
     fun switchSource(url: String, audioUrl: String?, headersJson: String?) {}
     suspend fun getMediaInfo(): PlayerMediaInfo = PlayerMediaInfo()
 }
+
+private val NotFullscreen: StateFlow<Boolean> = MutableStateFlow(false).asStateFlow()
 
 internal const val MaxPlaybackHeaderNameLength = 256
 internal const val MaxPlaybackHeaderValueLength = 8_192

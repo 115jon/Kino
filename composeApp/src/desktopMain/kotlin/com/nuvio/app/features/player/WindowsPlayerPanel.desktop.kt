@@ -37,7 +37,6 @@ internal class WindowsPlayerPanel(
     private val overlayAppTheme: AppTheme,
     private val overlayRippleConfiguration: RippleConfiguration?,
     private val state: WindowsPlayerWindowState,
-    private val onClose: () -> Unit,
     private val onInitializationError: (String) -> Unit,
     private val onPlayerStateChanged: () -> Unit,
     private val onSurfaceInteraction: (Boolean) -> Unit = {},
@@ -78,7 +77,7 @@ internal class WindowsPlayerPanel(
         }
     }
 
-    private val fullscreenState = FullscreenWindowState()
+    private val fullscreenState = FullscreenWindowState { state.fullscreen.value = it }
     private var mpvInitialized = false
     private var videoSurfaceVisible = false
     @Volatile
@@ -363,32 +362,7 @@ internal class WindowsPlayerPanel(
         addMouseListener(interactionListener)
         addMouseMotionListener(interactionListener)
 
-        val keyListener = object : KeyAdapter() {
-            override fun keyPressed(e: KeyEvent) {
-                if (state.playback.startupStalled) {
-                    when (windowsStartupStallKeyAction(e.keyCode)) {
-                        WindowsStartupStallKeyAction.Retry -> retryPlayback()
-                        WindowsStartupStallKeyAction.Back -> closePlayer()
-                        WindowsStartupStallKeyAction.Consume -> Unit
-                    }
-                    return
-                }
-                when (e.keyCode) {
-                    KeyEvent.VK_SPACE -> togglePlayPause()
-                    KeyEvent.VK_LEFT -> seekByOffset(-10000)
-                    KeyEvent.VK_RIGHT -> seekByOffset(10000)
-                    KeyEvent.VK_UP -> adjustVolume(5.0)
-                    KeyEvent.VK_DOWN -> adjustVolume(-5.0)
-                    KeyEvent.VK_F -> toggleFullScreen()
-                    KeyEvent.VK_ESCAPE -> closePlayer()
-                }
-            }
-        }
-
-        canvas.addKeyListener(keyListener)
         overlayPanel.isFocusable = true
-        overlayPanel.addKeyListener(keyListener)
-        addKeyListener(keyListener)
 
         val wheelListener = MouseWheelListener { e ->
             adjustVolume(-e.wheelRotation * 2.0)
@@ -490,16 +464,8 @@ internal class WindowsPlayerPanel(
         engine.addSubtitle(url, reapplyStyleLater = true)
     }
 
-    private fun togglePlayPause() {
-        engine.togglePause()
-    }
-
     private fun adjustVolume(delta: Double) {
         engine.adjustVolumePercent(delta)
-    }
-
-    private fun seekByOffset(offsetMs: Long) {
-        engine.seekBy(offsetMs)
     }
 
     override fun toggleFullScreen() {
@@ -519,6 +485,20 @@ internal class WindowsPlayerPanel(
         }
         if (SwingUtilities.isEventDispatchThread()) toggle() else SwingUtilities.invokeLater(toggle)
     }
+
+    override fun exitFullScreen() {
+        if (!SwingUtilities.isEventDispatchThread()) {
+            SwingUtilities.invokeLater(::exitFullScreen)
+            return
+        }
+        val window = SwingUtilities.getWindowAncestor(this) ?: return
+        if (!fullscreenState.isActive(window)) return
+        fullscreenState.exit(window)
+        scheduleOverlayWindowBoundsUpdate()
+    }
+
+    override fun acceptsShortcutsFrom(window: Window?): Boolean =
+        window != null && (window === playerWindow || window === overlayWindow)
 
     override fun requestInteractionFocus() {
         requestFocusInWindow()
@@ -555,10 +535,5 @@ internal class WindowsPlayerPanel(
 
     private fun shutdownMpv() {
         engine.shutdown()
-    }
-
-    private fun closePlayer() {
-        dispose()
-        onClose()
     }
 }

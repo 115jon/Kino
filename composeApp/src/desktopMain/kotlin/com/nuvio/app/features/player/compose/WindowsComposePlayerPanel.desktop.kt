@@ -31,7 +31,7 @@ internal class WindowsComposePlayerPanel(
     private var disposed = false
     private var window: Window? = null
     private var startNs = 0L
-    private val fullscreenState = FullscreenWindowState()
+    private val fullscreenState = FullscreenWindowState { state.fullscreen.value = it }
     private val stateChangedNotifier = SwingStateNotifier(onPlayerStateChanged)
     val presenter = ComposeVideoPresenter(
         engine = state.engine,
@@ -152,12 +152,15 @@ internal class WindowsComposePlayerPanel(
         focusRequest()
     }
 
-    fun exitFullScreen(): Boolean {
-        val target = window ?: return false
-        if (!fullscreenState.isActive(target)) return false
-        fullscreenState.exit(target)
-        return true
+    override fun exitFullScreen() {
+        val exit = {
+            window?.let { target -> if (fullscreenState.isActive(target)) fullscreenState.exit(target) }
+            Unit
+        }
+        if (SwingUtilities.isEventDispatchThread()) exit() else SwingUtilities.invokeLater(exit)
     }
+
+    override fun acceptsShortcutsFrom(window: Window?): Boolean = window != null && window === this.window
 
     override fun dispose() {
         if (disposed) return
