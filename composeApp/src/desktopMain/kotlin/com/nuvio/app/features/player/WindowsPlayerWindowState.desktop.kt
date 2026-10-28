@@ -1,5 +1,8 @@
 package com.nuvio.app.features.player
 
+import java.awt.Window
+import kotlinx.coroutines.flow.MutableStateFlow
+
 internal class WindowsPlayerWindowState(
     val engine: MpvEngine,
 ) {
@@ -10,6 +13,8 @@ internal class WindowsPlayerWindowState(
         set(value) {
             engine.isClosed = value
         }
+
+    val fullscreen = MutableStateFlow(false)
 
     @Volatile
     var panelRef: WindowsPlaybackPanel? = null
@@ -27,6 +32,8 @@ internal interface WindowsPlaybackPanel {
     fun loadSubtitleUrl(url: String)
     fun applyResizeMode(resizeMode: PlayerResizeMode)
     fun toggleFullScreen() {}
+    fun exitFullScreen() {}
+    fun acceptsShortcutsFrom(window: Window?): Boolean = false
     fun requestInteractionFocus() {}
     fun retryPlayback()
     fun clearExternalSubtitles()

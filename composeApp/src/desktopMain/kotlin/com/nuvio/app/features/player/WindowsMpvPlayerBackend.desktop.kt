@@ -120,10 +120,6 @@ internal class WindowsMpvPlayerBackend(
                     overlayAppTheme = overlayAppTheme,
                     overlayRippleConfiguration = overlayRippleConfiguration,
                     state = windowState,
-                    onClose = {
-                        windowState.isClosed = true
-                        callbacks.onClose?.invoke()
-                    },
                     onInitializationError = { message -> currentOnError.value(message) },
                     onPlayerStateChanged = {
                         playerStateSignals.tryEmit(Unit)
@@ -197,6 +193,7 @@ internal class WindowsMpvPlayerBackend(
         }
 
         val controller = remember { WindowsPlayerEngineController(windowState, callbacks) }
+        WindowsPlayerShortcutEffect(windowState, callbacks)
 
         LaunchedEffect(controller, sourceUrl, sourceAudioUrl, playbackHeaders) {
             onControllerReady(controller)

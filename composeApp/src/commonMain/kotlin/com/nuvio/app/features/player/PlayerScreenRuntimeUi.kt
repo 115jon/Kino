@@ -273,6 +273,7 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi() {
                             )
                         ) return@PlatformPlayerSurface
                         playerController = controller
+                        controller.setOnShortcutCallback { shortcut -> handlePlayerShortcut(shortcut) }
                         playerControllerSourceUrl = playerSurfaceSourceUrl
                         playerControllerSourceIdentityKey = playerSurfaceSourceIdentityKey
                         playerControllerSourceAttemptToken = playerSurfaceAttemptToken
@@ -459,7 +460,7 @@ private fun PlayerScreenRuntime.RenderPlayerControls(
             releaseInfo = metaUiState.meta?.takeIf { it.id == parentMetaId }?.releaseInfo,
             badges = playerBadges,
             hideDetails = activeSkipInterval != null && !skipIntervalDismissed,
-            onNextEpisodeClick = if (nextEpisodeInfo?.hasAired == true && !nextEpisodeAutoPlaySearching && nextEpisodeAutoPlayCountdown == null) {
+            onNextEpisodeClick = if (canPlayNextEpisodeNow) {
                 {
                     if (!partyBlocksControl()) playNextEpisode()
                 }
@@ -813,11 +814,7 @@ private fun PlayerScreenRuntime.RenderPlayerModals(displayedPositionMs: Long) {
                 )
             }
         },
-        onSourcesPanelDismissed = {
-            showSourcesPanel = false
-            PlayerStreamsRepository.stopSourcesLoading()
-            controlsVisible = true
-        },
+        onSourcesPanelDismissed = { closeSourcesPanel() },
         isSeries = isSeries,
         showEpisodesPanel = showEpisodesPanel,
         allEpisodes = playerMetaVideos,
@@ -848,10 +845,7 @@ private fun PlayerScreenRuntime.RenderPlayerModals(displayedPositionMs: Long) {
         },
         onEpisodeStreamFilterSelected = PlayerStreamsRepository::selectEpisodeStreamsFilter,
         onEpisodeStreamSelected = { stream, episode -> switchToEpisodeStream(stream, episode) },
-        onBackToEpisodes = {
-            episodeStreamsPanelState = EpisodeStreamsPanelState()
-            PlayerStreamsRepository.clearEpisodeStreams()
-        },
+        onBackToEpisodes = { showEpisodeList() },
         onReloadEpisodeStreams = {
             val episode = episodeStreamsPanelState.selectedEpisode
             if (episode != null) {
@@ -864,12 +858,7 @@ private fun PlayerScreenRuntime.RenderPlayerModals(displayedPositionMs: Long) {
                 )
             }
         },
-        onEpisodesPanelDismissed = {
-            showEpisodesPanel = false
-            episodeStreamsPanelState = EpisodeStreamsPanelState()
-            PlayerStreamsRepository.clearEpisodeStreams()
-            controlsVisible = true
-        },
+        onEpisodesPanelDismissed = { closeEpisodesPanel() },
         showSubmitIntroModal = showSubmitIntroModal,
         activeVideoId = activeVideoId,
         metaUiState = metaUiState,

@@ -275,14 +275,16 @@ internal fun PlayerScreenRuntime.cycleResizeMode() {
 }
 
 internal fun PlayerScreenRuntime.cyclePlaybackSpeed() {
-    if (partyBlocksControl()) return
-    val speeds = listOf(1f, 1.25f, 1.5f, 2f)
     val current = playbackSnapshot.playbackSpeed
-    val next = speeds.firstOrNull { it > current + 0.01f } ?: speeds.first()
+    applyPlaybackSpeed(PlayerSpeedSteps.firstOrNull { it > current + 0.01f } ?: PlayerSpeedSteps.first())
+}
+
+internal fun PlayerScreenRuntime.applyPlaybackSpeed(speed: Float) {
+    if (partyBlocksControl()) return
     partyRateNudge = null
-    playerController?.setPlaybackSpeed(next)
-    publishPartyPlayback(rate = next)
-    showGestureMessage(formatPlaybackSpeedLabel(next))
+    playerController?.setPlaybackSpeed(speed)
+    publishPartyPlayback(rate = speed)
+    showGestureMessage(formatPlaybackSpeedLabel(speed))
     controlsVisible = true
 }
 
@@ -340,7 +342,8 @@ internal fun PlayerScreenRuntime.rememberSurfaceGestureCallbacks(): PlayerSurfac
             return@rememberUpdatedState
         }
         if (isDesktopLayout) {
-            controlsVisible = !controlsVisible
+            val controller = playerController
+            if (controller?.supportsFullscreenToggle() == true) controller.toggleFullscreen() else controlsVisible = !controlsVisible
             pausedOverlayVisible = false
             return@rememberUpdatedState
         }
