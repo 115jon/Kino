@@ -633,6 +633,7 @@ kotlin {
             implementation(libs.compose.materialRipple)
             implementation(compose.materialIconsExtended)
             implementation(libs.compose.ui)
+            implementation(libs.compose.uiBackhandler)
             implementation(libs.compose.components.resources)
             implementation(libs.compose.uiToolingPreview)
             implementation(libs.androidx.lifecycle.viewmodelCompose)
@@ -711,6 +712,19 @@ tasks.register<JavaExec>("runPlayerHarness") {
     dependsOn(desktopTestCompilation.compileAllTaskName)
     classpath(desktopTestCompilation.output.allOutputs, desktopTestCompilation.runtimeDependencyFiles)
     mainClass.set("com.nuvio.app.features.player.harness.PlayerHarnessKt")
+    jvmArgs(providers.gradleProperty("kino.harness.jvmArgs").orNull?.split(' ')?.filter(String::isNotBlank).orEmpty())
+    systemProperties(
+        System.getProperties().stringPropertyNames()
+            .filter { it.startsWith("kino.") || it.startsWith("skiko.") }
+            .associateWith(System::getProperty),
+    )
+}
+
+tasks.register<JavaExec>("runThemeHarness") {
+    description = "Runs the app shell without sign-in so light and dark screens can be inspected."
+    dependsOn(desktopTestCompilation.compileAllTaskName)
+    classpath(desktopTestCompilation.output.allOutputs, desktopTestCompilation.runtimeDependencyFiles)
+    mainClass.set("com.nuvio.app.harness.ThemeHarnessKt")
     jvmArgs(providers.gradleProperty("kino.harness.jvmArgs").orNull?.split(' ')?.filter(String::isNotBlank).orEmpty())
     systemProperties(
         System.getProperties().stringPropertyNames()

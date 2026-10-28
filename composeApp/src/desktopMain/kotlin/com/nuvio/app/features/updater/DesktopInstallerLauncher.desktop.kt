@@ -57,7 +57,7 @@ internal fun windowsDetachedInstallerLaunchCommand(): List<String> = listOf(
     "-Command",
     "\$path = \$env:KINO_UPDATE_INSTALLER; " +
         "\$result = Invoke-CimMethod -ClassName Win32_Process -MethodName Create " +
-        "-Arguments @{ CommandLine = '\"' + \$path + '\"'; CurrentDirectory = (Split-Path -Parent \$path) }; " +
+        "-Arguments @{ CommandLine = '\"' + \$path + '\" --update';CurrentDirectory = (Split-Path -Parent \$path) }; " +
         "if (\$result.ReturnValue -ne 0) { exit 10 + [int]\$result.ReturnValue }; " +
         "[Console]::Out.Write(\$result.ProcessId)",
 )

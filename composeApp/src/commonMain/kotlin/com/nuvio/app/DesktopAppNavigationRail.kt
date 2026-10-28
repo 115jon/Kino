@@ -13,6 +13,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.nuvio.app.core.ui.LightModeArtworkFilter
+import com.nuvio.app.core.ui.LocalNuvioDarkTheme
 import com.nuvio.app.core.ui.NuvioDesktopNavigationItem
 import com.nuvio.app.core.ui.NuvioDesktopNavigationRail
 import com.nuvio.app.features.profiles.NuvioProfile
@@ -49,6 +51,7 @@ internal fun DesktopAppNavigationRail(
                     .height(42.dp),
                 alignment = Alignment.CenterStart,
                 contentScale = ContentScale.Fit,
+                colorFilter = if (LocalNuvioDarkTheme.current) null else LightModeArtworkFilter,
             )
         },
         content = {
@@ -85,6 +88,7 @@ internal fun DesktopAppNavigationRail(
                     onProfileSelected = onProfileSelected,
                     onAddProfileRequested = onAddProfileRequested,
                     modifier = Modifier.size(28.dp),
+                    expandOnClick = true,
                 )
             }
         },

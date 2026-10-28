@@ -153,6 +153,7 @@ open class MainActivity : AppCompatActivity() {
         handleIncomingAppIntent(intent)
 
         setContent {
+            SystemBarsTheme()
             App()
         }
     }

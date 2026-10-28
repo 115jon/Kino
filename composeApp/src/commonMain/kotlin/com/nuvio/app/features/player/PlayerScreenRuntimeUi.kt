@@ -17,8 +17,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nuvio.app.core.ui.NuvioStatusModal
 import com.nuvio.app.core.ui.LocalFold
@@ -136,7 +138,7 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi() {
     val surfaceOwnsOverlay = platformPlayerSurfaceOwnsOverlay()
     val overlayContent: @Composable () -> Unit = {
         Box(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().hidePlayerPointerWhen(shouldHideDesktopPointer),
         ) {
             Box(
                 modifier = Modifier
@@ -212,10 +214,19 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi() {
                     displayLogo = displayLogo,
                 )
             }
+            PlayerFullscreenHint(
+                isFullscreen = rememberPlayerFullscreen(playerController),
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = 24.dp),
+                suppressed = currentGestureFeedback != null,
+            )
             Box(modifier = panelModifier) {
                 RenderPlayerModals(displayedPositionMs = displayedPositionMs)
                 RenderParty(runtime = runtime)
             }
+            PlayerShortcutHelp(
+                visible = showShortcutHelp,
+                onDismiss = { showShortcutHelp = false },
+            )
         }
     }
 
@@ -273,6 +284,7 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi() {
                             )
                         ) return@PlatformPlayerSurface
                         playerController = controller
+                        controller.setOnShortcutCallback { shortcut -> handlePlayerShortcut(shortcut) }
                         playerControllerSourceUrl = playerSurfaceSourceUrl
                         playerControllerSourceIdentityKey = playerSurfaceSourceIdentityKey
                         playerControllerSourceAttemptToken = playerSurfaceAttemptToken
@@ -330,6 +342,7 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi() {
                             }
                         } else {
                             controlsVisible = true
+                            controlsActivityTick += 1
                         }
                         pausedOverlayVisible = false
                     },
@@ -458,7 +471,7 @@ private fun PlayerScreenRuntime.RenderPlayerControls(
             releaseInfo = metaUiState.meta?.takeIf { it.id == parentMetaId }?.releaseInfo,
             badges = playerBadges,
             hideDetails = activeSkipInterval != null && !skipIntervalDismissed,
-            onNextEpisodeClick = if (nextEpisodeInfo?.hasAired == true && !nextEpisodeAutoPlaySearching && nextEpisodeAutoPlayCountdown == null) {
+            onNextEpisodeClick = if (canPlayNextEpisodeNow) {
                 {
                     if (!partyBlocksControl()) playNextEpisode()
                 }
@@ -490,6 +503,7 @@ private fun PlayerScreenRuntime.RenderPlayerControls(
             showVolumeControl = playerController?.supportsVolumeControl() == true,
             onVolumeChanged = { level -> setVolumeLevel(level) },
             showFullscreenControl = playerController?.supportsFullscreenToggle() == true,
+            isFullscreen = rememberPlayerFullscreen(playerController),
             onFullscreenClick = { playerController?.toggleFullscreen() },
             desktopLayout = isDesktopLayout,
             onSeekBack = { seekBy(-10_000L) },
@@ -812,11 +826,7 @@ private fun PlayerScreenRuntime.RenderPlayerModals(displayedPositionMs: Long) {
                 )
             }
         },
-        onSourcesPanelDismissed = {
-            showSourcesPanel = false
-            PlayerStreamsRepository.stopSourcesLoading()
-            controlsVisible = true
-        },
+        onSourcesPanelDismissed = { closeSourcesPanel() },
         isSeries = isSeries,
         showEpisodesPanel = showEpisodesPanel,
         allEpisodes = playerMetaVideos,
@@ -847,10 +857,7 @@ private fun PlayerScreenRuntime.RenderPlayerModals(displayedPositionMs: Long) {
         },
         onEpisodeStreamFilterSelected = PlayerStreamsRepository::selectEpisodeStreamsFilter,
         onEpisodeStreamSelected = { stream, episode -> switchToEpisodeStream(stream, episode) },
-        onBackToEpisodes = {
-            episodeStreamsPanelState = EpisodeStreamsPanelState()
-            PlayerStreamsRepository.clearEpisodeStreams()
-        },
+        onBackToEpisodes = { showEpisodeList() },
         onReloadEpisodeStreams = {
             val episode = episodeStreamsPanelState.selectedEpisode
             if (episode != null) {
@@ -863,12 +870,7 @@ private fun PlayerScreenRuntime.RenderPlayerModals(displayedPositionMs: Long) {
                 )
             }
         },
-        onEpisodesPanelDismissed = {
-            showEpisodesPanel = false
-            episodeStreamsPanelState = EpisodeStreamsPanelState()
-            PlayerStreamsRepository.clearEpisodeStreams()
-            controlsVisible = true
-        },
+        onEpisodesPanelDismissed = { closeEpisodesPanel() },
         showSubmitIntroModal = showSubmitIntroModal,
         activeVideoId = activeVideoId,
         metaUiState = metaUiState,

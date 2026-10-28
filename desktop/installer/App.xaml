@@ -35,6 +35,21 @@
             </Style.Triggers>
         </Style>
 
+        <Style x:Key="KinoPrimaryButtonStyle" TargetType="{x:Type Button}" BasedOn="{StaticResource KinoSecondaryButtonStyle}">
+            <Setter Property="Background" Value="{StaticResource KinoAccentBrush}" />
+            <Setter Property="Foreground" Value="{StaticResource KinoBackgroundBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource KinoAccentBrush}" />
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#B9E8AC" />
+                    <Setter Property="BorderBrush" Value="#B9E8AC" />
+                </Trigger>
+                <Trigger Property="IsPressed" Value="True">
+                    <Setter Property="Background" Value="#8CC47D" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
         <Style x:Key="KinoDangerButtonStyle" TargetType="{x:Type Button}" BasedOn="{StaticResource KinoSecondaryButtonStyle}">
             <Setter Property="Background" Value="{StaticResource KinoDangerBrush}" />
             <Setter Property="Foreground" Value="{StaticResource KinoTextPrimaryBrush}" />

@@ -552,6 +552,23 @@ internal fun PlayerScreenRuntime.openEpisodesPanel() {
     controlsVisible = false
 }
 
+internal fun PlayerScreenRuntime.closeSourcesPanel() {
+    showSourcesPanel = false
+    PlayerStreamsRepository.stopSourcesLoading()
+    controlsVisible = true
+}
+
+internal fun PlayerScreenRuntime.showEpisodeList() {
+    episodeStreamsPanelState = EpisodeStreamsPanelState()
+    PlayerStreamsRepository.clearEpisodeStreams()
+}
+
+internal fun PlayerScreenRuntime.closeEpisodesPanel() {
+    showEpisodesPanel = false
+    showEpisodeList()
+    controlsVisible = true
+}
+
 private data class EpisodeResume(val positionMs: Long, val fraction: Float?)
 
 private fun PlayerScreenRuntime.resetEpisodePanelAndNextEpisodeState() {

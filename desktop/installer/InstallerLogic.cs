@@ -39,7 +39,7 @@ namespace Installer
                 InstallRootLayout layout = InstallRootLayout.FromLocalAppData(GetLocalAppDataDirectory());
                 InstallerLogger.Info("Installing Kino to " + layout.RootPath);
 
-                WaitForProcessesToExit(layout, TimeSpan.FromSeconds(8), TimeSpan.FromSeconds(60));
+                WaitForProcessesToExit(layout, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(60));
                 DeleteShortcuts();
                 Directory.CreateDirectory(layout.RootPath);
                 Directory.CreateDirectory(layout.StagingPath);
@@ -67,7 +67,7 @@ namespace Installer
                 InstallRootLayout layout = InstallRootLayout.FromLocalAppData(GetLocalAppDataDirectory());
                 InstallerLogger.Info("Uninstalling Kino from " + layout.RootPath);
 
-                WaitForProcessesToExit(layout, TimeSpan.FromSeconds(8), TimeSpan.FromSeconds(60));
+                WaitForProcessesToExit(layout, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(60));
                 DeleteShortcuts();
                 DeleteRegistryKeyTree(Registry.CurrentUser, UninstallKeyPath);
                 DeleteRegistryKeyTree(Registry.CurrentUser, InstallLocationKeyPath);
@@ -139,6 +139,19 @@ namespace Installer
             }
 
             InstallerLogger.Warn("Timed out waiting for Kino processes to exit.");
+        }
+
+        public static bool IsKinoRunning()
+        {
+            Process[] processes = FindManagedProcesses(InstallRootLayout.FromLocalAppData(GetLocalAppDataDirectory()));
+            try
+            {
+                return processes.Length > 0;
+            }
+            finally
+            {
+                foreach (Process process in processes) process.Dispose();
+            }
         }
 
         private static Process[] FindManagedProcesses(InstallRootLayout layout)
@@ -444,7 +457,7 @@ namespace Installer
             Process.Start(new ProcessStartInfo
             {
                 FileName = "cmd.exe",
-                Arguments = "/c timeout /t 2 /nobreak >nul & if exist \"" + path + "\" rmdir /s /q \"" + path + "\"",
+                Arguments = "/c timeout /t 2 /nobreak >nul & if exist \"" + path + "\" attrib -r /s /d \"" + path + "\\*\" & if exist \"" + path + "\" rmdir /s /q \"" + path + "\"",
                 CreateNoWindow = true,
                 UseShellExecute = false
             });
@@ -457,7 +470,7 @@ namespace Installer
 
         private static void DeleteDirectoryIfExists(string path)
         {
-            try { if (Directory.Exists(path)) Directory.Delete(path, true); } catch (Exception exception) { InstallerLogger.Warn("Could not delete " + path + ": " + exception.Message); }
+            try { DirectoryRemoval.DeleteRecursive(path); } catch (Exception exception) { InstallerLogger.Warn("Could not delete " + path + ": " + exception.Message); }
         }
 
         private static void LaunchApplication(string executablePath, string arguments, string workingDirectory)

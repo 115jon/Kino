@@ -93,6 +93,7 @@ fun ProfileSwitcherTab(
     modifier: Modifier = Modifier,
     hazeState: HazeState? = null,
     popupBelowAnchor: Boolean = false,
+    expandOnClick: Boolean = false,
 ) {
     val profileState by ProfileRepository.state.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
@@ -204,7 +205,15 @@ fun ProfileSwitcherTab(
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
-                onClick = onClick,
+                onClick = {
+                    if (expandOnClick && profiles.isNotEmpty()) {
+                        profileBubbleBounds.clear()
+                        dragTargetProfileIndex = null
+                        showPopup = true
+                    } else {
+                        onClick()
+                    }
+                },
             )
             .pointerInput(profiles, activeProfile?.profileIndex) {
                 detectDragGesturesAfterLongPress(

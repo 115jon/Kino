@@ -14,6 +14,7 @@ class DesktopUpdateInstallerLaunchTest {
         assertTrue("-NonInteractive" in command)
         assertTrue(command.last().contains("Invoke-CimMethod -ClassName Win32_Process -MethodName Create"))
         assertTrue(command.last().contains("\$env:KINO_UPDATE_INSTALLER"))
+        assertTrue(command.last().contains("--update"))
         assertFalse(command.any { it.contains("Kino-Desktop") })
     }
 

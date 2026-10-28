@@ -439,9 +439,10 @@ private fun PlayerScreenRuntime.BindPlayerUiVisibilityEffects() {
         showParentalGuide,
         errorMessage,
         isDesktopLayout,
+        hasOpenPlayerOverlay,
     ) {
-        if (isDesktopLayout) return@LaunchedEffect
         if (
+            (isDesktopLayout && hasOpenPlayerOverlay) ||
             !controlsVisible ||
             isScrubbingTimeline ||
             !playbackSnapshot.isPlaying ||
@@ -451,7 +452,13 @@ private fun PlayerScreenRuntime.BindPlayerUiVisibilityEffects() {
         ) {
             return@LaunchedEffect
         }
-        delay(if (folded) 5000 else 3500)
+        delay(
+            when {
+                folded -> 5000
+                isDesktopLayout -> 3000
+                else -> 3500
+            },
+        )
         controlsVisible = false
     }
 

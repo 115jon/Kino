@@ -81,9 +81,26 @@ fun NuvioDropdownChip(
             modifier = Modifier.size(NuvioTokens.Icon.sm + NuvioTokens.Space.s2),
             tint = if (enabled) tokens.colors.textMuted else tokens.colors.borderDefault,
         )
+        if (sheetsOpenAsDesktopDialogs) {
+            Menu(
+                expanded = isSheetVisible,
+                onDismissRequest = { isSheetVisible = false },
+            ) {
+                options.forEach { option ->
+                    MenuItem(
+                        text = option.label,
+                        selected = option.key == selectedKey,
+                        onClick = {
+                            onSelected(option)
+                            isSheetVisible = false
+                        },
+                    )
+                }
+            }
+        }
     }
 
-    if (isSheetVisible) {
+    if (isSheetVisible && !sheetsOpenAsDesktopDialogs) {
         NuvioDropdownOptionsSheet(
             title = title,
             options = options,

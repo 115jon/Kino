@@ -7,6 +7,7 @@ import com.sun.jna.Pointer
 import com.sun.jna.WString
 import com.sun.jna.ptr.IntByReference
 import com.sun.jna.ptr.PointerByReference
+import java.awt.Color
 import java.awt.Window
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -15,6 +16,8 @@ private const val AppsUseLightThemeValue = "AppsUseLightTheme"
 private const val RrfRtRegDword = 0x00000018
 private const val DwmwaUseImmersiveDarkMode = 20
 private const val DwmwaUseImmersiveDarkModeLegacy = 19
+private const val DwmwaCaptionColor = 35
+private const val DwmwaTextColor = 36
 private const val ErrorSuccess = 0
 private const val KeyNotify = 0x0010
 private const val RegNotifyChangeLastSet = 0x00000004
@@ -171,19 +174,24 @@ internal fun subscribeToWindowsThemeChanges(onChanged: () -> Unit): AutoCloseabl
     return WindowsThemeSubscription(registryKey, event, worker, closed)
 }
 
-internal fun applyWindowsTitleBarTheme(window: Window, darkMode: Boolean): Boolean = runCatching {
-        val windowHandle = Native.getComponentPointer(window) ?: return@runCatching false
-        val value = Memory(4)
-        value.setInt(0, if (darkMode) 1 else 0)
-        val dwm = WindowsDwmLibrary.INSTANCE
-        val result = dwm.DwmSetWindowAttribute(windowHandle, DwmwaUseImmersiveDarkMode, value, 4)
-        if (result != ErrorSuccess) {
-            return@runCatching dwm.DwmSetWindowAttribute(
-                windowHandle,
-                DwmwaUseImmersiveDarkModeLegacy,
-                value,
-                4,
-            ) == ErrorSuccess
-        }
-        true
-    }.getOrDefault(false)
+internal fun applyWindowsTitleBarTheme(
+    window: Window,
+    darkMode: Boolean,
+    captionColor: Color,
+    textColor: Color,
+): Boolean = runCatching {
+    val windowHandle = Native.getComponentPointer(window) ?: return@runCatching false
+    val dwm = WindowsDwmLibrary.INSTANCE
+    fun setAttribute(attribute: Int, value: Int): Boolean {
+        val memory = Memory(4)
+        memory.setInt(0, value)
+        return dwm.DwmSetWindowAttribute(windowHandle, attribute, memory, 4) == ErrorSuccess
+    }
+    val darkModeApplied = setAttribute(DwmwaUseImmersiveDarkMode, if (darkMode) 1 else 0) ||
+        setAttribute(DwmwaUseImmersiveDarkModeLegacy, if (darkMode) 1 else 0)
+    setAttribute(DwmwaCaptionColor, captionColor.toColorRef())
+    setAttribute(DwmwaTextColor, textColor.toColorRef())
+    darkModeApplied
+}.getOrDefault(false)
+
+private fun Color.toColorRef(): Int = red or (green shl 8) or (blue shl 16)

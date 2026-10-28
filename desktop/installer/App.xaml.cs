@@ -9,6 +9,7 @@ namespace Installer
     public partial class App : Application
     {
         public static bool IsUninstallLaunch { get; private set; }
+        public static bool IsUpdateLaunch { get; private set; }
 
         protected override void OnStartup(StartupEventArgs e)
         {
@@ -31,6 +32,7 @@ namespace Installer
 
             bool silent = e.Args.Any(IsSilentArgument);
             IsUninstallLaunch = e.Args.Any(IsUninstallArgument);
+            IsUpdateLaunch = e.Args.Any(IsUpdateArgument);
             DispatcherUnhandledException += (_, args) => InstallerLogger.Error("Unhandled installer exception.", args.Exception);
 
             if (IsUninstallLaunch && silent)
@@ -65,6 +67,11 @@ namespace Installer
             return string.Equals(value, "/S", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(value, "--silent", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(value, "--passive", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsUpdateArgument(string value)
+        {
+            return string.Equals(value, "--update", StringComparison.OrdinalIgnoreCase);
         }
 
         private static bool IsUninstallArgument(string value)

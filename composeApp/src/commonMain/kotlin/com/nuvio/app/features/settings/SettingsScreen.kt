@@ -999,8 +999,9 @@ private fun TabletSettingsScreen(
 ) {
     var selectedCategory by rememberSaveable { mutableStateOf(SettingsCategory.General.name) }
     val activeCategory = SettingsCategory.valueOf(selectedCategory)
+    val displayedPage = page.desktopDisplayedPage(activeCategory)
     val statusBarPadding = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-    val topOffset = max(statusBarPadding + 24.dp, 48.dp) + 64.dp
+    val topOffset = settingsPaneTopOffset(max(statusBarPadding + 24.dp, 48.dp) + 64.dp)
 
     LaunchedEffect(page) {
         if (page.opensInlineOnTablet) {
@@ -1016,7 +1017,18 @@ private fun TabletSettingsScreen(
     val saveableStateHolder = rememberSaveableStateHolder()
 
     Row(modifier = Modifier.fillMaxSize()) {
-        Surface(
+        DesktopSettingsEscapeHandler(page = displayedPage, onBack = onNavigateBack)
+        if (settingsDesktopLayout) DesktopSettingsSidebar(
+            page = displayedPage,
+            activeCategory = activeCategory,
+            onOpenPage = ::openInlinePage,
+            onOpenAbout = {
+                selectedCategory = SettingsCategory.About.name
+                if (page != SettingsPage.Root) onPageChange(SettingsPage.Root)
+            },
+            onSwitchProfile = onSwitchProfile,
+            onWatchParty = watchPartyRow(onWatchPartyClick),
+        ) else Surface(
             modifier = Modifier
                 .width(280.dp)
                 .fillMaxSize(),
@@ -1056,7 +1068,7 @@ private fun TabletSettingsScreen(
             }
         }
 
-        saveableStateHolder.SaveableStateProvider(page.name) {
+        saveableStateHolder.SaveableStateProvider(displayedPage.name) {
             var settingsSearchQuery by rememberSaveable { mutableStateOf("") }
             var rootSearchVisible by rememberSaveable { mutableStateOf(false) }
             var rootSearchRevealAnimating by rememberSaveable { mutableStateOf(false) }
@@ -1081,7 +1093,7 @@ private fun TabletSettingsScreen(
             }
             val bottomOverlayPadding = LocalNuvioBottomNavigationOverlayPadding.current
             val rootSearchRevealConnection = rememberSettingsRootSearchRevealConnection(
-                page = page,
+                page = displayedPage,
                 listState = listState,
                 query = settingsSearchQuery,
                 searchVisible = rootSearchVisible,
@@ -1108,35 +1120,35 @@ private fun TabletSettingsScreen(
             LazyColumn(
                 state = listState,
                 modifier = Modifier
-                    .fillMaxSize()
+                    .settingsPane()
                     .nestedScroll(rootSearchRevealConnection),
                 contentPadding = PaddingValues(
-                    start = 40.dp,
+                    start = settingsPaneHorizontalPadding,
                     top = topOffset,
-                    end = 40.dp,
+                    end = settingsPaneHorizontalPadding,
                     bottom = 40.dp + bottomOverlayPadding,
                 ),
                 verticalArrangement = Arrangement.spacedBy(18.dp),
             ) {
                 if (showInternalHeader) {
                     item {
-                        val previousPage = page.previousPage()
+                        val previousPage = displayedPage.previousPage()
                         TabletPageHeader(
-                            title = if (page == SettingsPage.Root) {
+                            title = if (displayedPage == SettingsPage.Root) {
                                 if (settingsSearchQuery.isBlank()) {
                                     stringResource(activeCategory.labelRes)
                                 } else {
                                     stringResource(Res.string.compose_settings_page_root)
                                 }
                             } else {
-                                stringResource(page.titleRes)
+                                stringResource(displayedPage.titleRes)
                             },
-                            showBack = previousPage != null,
+                            showBack = settingsHeaderShowsBack(previousPage),
                             onBack = onNavigateBack,
                         )
                     }
                 }
-                when (page) {
+                when (displayedPage) {
                     SettingsPage.Root -> {
                         settingsSearchRootContent(
                             query = settingsSearchQuery,

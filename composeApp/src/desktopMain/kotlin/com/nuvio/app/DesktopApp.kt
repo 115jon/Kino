@@ -1,5 +1,7 @@
 package com.nuvio.app
 
+import androidx.compose.material3.LocalMinimumInteractiveComponentSize
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.awt.ComposeWindow
@@ -15,15 +17,11 @@ import nuvio.composeapp.generated.resources.Res
 import nuvio.composeapp.generated.resources.app_logo
 import org.jetbrains.compose.resources.painterResource
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.awaitCancellation
-import kotlinx.coroutines.withContext
 import java.awt.Dimension
 import java.awt.Frame
-import java.awt.Color as AwtColor
 import java.awt.EventQueue
 
-private val DesktopWindowBackground = AwtColor(0x0C, 0x0C, 0x0C)
+private val DesktopMinimumInteractiveSize = 40.dp
 private val singleInstanceLogger = Logger.withTag("DesktopSingleInstance")
 
 internal fun restoredDesktopWindowState(extendedState: Int): Int =
@@ -107,25 +105,7 @@ fun main() {
                 title = "Kino",
                 icon = painterResource(Res.drawable.app_logo),
             ) {
-                LaunchedEffect(window) {
-                    if (!isWindowsPlatform()) return@LaunchedEffect
-                    var subscription: AutoCloseable? = null
-                    try {
-                        val initialDarkMode = withContext(Dispatchers.IO) { readWindowsDarkMode() }
-                        applyWindowsTitleBarTheme(window, initialDarkMode)
-                        subscription = subscribeToWindowsThemeChanges {
-                            val darkMode = readWindowsDarkMode()
-                            EventQueue.invokeLater {
-                                if (window.isDisplayable) {
-                                    applyWindowsTitleBarTheme(window, darkMode)
-                                }
-                            }
-                        }
-                        awaitCancellation()
-                    } finally {
-                        subscription?.close()
-                    }
-                }
+                DesktopWindowChrome(window)
 
                 DisposableEffect(window) {
                     val activationSubscription = activationRelay.attach {
@@ -134,9 +114,6 @@ fun main() {
                     val vrrCompatibility = installWindowsVrrCompatibility(window)
                     val compositorClockPacing = installWindowsCompositorClockPacing(window)
                     window.minimumSize = Dimension(960, 640)
-                    window.background = DesktopWindowBackground
-                    window.contentPane.background = DesktopWindowBackground
-                    window.rootPane.background = DesktopWindowBackground
                     onDispose {
                         activationSubscription.close()
                         vrrCompatibility?.close()
@@ -148,7 +125,9 @@ fun main() {
                     prewarmDesktopPlaybackBackend()
                 }
 
-                App()
+                CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides DesktopMinimumInteractiveSize) {
+                    App()
+                }
             }
         }
     } finally {

@@ -38,6 +38,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.nuvio.app.core.ui.legibleOnBackground
 import com.nuvio.app.core.build.AppFeaturePolicy
 import com.nuvio.app.core.ui.nuvioHorizontalScrollBleed
 import com.nuvio.app.features.details.MetaDetails
@@ -133,7 +134,7 @@ fun DetailMetaInfo(
                         Text(
                             text = validImdbRating,
                             style = imdbTextStyle,
-                            color = ImdbYellow,
+                            color = ImdbYellow.legibleOnBackground(),
                         )
                     }
                 }
@@ -270,7 +271,7 @@ private fun RatingItem(
         Text(
             text = visuals.format(rating.value),
             style = ratingTextStyle,
-            color = visuals.valueColor,
+            color = visuals.valueColor.legibleOnBackground(),
         )
     }
 }

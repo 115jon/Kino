@@ -369,6 +369,7 @@ internal fun defaultNuvioThemeTokens(
     palette: ThemeColorPalette,
     amoled: Boolean,
     colorScheme: ColorScheme?,
+    darkTheme: Boolean = true,
 ): NuvioThemeTokens {
     val background = if (amoled) Color.Black else palette.background
     val textPrimary = Color(0xFFF1EDE6)
@@ -522,5 +523,7 @@ internal fun defaultNuvioThemeTokens(
             avatarSize = NuvioTokens.Space.s48,
             playerPanelMaxWidth = 600.dp,
         ),
-    )
+    ).let { tokens ->
+        if (darkTheme) tokens else tokens.copy(colors = lightNuvioColorTokens(palette, tokens.colors))
+    }
 }

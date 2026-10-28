@@ -46,7 +46,7 @@ namespace Installer
             string targetPath = layout.GetVersionDirectoryPath(normalizedVersion);
             if (Directory.Exists(targetPath))
             {
-                Directory.Delete(targetPath, true);
+                DirectoryRemoval.DeleteRecursive(targetPath);
             }
 
             Directory.Move(stagingPath, targetPath);
@@ -92,11 +92,7 @@ namespace Installer
         {
             try
             {
-                if (Directory.Exists(path))
-                {
-                    Directory.Delete(path, true);
-                }
-
+                DirectoryRemoval.DeleteRecursive(path);
                 return true;
             }
             catch (Exception exception)

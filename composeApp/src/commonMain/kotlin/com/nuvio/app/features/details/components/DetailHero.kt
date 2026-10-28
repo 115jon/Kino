@@ -49,6 +49,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.graphicsLayer
 import coil3.compose.AsyncImage
+import com.nuvio.app.core.ui.TitleLogoImage
 import com.nuvio.app.core.ui.heroStretchHeight
 import com.nuvio.app.core.ui.heroStretchZoom
 import com.nuvio.app.features.details.MetaDetails
@@ -240,7 +241,7 @@ fun DetailHero(
                     horizontalAlignment = if (isDesktop) Alignment.Start else Alignment.CenterHorizontally,
                 ) {
                     if (logoUrl != null && !logoLoadError) {
-                        AsyncImage(
+                        TitleLogoImage(
                             model = logoUrl,
                             contentDescription = stringResource(Res.string.detail_logo_content_description, meta.name),
                             modifier = Modifier

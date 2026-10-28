@@ -50,6 +50,7 @@ import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.ui.LocalNavAnimatedContentScope
 import androidx.navigation3.ui.NavDisplay
+import com.nuvio.app.core.ui.NuvioDarkTheme
 import com.nuvio.app.core.ui.LocalPosterClickAnchor
 import com.nuvio.app.core.ui.LocalVerticalBarPadding
 import com.nuvio.app.navigation.PosterNavigationState
@@ -1574,17 +1575,19 @@ internal fun MainAppContent(
                             onDispose { visiblePlayerEntries -= 1 }
                         }
                     }
-                    PlayerDestination(
-                        route = route,
-                        navController = navController,
-                        externalPlayerId = playerSettingsUiState.externalPlayerId,
-                        externalPlayerNotConfiguredText = externalPlayerNotConfiguredText,
-                        externalPlayerFailedText = externalPlayerFailedText,
-                        onExternalPlayerLaunch = { launch -> lastExternalPlayerLaunch = launch },
-                        launchExternalPlayer = launchExternalPlayer,
-                        openExternalStreamUrl = ::openExternalStreamUrl,
-                        onOpenPartyMedia = ::openPartyMedia,
-                    )
+                    NuvioDarkTheme {
+                        PlayerDestination(
+                            route = route,
+                            navController = navController,
+                            externalPlayerId = playerSettingsUiState.externalPlayerId,
+                            externalPlayerNotConfiguredText = externalPlayerNotConfiguredText,
+                            externalPlayerFailedText = externalPlayerFailedText,
+                            onExternalPlayerLaunch = { launch -> lastExternalPlayerLaunch = launch },
+                            launchExternalPlayer = launchExternalPlayer,
+                            openExternalStreamUrl = ::openExternalStreamUrl,
+                            onOpenPartyMedia = ::openPartyMedia,
+                        )
+                    }
                 }
                 entry<CatalogRoute> { route ->
                     CatalogDestination(
