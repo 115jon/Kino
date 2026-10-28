@@ -17,8 +17,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nuvio.app.core.ui.NuvioStatusModal
 import com.nuvio.app.core.ui.LocalFold
@@ -212,10 +214,19 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi() {
                     displayLogo = displayLogo,
                 )
             }
+            PlayerFullscreenHint(
+                isFullscreen = rememberPlayerFullscreen(playerController),
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = 24.dp),
+                suppressed = currentGestureFeedback != null,
+            )
             Box(modifier = panelModifier) {
                 RenderPlayerModals(displayedPositionMs = displayedPositionMs)
                 RenderParty(runtime = runtime)
             }
+            PlayerShortcutHelp(
+                visible = showShortcutHelp,
+                onDismiss = { showShortcutHelp = false },
+            )
         }
     }
 
@@ -492,6 +503,7 @@ private fun PlayerScreenRuntime.RenderPlayerControls(
             showVolumeControl = playerController?.supportsVolumeControl() == true,
             onVolumeChanged = { level -> setVolumeLevel(level) },
             showFullscreenControl = playerController?.supportsFullscreenToggle() == true,
+            isFullscreen = rememberPlayerFullscreen(playerController),
             onFullscreenClick = { playerController?.toggleFullscreen() },
             desktopLayout = isDesktopLayout,
             onSeekBack = { seekBy(-10_000L) },

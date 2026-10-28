@@ -9,6 +9,7 @@ internal actual fun DesktopPlayerToolCluster(
     showVolumeControl: Boolean,
     onVolumeChanged: (Float) -> Unit,
     showFullscreenControl: Boolean,
+    isFullscreen: Boolean,
     onFullscreenClick: () -> Unit,
     modifier: Modifier,
 ) {

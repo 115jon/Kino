@@ -22,6 +22,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.VolumeOff
 import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.Fullscreen
+import androidx.compose.material.icons.rounded.FullscreenExit
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
@@ -54,6 +55,7 @@ import com.nuvio.app.core.ui.accentBrush
 import com.nuvio.app.core.ui.nuvioTypeScale
 import com.nuvio.app.core.ui.themePalette
 import nuvio.composeapp.generated.resources.Res
+import nuvio.composeapp.generated.resources.compose_player_exit_fullscreen
 import nuvio.composeapp.generated.resources.compose_player_fullscreen
 import nuvio.composeapp.generated.resources.compose_player_volume
 import org.jetbrains.compose.resources.stringResource
@@ -68,6 +70,7 @@ internal actual fun DesktopPlayerToolCluster(
     showVolumeControl: Boolean,
     onVolumeChanged: (Float) -> Unit,
     showFullscreenControl: Boolean,
+    isFullscreen: Boolean,
     onFullscreenClick: () -> Unit,
     modifier: Modifier,
 ) {
@@ -114,9 +117,11 @@ internal actual fun DesktopPlayerToolCluster(
         }
         if (showFullscreenControl) {
             PlayerAction(
-                description = stringResource(Res.string.compose_player_fullscreen),
+                description = stringResource(
+                    if (isFullscreen) Res.string.compose_player_exit_fullscreen else Res.string.compose_player_fullscreen,
+                ),
                 onClick = onFullscreenClick,
-                icon = Icons.Rounded.Fullscreen,
+                icon = if (isFullscreen) Icons.Rounded.FullscreenExit else Icons.Rounded.Fullscreen,
             )
         }
     }
