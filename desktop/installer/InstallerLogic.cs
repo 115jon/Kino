@@ -141,6 +141,19 @@ namespace Installer
             InstallerLogger.Warn("Timed out waiting for Kino processes to exit.");
         }
 
+        public static bool IsKinoRunning()
+        {
+            Process[] processes = FindManagedProcesses(InstallRootLayout.FromLocalAppData(GetLocalAppDataDirectory()));
+            try
+            {
+                return processes.Length > 0;
+            }
+            finally
+            {
+                foreach (Process process in processes) process.Dispose();
+            }
+        }
+
         private static Process[] FindManagedProcesses(InstallRootLayout layout)
         {
             int currentProcessId = Process.GetCurrentProcess().Id;

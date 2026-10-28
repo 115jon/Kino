@@ -3,11 +3,14 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media.Animation;
+using System.Windows.Threading;
 
 namespace Installer
 {
     public partial class MainWindow : Window
     {
+        private DispatcherTimer runningKinoTimer;
+
         public MainWindow()
         {
             InitializeComponent();
@@ -27,6 +30,21 @@ namespace Installer
                 return;
             }
 
+            if (!App.IsUpdateLaunch && await Task.Run(InstallerLogic.IsKinoRunning))
+            {
+                ConfigureForRunningKino();
+                return;
+            }
+
+            await InstallAsync();
+        }
+
+        private async Task InstallAsync()
+        {
+            ActionButtonsPanel.Visibility = Visibility.Collapsed;
+            DetailText.Visibility = Visibility.Collapsed;
+            ProgressContainer.Visibility = Visibility.Visible;
+
             try
             {
                 StatusText.Text = "Installing desktop app...";
@@ -45,6 +63,43 @@ namespace Installer
             }
         }
 
+        private void ConfigureForRunningKino()
+        {
+            StatusText.Text = "Kino is running";
+            DetailText.Text = "Close Kino to continue. Anything playing will stop.";
+            DetailText.Visibility = Visibility.Visible;
+            ProgressContainer.Visibility = Visibility.Collapsed;
+            ConfirmButton.Content = "Close Kino";
+            ConfirmButton.Style = (Style)FindResource("KinoPrimaryButtonStyle");
+            ActionButtonsPanel.Visibility = Visibility.Visible;
+
+            runningKinoTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+            runningKinoTimer.Tick += RunningKinoTimer_Tick;
+            runningKinoTimer.Start();
+        }
+
+        private async void RunningKinoTimer_Tick(object sender, EventArgs e)
+        {
+            if (runningKinoTimer == null || !runningKinoTimer.IsEnabled) return;
+            runningKinoTimer.Stop();
+            if (await Task.Run(InstallerLogic.IsKinoRunning))
+            {
+                runningKinoTimer?.Start();
+                return;
+            }
+
+            InstallerLogger.Info("Kino was closed while the installer was waiting.");
+            await ContinueAfterRunningKinoAsync();
+        }
+
+        private async Task ContinueAfterRunningKinoAsync()
+        {
+            if (runningKinoTimer == null) return;
+            runningKinoTimer.Stop();
+            runningKinoTimer = null;
+            await InstallAsync();
+        }
+
         private void ConfigureForUninstall()
         {
             Title = "Kino Uninstall";
@@ -57,6 +112,13 @@ namespace Installer
 
         private async void ConfirmButton_Click(object sender, RoutedEventArgs e)
         {
+            if (runningKinoTimer != null)
+            {
+                InstallerLogger.Info("User chose to close the running Kino.");
+                await ContinueAfterRunningKinoAsync();
+                return;
+            }
+
             ConfirmButton.IsEnabled = false;
             CancelButton.IsEnabled = false;
             ActionButtonsPanel.Visibility = Visibility.Collapsed;
