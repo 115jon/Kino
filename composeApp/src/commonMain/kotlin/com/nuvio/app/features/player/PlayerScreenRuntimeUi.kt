@@ -136,7 +136,7 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi() {
     val surfaceOwnsOverlay = platformPlayerSurfaceOwnsOverlay()
     val overlayContent: @Composable () -> Unit = {
         Box(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().hidePlayerPointerWhen(shouldHideDesktopPointer),
         ) {
             Box(
                 modifier = Modifier
@@ -330,6 +330,7 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi() {
                             }
                         } else {
                             controlsVisible = true
+                            controlsActivityTick += 1
                         }
                         pausedOverlayVisible = false
                     },
