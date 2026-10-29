@@ -30,6 +30,10 @@ The application is built from a shared Kotlin Multiplatform codebase in [compose
 
 Download the latest Android build from the [Kino releases page](https://github.com/115jon/Kino/releases?q=android-v).
 
+### Android TV
+
+Kino TV, the Android TV app, lives in [115jon/Kino-TV](https://github.com/115jon/Kino-TV); download it from the [Kino TV releases page](https://github.com/115jon/Kino-TV/releases?q=android-tv-v).
+
 ### Windows Desktop
 
 Download the latest Windows installer from the [Kino releases page](https://github.com/115jon/Kino/releases?q=desktop-v).
