@@ -44,6 +44,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.nuvio.app.core.diagnostics.CrashReportSettings
 import com.nuvio.app.core.ui.NuvioTokens
 import com.nuvio.app.core.ui.nuvio
 import com.nuvio.app.isIos
@@ -410,18 +411,28 @@ internal fun settingsSearchEntries(
         category = advancedCategory,
         icon = Icons.Rounded.Tune,
     )
-    if (SentrySettingsRepository.isSupported) {
+    if (CrashReportSettings.isSupported) {
         addRow(
             page = SettingsPage.Advanced,
-            key = "sentry-crash-reports",
-            title = stringResource(Res.string.settings_advanced_sentry_reports),
-            description = stringResource(Res.string.settings_advanced_sentry_reports_subtitle),
+            key = "crash-reports",
+            title = stringResource(Res.string.settings_advanced_crash_reports),
+            description = stringResource(Res.string.settings_advanced_crash_reports_subtitle),
             pageLabel = advancedPage,
             section = stringResource(Res.string.settings_advanced_section_diagnostics),
             category = advancedCategory,
             icon = Icons.Rounded.Tune,
         )
     }
+    addRow(
+        page = SettingsPage.Advanced,
+        key = "send-logs",
+        title = stringResource(Res.string.settings_advanced_send_logs),
+        description = stringResource(Res.string.settings_advanced_send_logs_subtitle),
+        pageLabel = advancedPage,
+        section = stringResource(Res.string.settings_advanced_section_diagnostics),
+        category = advancedCategory,
+        icon = Icons.Rounded.Tune,
+    )
     addRow(
         page = SettingsPage.Advanced,
         key = "clear-cw-cache",

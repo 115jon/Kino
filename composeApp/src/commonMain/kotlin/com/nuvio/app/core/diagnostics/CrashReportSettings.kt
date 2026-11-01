@@ -1,12 +1,12 @@
-package com.nuvio.app.features.settings
+package com.nuvio.app.core.diagnostics
 
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-internal object SentrySettingsRepository {
+internal object CrashReportSettings {
     val isSupported: Boolean
-        get() = SentrySettingsPlatform.crashReportsSupported
+        get() = DiagnosticsPlatform.crashReportsSupported
 
     private val _enabled = MutableStateFlow(true)
     val enabled: StateFlow<Boolean> = _enabled.asStateFlow()
@@ -15,18 +15,14 @@ internal object SentrySettingsRepository {
 
     fun ensureLoaded() {
         if (hasLoaded) return
-        loadFromDisk()
-    }
-
-    private fun loadFromDisk() {
         hasLoaded = true
-        _enabled.value = SentrySettingsStorage.loadEnabled() ?: true
+        _enabled.value = DiagnosticsStorage.loadCrashReportsEnabled() ?: true
     }
 
     fun setEnabled(enabled: Boolean) {
         ensureLoaded()
         if (_enabled.value == enabled) return
         _enabled.value = enabled
-        SentrySettingsStorage.saveEnabled(enabled)
+        DiagnosticsStorage.saveCrashReportsEnabled(enabled)
     }
 }

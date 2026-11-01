@@ -12,7 +12,8 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import com.nuvio.app.core.auth.AuthStorage
 import com.nuvio.app.core.network.ServerConfigurationStorage
-import com.nuvio.app.core.diagnostics.SentryInitializer
+import com.nuvio.app.core.diagnostics.CrashReporter
+import com.nuvio.app.core.diagnostics.DiagnosticsPlatform
 import com.nuvio.app.core.deeplink.handleAppUrl
 import com.nuvio.app.core.logging.initializeAndroidAppLogging
 import com.nuvio.app.core.storage.PlatformLocalAccountDataCleaner
@@ -48,7 +49,6 @@ import com.nuvio.app.features.profiles.ProfileStorage
 import com.nuvio.app.features.details.SeasonViewModeStorage
 import com.nuvio.app.features.search.DiscoverSelectionStorage
 import com.nuvio.app.features.search.SearchHistoryStorage
-import com.nuvio.app.features.settings.SentrySettingsStorage
 import com.nuvio.app.features.settings.AppIconPlatform
 import com.nuvio.app.features.settings.ThemeSettingsStorage
 import com.nuvio.app.features.trakt.TraktAuthStorage
@@ -86,10 +86,10 @@ open class MainActivity : AppCompatActivity() {
         )
         ThemeSettingsStorage.initialize(applicationContext)
         AppIconPlatform.initialize(applicationContext)
-        SentrySettingsStorage.initialize(applicationContext)
-        SentryInitializer.start(application)
+        DiagnosticsPlatform.initialize(applicationContext)
         super.onCreate(savedInstanceState)
         initializeAndroidAppLogging(applicationContext)
+        CrashReporter.start()
         AutoSyncPreferencesAndroid.initialize(applicationContext) // AutoSync hook
         window.setBackgroundDrawableResource(R.color.nuvio_background)
         pipRemoteActionReceiver = PipRemoteActionReceiver.register(this)
