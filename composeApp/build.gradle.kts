@@ -729,6 +729,19 @@ tasks.register<JavaExec>("runThemeHarness") {
     )
 }
 
+tasks.register<JavaExec>("runSendLogsHarness") {
+    description = "Sends one manual report to Logbook through the Send logs pipeline."
+    dependsOn(desktopTestCompilation.compileAllTaskName)
+    classpath(desktopTestCompilation.output.allOutputs, desktopTestCompilation.runtimeDependencyFiles)
+    mainClass.set("com.nuvio.app.harness.SendLogsHarnessKt")
+    jvmArgs(providers.gradleProperty("kino.harness.jvmArgs").orNull?.split(' ')?.filter(String::isNotBlank).orEmpty())
+    systemProperties(
+        System.getProperties().stringPropertyNames()
+            .filter { it.startsWith("kino.") }
+            .associateWith(System::getProperty),
+    )
+}
+
 tasks.register<JavaExec>("runScrollHarness") {
     description = "Scrolls a home-like screen and reports frame times."
     dependsOn(desktopTestCompilation.compileAllTaskName)

@@ -1,6 +1,8 @@
 package com.nuvio.app.harness
 
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
@@ -9,13 +11,16 @@ import com.nuvio.app.App
 import com.nuvio.app.AppScreenTab
 import com.nuvio.app.DesktopWindowChrome
 import com.nuvio.app.core.ui.AppTheme
+import com.nuvio.app.core.ui.NuvioTheme
 import com.nuvio.app.core.ui.ThemeMode
 import com.nuvio.app.features.addons.AddonRepository
 import com.nuvio.app.features.player.PlayerLaunch
 import com.nuvio.app.features.player.PlayerLaunchStore
 import com.nuvio.app.features.player.compose.configureWindowsComposeVideoRenderApi
 import com.nuvio.app.features.player.compose.configureWindowsVideoSurfaceSelection
+import com.nuvio.app.features.settings.SendLogsDialog
 import com.nuvio.app.features.settings.ThemeModeRepository
+import com.nuvio.app.features.settings.rememberDarkThemeEnabled
 import com.nuvio.app.features.settings.ThemeSettingsRepository
 import com.nuvio.app.features.updater.AppUpdaterPlatform
 import com.nuvio.app.features.updater.AppUpdaterRepository
@@ -86,6 +91,15 @@ fun main() {
             }
             DesktopWindowChrome(window)
             App(initialTab = tab, initialRoute = route, bypassAppGate = true)
+            if (System.getProperty("kino.theme.dialog") == "send-logs") {
+                val selectedTheme by ThemeSettingsRepository.selectedTheme.collectAsState()
+                NuvioTheme(darkTheme = rememberDarkThemeEnabled(), appTheme = selectedTheme) {
+                    SendLogsDialog(
+                        onDismiss = {},
+                        initialPreviewExpanded = System.getProperty("kino.theme.preview") == "true",
+                    )
+                }
+            }
         }
     }
 }
