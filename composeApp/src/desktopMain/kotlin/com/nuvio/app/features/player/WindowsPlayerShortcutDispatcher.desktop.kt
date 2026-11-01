@@ -8,6 +8,7 @@ import java.awt.KeyEventDispatcher
 import java.awt.KeyboardFocusManager
 import java.awt.Window
 import java.awt.event.KeyEvent
+import java.beans.PropertyChangeListener
 import javax.swing.SwingUtilities
 
 internal class WindowsPlayerShortcutDispatcher(
@@ -15,13 +16,28 @@ internal class WindowsPlayerShortcutDispatcher(
     private val callbacks: WindowsPlayerCallbacks,
 ) : KeyEventDispatcher {
     private val heldKeys = mutableSetOf<Int>()
+    private val consumedKeys = mutableSetOf<Int>()
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        if (event.id == KeyEvent.KEY_RELEASED) heldKeys.remove(event.keyCode)
+        if (event.id == KeyEvent.KEY_RELEASED) {
+            heldKeys.remove(event.keyCode)
+            return consumedKeys.remove(event.keyCode)
+        }
         val panel = windowState.panelRef ?: return false
         if (!panel.acceptsShortcutsFrom(event.component?.windowOrSelf())) return false
         if (event.id != KeyEvent.KEY_PRESSED) return false
+        consumedKeys.remove(event.keyCode)
         val repeated = !heldKeys.add(event.keyCode)
+        return dispatchPress(event, panel, repeated).also { consumed ->
+            if (consumed) consumedKeys += event.keyCode
+        }
+    }
+
+    fun releaseHeldKeys() {
+        heldKeys.clear()
+    }
+
+    private fun dispatchPress(event: KeyEvent, panel: WindowsPlaybackPanel, repeated: Boolean): Boolean {
         val typing = event.component?.inputMethodRequests != null
         if (windowState.playback.startupStalled) {
             return when (windowsStartupStallKeyAction(event.keyCode)) {
@@ -60,7 +76,12 @@ internal fun WindowsPlayerShortcutEffect(
     DisposableEffect(windowState, callbacks) {
         val dispatcher = WindowsPlayerShortcutDispatcher(windowState, callbacks)
         val focusManager = KeyboardFocusManager.getCurrentKeyboardFocusManager()
+        val activeWindowListener = PropertyChangeListener { dispatcher.releaseHeldKeys() }
         focusManager.addKeyEventDispatcher(dispatcher)
-        onDispose { focusManager.removeKeyEventDispatcher(dispatcher) }
+        focusManager.addPropertyChangeListener("activeWindow", activeWindowListener)
+        onDispose {
+            focusManager.removePropertyChangeListener("activeWindow", activeWindowListener)
+            focusManager.removeKeyEventDispatcher(dispatcher)
+        }
     }
 }
