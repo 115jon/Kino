@@ -127,12 +127,18 @@ internal fun MpvEngine.pollPlayback(
             !state.initialSeekRecoveryIssued
     ) {
         val result = client.command("seek", "0", "absolute", "keyframes")
+        seekJournal.record("recovery", "initial-seek-timeout", 0L, positionMs)
         state.initialSeekRecoveryIssued = true
         state.initialSeekRequestedAtMs = 0L
         state.initialSeekTargetMs = 0L
         desktopPlayerTrace("initial seek recovery target=0 result=$result elapsedMs=$initialSeekElapsedMs")
     }
     val pendingLoad = pollLoadRequestGeneration != null
+    val positionRegression = if (!pendingLoad && path != null && !idle) {
+        seekJournal.observePosition(pollGeneration, positionMs, seeking)
+    } else {
+        null
+    }
     val hasLoadedMedia = !pendingLoad && PlayerPlaybackSnapshot(
         isLoading = isPlayerLoading,
         isPlaying = isPlayerPlaying,
@@ -234,6 +240,7 @@ internal fun MpvEngine.pollPlayback(
                 } else {
                     null
                 },
+                positionRegression,
                 tracks.metadataLog,
                 audioDiagnosticsLog,
                 videoPipelineLog,

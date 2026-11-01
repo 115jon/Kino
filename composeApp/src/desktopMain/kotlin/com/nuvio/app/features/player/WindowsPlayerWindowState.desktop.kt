@@ -20,6 +20,14 @@ internal class WindowsPlayerWindowState(
     var panelRef: WindowsPlaybackPanel? = null
 }
 
+internal fun traceWindowsPlayerFocus(surface: String, focused: Boolean) {
+    desktopPlayerTrace("window focus surface=$surface focused=$focused")
+}
+
+internal fun traceWindowsPlayerWindowState(surface: String, oldState: Int, newState: Int) {
+    desktopPlayerTrace("window state surface=$surface old=$oldState new=$newState")
+}
+
 internal interface WindowsPlaybackPanel {
     fun loadFile(
         url: String,
