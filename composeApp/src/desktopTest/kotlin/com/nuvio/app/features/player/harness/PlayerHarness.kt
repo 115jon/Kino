@@ -80,12 +80,13 @@ fun main() {
     configureWindowsComposeVideoRenderApi()
     Logger.setLogWriters(listOf(HarnessLogWriter))
     harnessLog("start surface=$surface media=${media.size} script=$script")
+    if (System.getProperty("kino.harness.runtime") == "true") return runPlayerRuntimeHarness(media.first(), script)
     application {
         Window(
             onCloseRequest = ::exitApplication,
             title = "Kino player harness",
-            focusable = false,
-            alwaysOnTop = true,
+            focusable = harnessWindowFocusable,
+            alwaysOnTop = !harnessWindowFocusable,
             state = rememberWindowState(width = 1280.dp, height = 800.dp),
         ) {
             DisposableEffect(window) {
@@ -96,6 +97,8 @@ fun main() {
             var index by remember { mutableIntStateOf(0) }
             var controller by remember { mutableStateOf<PlayerEngineController?>(null) }
             var lastPlaying by remember { mutableStateOf(false) }
+            val positionMonitor = remember { HarnessPositionMonitor() }
+            val focusDriver = remember(window) { HarnessFocusDriver(window) }
             MaterialTheme(colorScheme = darkColorScheme()) {
                 backend.PlayerSurface(
                     sourceUrl = media[index],
@@ -115,6 +118,7 @@ fun main() {
                     overlayContent = { HarnessOverlay(controller) },
                     onControllerReady = { controller = it },
                     onSnapshot = { snapshot ->
+                        positionMonitor.observe(snapshot)
                         if (snapshot.isPlaying != lastPlaying) {
                             lastPlaying = snapshot.isPlaying
                             harnessLog("playing=${snapshot.isPlaying} positionMs=${snapshot.positionMs}")
@@ -123,7 +127,7 @@ fun main() {
                     onError = { error -> if (error != null) harnessLog("error $error") },
                     onSurfaceInteraction = {},
                     onSurfaceExit = {},
-                    onWindowFocusChanged = { _, _ -> },
+                    onWindowFocusChanged = { focused, _ -> harnessLog("window focus focused=$focused") },
                 )
             }
             LaunchedEffect(controller != null) {
@@ -137,11 +141,20 @@ fun main() {
                         step.startsWith("wait") -> delay((argument.toDouble() * 1000).toLong())
                         step.startsWith("cpu") -> cpu.sample(argument.ifEmpty { "window" })
                         step.startsWith("reset") -> cpu.sample("discard")
+                        step.startsWith("alttab") -> focusDriver.cycle(argument.toInt(), 1_500L, 3_000L, minimize = false)
+                        step.startsWith("mincycle") -> focusDriver.cycle(argument.toInt(), 1_500L, 3_000L, minimize = true)
+                        step == "blur" -> focusDriver.blur()
+                        step == "focus" -> focusDriver.focus()
+                        step == "minimize" -> focusDriver.minimize()
+                        step == "restore" -> focusDriver.restore()
+                        step == "jumps" -> harnessLog("position-backwards total=${positionMonitor.backwardsJumps}")
                         step.startsWith("seekby") -> {
+                            positionMonitor.markSeek()
                             harnessLog("action seekby offsetMs=$argument")
                             active.seekBy(argument.toLong())
                         }
                         step.startsWith("seek") -> {
+                            positionMonitor.markSeek()
                             harnessLog("action seek targetMs=$argument")
                             active.seekTo(argument.toLong())
                         }
@@ -160,16 +173,19 @@ fun main() {
                         }
                         step.startsWith("shiftkey") -> {
                             harnessLog("action shift key code=$argument")
+                            positionMonitor.markSeek()
                             pressKey(window, argument.toInt(), java.awt.event.KeyEvent.SHIFT_DOWN_MASK)
                         }
                         step.startsWith("key") -> {
                             harnessLog("action key code=$argument")
+                            positionMonitor.markSeek()
                             pressKey(window, argument.toInt())
                         }
                         step == "pause" -> active.pause()
                         step == "play" -> active.play()
                         step == "exit" -> {
                             harnessLog("action exit")
+                            focusDriver.dispose()
                             exitApplication()
                         }
                     }
