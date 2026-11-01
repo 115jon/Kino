@@ -27,6 +27,7 @@ internal data class WindowsResolvedPlaybackUrls(
     val videoHeaders: Map<String, String>,
     val audioHeaders: Map<String, String>,
     val failed: Boolean = false,
+    val rateLimited: Boolean = false,
 )
 
 internal fun shouldAbortWindowsPlaybackLoad(resolved: WindowsResolvedPlaybackUrls): Boolean = resolved.failed
@@ -87,6 +88,7 @@ internal fun resolveWindowsPlaybackUrls(
         videoHeaders = videoResolution.headers,
         audioHeaders = resolvedAudioHeaders,
         failed = videoResolution.failed || audioResolution?.failed == true,
+        rateLimited = videoResolution.rateLimited || audioResolution?.rateLimited == true,
     )
 }
 
