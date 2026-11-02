@@ -389,6 +389,22 @@ internal class MpvEngine(
         }
     }
 
+    private fun handleRateLimitedLoad(current: MpvClient) {
+        val generation = playback.sourceGeneration
+        if (playback.rateLimitedGeneration == generation) return
+        playback.rateLimitedGeneration = generation
+        val sourceUrl = playback.currentSourceUrl
+        playbackRateLimitKey(sourceUrl)?.let { key -> PlaybackRateLimits.record(key, System.currentTimeMillis()) }
+        DesktopPlaybackUrlResolver.invalidate(sourceUrl)
+        if (playback.hasLoadedMedia || playback.isLoadTerminated(generation)) {
+            desktopPlayerTrace("$tracePrefix rate limited during playback generation=$generation")
+            return
+        }
+        playback.markTerminalError(PlaybackRateLimitedMessage, generation)
+        val stopResult = runCatching { current.command("stop") }.getOrDefault(-1)
+        desktopPlayerTrace("$tracePrefix rate limited load stopped generation=$generation stopResult=$stopResult")
+    }
+
     fun isActiveEntryCurrent(): Boolean =
         playback.pendingLoadRequestGeneration == null &&
             playback.activePlaylistEntryGeneration == playback.sourceGeneration
@@ -406,6 +422,7 @@ internal class MpvEngine(
                     is MpvClientEvent.LogMessage -> {
                         recordWindowsAudioUnderrun(playback, event.text)
                         traceMpvLogMessage(event)
+                        if (isRateLimitedPlaybackLog(event.text)) handleRateLimitedLoad(current)
                     }
                     is MpvClientEvent.PropertyChange -> {
                         properties.update(event.name, event.value)

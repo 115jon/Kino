@@ -29,6 +29,8 @@ internal class MpvPlaybackState {
     @Volatile
     var terminalPlaybackEndGeneration: Long? = null
     @Volatile
+    var rateLimitedGeneration: Long? = null
+    @Volatile
     var initialSeekRequestedAtMs = 0L
     @Volatile
     var initialSeekTargetMs = 0L

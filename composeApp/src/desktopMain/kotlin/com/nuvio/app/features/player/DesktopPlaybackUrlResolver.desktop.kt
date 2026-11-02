@@ -19,12 +19,15 @@ private fun desktopPlaybackUrlResolverTrace(message: String) {
 internal data class DesktopPlaybackRedirectResponse(
     val statusCode: Int,
     val location: String?,
+    val retryAfter: String? = null,
 )
 
 internal data class DesktopPlaybackUrlResolution(
     val url: String,
     val headers: Map<String, String>,
     val failed: Boolean = false,
+    val rateLimited: Boolean = false,
+    val retryAfter: String? = null,
 )
 
 private val desktopPlaybackRedirectStatusCodes = setOf(301, 302, 303, 307, 308)
@@ -168,6 +171,9 @@ internal fun resolveDesktopPlaybackRedirects(
 
     while (true) {
         val response = runCatching { request(currentUri, currentHeaders) }.getOrNull() ?: return failureResolution
+        if (response.statusCode == 429) {
+            return failureResolution.copy(rateLimited = true, retryAfter = response.retryAfter)
+        }
         if (response.statusCode !in desktopPlaybackRedirectStatusCodes) {
             return if (response.statusCode in 200..299) {
                 DesktopPlaybackUrlResolution(currentUri.toString(), currentHeaders)
@@ -217,6 +223,11 @@ internal object DesktopPlaybackUrlResolver {
         }
     }
 
+    fun invalidate(url: String) {
+        if (url.isBlank()) return
+        resolvedUrlCache.keys.removeIf { key -> key == url || key.startsWith(url + '\u0000') }
+    }
+
     fun resolveUrlIfNeeded(
         url: String,
         headers: Map<String, String>,
@@ -259,7 +270,13 @@ internal object DesktopPlaybackUrlResolver {
                 DesktopPlaybackRedirectResponse(
                     statusCode = response.statusCode(),
                     location = response.headers().firstValue("location").orElse(null),
+                    retryAfter = response.headers().firstValue("retry-after").orElse(null),
                 )
+            }
+            if (resolution.rateLimited) {
+                playbackRateLimitKey(url)?.let { key ->
+                    PlaybackRateLimits.record(key, System.currentTimeMillis(), resolution.retryAfter)
+                }
             }
             desktopPlaybackUrlResolverTrace(
                 "resolved sourceHost=$host finalUrl=${redactDesktopPlaybackUrlForLog(resolution.url)} " +

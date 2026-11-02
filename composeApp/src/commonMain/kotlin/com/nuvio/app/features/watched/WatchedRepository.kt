@@ -1285,7 +1285,8 @@ object WatchedRepository {
         if (items.isEmpty()) return WatchedPushOutcome(nuvioSyncSucceeded = true)
         var nuvioSyncSucceeded = false
         val succeededTrackerProviderIds = linkedSetOf<TrackingProviderId>()
-        if (source.providerId == null) {
+        val authState = AuthRepository.state.value
+        if (source.providerId == null && authState is AuthState.Authenticated && !authState.isAnonymous) {
             try {
                 syncAdapter.push(profileId = profileId, items = items)
                 nuvioSyncSucceeded = true

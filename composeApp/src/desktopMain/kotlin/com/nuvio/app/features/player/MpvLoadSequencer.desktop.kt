@@ -36,8 +36,13 @@ internal class MpvLoadSequencer(
         }
         resolutionJob?.cancel()
         resolutionJob = resolutionScope.launch {
-            val resolved = runInterruptible {
-                urlResolver.resolve(url, audioUrl, headers, forceResolve)
+            val resolved = if (isPlaybackRateLimited(url)) {
+                desktopPlayerTrace("$tracePrefix load skipped reason=rate-limit-cooldown host=${playbackUrlForLog(url)}")
+                WindowsResolvedPlaybackUrls(url, audioUrl, emptyMap(), emptyMap(), failed = true, rateLimited = true)
+            } else {
+                runInterruptible {
+                    urlResolver.resolve(url, audioUrl, headers, forceResolve)
+                }
             }
             if (!isActive) return@launch
             dispatcher.post {
@@ -72,7 +77,8 @@ internal class MpvLoadSequencer(
             val playback = engine.playback
             val loadGeneration = playback.sourceGeneration
             if (shouldAbortWindowsPlaybackLoad(resolved)) {
-                playback.failLoad("Playback URL resolution failed", loadGeneration)
+                val message = if (resolved.rateLimited) PlaybackRateLimitedMessage else "Playback URL resolution failed"
+                playback.failLoad(message, loadGeneration)
                 desktopPlayerTrace("$tracePrefix playback URL resolution failed generation=$loadGeneration")
                 return@withLock
             }
@@ -177,6 +183,12 @@ internal class MpvLoadSequencer(
         }
     }
 }
+
+internal fun isPlaybackRateLimited(
+    url: String,
+    nowEpochMs: Long = System.currentTimeMillis(),
+    cooldown: PlaybackRateLimitCooldown = PlaybackRateLimits,
+): Boolean = cooldown.remainingMs(playbackRateLimitKey(url), nowEpochMs) > 0L
 
 internal fun mpvLoadFileArgs(url: String, startPositionMs: Long?): Array<String> {
     val startMs = startPositionMs?.takeIf { it > 0L } ?: return arrayOf("loadfile", url, "replace")

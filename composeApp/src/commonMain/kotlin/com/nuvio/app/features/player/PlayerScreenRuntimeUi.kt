@@ -368,13 +368,14 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi() {
                             playerControllerSourceIdentityKey != playerSurfaceSourceIdentityKey ||
                             playerControllerSourceAttemptToken != playerSurfaceAttemptToken
                         ) return@PlatformPlayerSurface
-                        if (message != null && tryRefreshCredentialedSourceAfterError(message)) {
+                        val rateLimited = isPlaybackRateLimitedMessage(message)
+                        if (message != null && !rateLimited && tryRefreshCredentialedSourceAfterError(message)) {
                             return@PlatformPlayerSurface
                         }
                         if (message != null) {
                             removeFailedStreamFromCache()
                         }
-                        if (message != null && handleStartupFallbackFailure()) {
+                        if (message != null && !rateLimited && handleStartupFallbackFailure()) {
                             return@PlatformPlayerSurface
                         }
                         errorMessage = message

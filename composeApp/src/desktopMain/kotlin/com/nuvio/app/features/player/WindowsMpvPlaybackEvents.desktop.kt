@@ -65,7 +65,9 @@ internal fun handleWindowsMpvEndFileEvent(
         currentSourceGeneration = state.sourceGeneration,
         hasLoadedMedia = state.hasLoadedMedia,
     )
-    if (playbackError != null) {
+    val rateLimitReported = isPlaybackRateLimitedMessage(state.terminalPlaybackError) &&
+        state.terminalPlaybackErrorGeneration == state.sourceGeneration
+    if (playbackError != null && !rateLimitReported) {
         state.terminalPlaybackError = playbackError
         state.terminalPlaybackErrorGeneration = state.sourceGeneration
     }
