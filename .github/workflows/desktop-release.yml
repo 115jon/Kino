@@ -50,6 +50,8 @@ jobs:
           NUVIO_SUPABASE_URL: ${{ secrets.KINO_SUPABASE_URL }}
           NUVIO_SUPABASE_ANON_KEY: ${{ secrets.KINO_SUPABASE_ANON_KEY }}
           INTRODB_API_URL: ${{ secrets.KINO_INTRODB_API_URL }}
+          LOGS_URL: ${{ vars.LOGS_URL }}
+          LOGS_INGEST_KEY: ${{ secrets.LOGS_INGEST_KEY }}
         run: |
           if ([string]::IsNullOrWhiteSpace($env:NUVIO_SUPABASE_URL)) {
             throw "KINO_SUPABASE_URL is not configured."
@@ -61,6 +63,8 @@ jobs:
           NUVIO_SUPABASE_URL=$env:NUVIO_SUPABASE_URL
           NUVIO_SUPABASE_ANON_KEY=$env:NUVIO_SUPABASE_ANON_KEY
           INTRODB_API_URL=$env:INTRODB_API_URL
+          LOGS_URL=$env:LOGS_URL
+          LOGS_INGEST_KEY=$env:LOGS_INGEST_KEY
           "@ | Set-Content -Path local.properties -Encoding ascii
 
       - name: Initialize MSVC environment

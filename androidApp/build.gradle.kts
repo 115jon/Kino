@@ -3,7 +3,6 @@ import java.util.Properties
 plugins {
     alias(libs.plugins.androidApplication)
     alias(libs.plugins.composeCompiler)
-    alias(libs.plugins.sentry.android.gradle)
 }
 
 val localProps = Properties().apply {
@@ -17,14 +16,6 @@ val releaseKeyPassword = localProps.getProperty("NUVIO_RELEASE_KEY_PASSWORD")?.t
 val releaseKeystore = releaseStoreFile?.let(rootProject::file)
 val releaseSigningConfigured = releaseKeystore != null && releaseStorePassword != null &&
     releaseKeyAlias != null && releaseKeyPassword != null
-fun envOrLocalProperty(key: String): String? =
-    providers.environmentVariable(key).orNull?.trim()?.takeIf { it.isNotBlank() }
-        ?: localProps.getProperty(key)?.trim()?.takeIf { it.isNotBlank() }
-
-val sentryAuthToken = envOrLocalProperty("SENTRY_AUTH_TOKEN")
-val sentryOrg = envOrLocalProperty("SENTRY_ORG")
-val sentryProject = envOrLocalProperty("SENTRY_PROJECT")
-val sentryMappingUploadEnabled = sentryAuthToken != null && sentryOrg != null && sentryProject != null
 fun readVersionProperty(file: File, key: String): String? {
     if (!file.exists()) return null
     return Properties().apply { file.inputStream().use(::load) }.getProperty(key)?.trim()
@@ -127,28 +118,6 @@ android {
 androidComponents {
     onVariants(selector().withBuildType("debug")) { variant ->
         variant.applicationId.set("site.x115jon.kino.debug")
-    }
-}
-
-sentry {
-    includeProguardMapping.set(true)
-    autoUploadProguardMapping.set(sentryMappingUploadEnabled)
-    uploadNativeSymbols.set(false)
-    autoUploadNativeSymbols.set(false)
-    includeNativeSources.set(false)
-    includeSourceContext.set(false)
-    autoUploadSourceContext.set(false)
-    includeDependenciesReport.set(false)
-    telemetry.set(false)
-    sentryAuthToken?.let(authToken::set)
-    sentryOrg?.let(org::set)
-    sentryProject?.let(projectName::set)
-    ignoredBuildTypes.set(setOf("debug"))
-    autoInstallation {
-        enabled.set(false)
-    }
-    tracingInstrumentation {
-        enabled.set(false)
     }
 }
 

@@ -1,15 +1,15 @@
 package com.nuvio.app.core.logging
 
 import co.touchlab.kermit.LogWriter
-import co.touchlab.kermit.Logger
 import co.touchlab.kermit.Severity
+import com.nuvio.app.core.diagnostics.installJvmCrashHandler
 import java.io.File
 import java.time.Instant
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import kotlin.random.Random
 
-private const val desktopLogFileName = "kino.log"
+internal const val desktopLogFileName = "kino.log"
 
 private val desktopTimestampFormatter: DateTimeFormatter =
     DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
@@ -52,7 +52,7 @@ internal fun initializeDesktopAppLogging() {
                 ),
             ),
             logDirectoryPath = storage.directoryPath,
-            installCrashHandler = ::installDesktopCrashLogging,
+            installCrashHandler = ::installJvmCrashHandler,
         ),
     )
 }
@@ -135,7 +135,7 @@ private fun desktopCurrentTimestamp(): String =
 private fun desktopCurrentThreadName(): String =
     Thread.currentThread().name.takeUnless { it.isBlank() } ?: "main"
 
-private fun isDesktopDebugRuntime(): Boolean {
+internal fun isDesktopDebugRuntime(): Boolean {
     val classPath = System.getProperty("java.class.path").orEmpty().lowercase()
     return classPath.contains("/classes/kotlin/desktop") ||
         classPath.contains("\\classes\\kotlin\\desktop") ||
@@ -143,7 +143,7 @@ private fun isDesktopDebugRuntime(): Boolean {
         classPath.contains("\\composeapp\\build\\")
 }
 
-private fun desktopLogsDirectory(): File {
+internal fun desktopLogsDirectory(): File {
     val osName = System.getProperty("os.name").orEmpty().lowercase()
     return when {
         osName.contains("win") -> {
@@ -167,15 +167,5 @@ private fun desktopLogsDirectory(): File {
                 .resolve("Kino")
                 .resolve("logs")
         }
-    }
-}
-
-private fun installDesktopCrashLogging() {
-    val previousHandler = Thread.getDefaultUncaughtExceptionHandler()
-    Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
-        Logger.withTag("UncaughtException").a(throwable) {
-            "uncaught exception on thread=${thread.name}"
-        }
-        previousHandler?.uncaughtException(thread, throwable)
     }
 }

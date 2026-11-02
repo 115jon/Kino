@@ -4,15 +4,15 @@ import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.util.Log
 import co.touchlab.kermit.LogWriter
-import co.touchlab.kermit.Logger
 import co.touchlab.kermit.Severity
+import com.nuvio.app.core.diagnostics.installJvmCrashHandler
 import java.io.File
 import java.time.Instant
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import kotlin.random.Random
 
-private const val androidLogFileName = "nuvio.log"
+internal const val androidLogFileName = "nuvio.log"
 
 private val androidTimestampFormatter: DateTimeFormatter =
     DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
@@ -55,7 +55,7 @@ internal fun initializeAndroidAppLogging(context: Context) {
                 ),
             ),
             logDirectoryPath = storage.directoryPath,
-            installCrashHandler = ::installAndroidCrashLogging,
+            installCrashHandler = ::installJvmCrashHandler,
         ),
     )
 }
@@ -154,13 +154,3 @@ private fun androidCurrentTimestamp(): String =
 
 private fun androidCurrentThreadName(): String =
     Thread.currentThread().name.takeUnless { it.isBlank() } ?: "main"
-
-private fun installAndroidCrashLogging() {
-    val previousHandler = Thread.getDefaultUncaughtExceptionHandler()
-    Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
-        Logger.withTag("UncaughtException").a(throwable) {
-            "uncaught exception on thread=${thread.name}"
-        }
-        previousHandler?.uncaughtException(thread, throwable)
-    }
-}

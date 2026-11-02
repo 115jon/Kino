@@ -3,6 +3,8 @@ package com.nuvio.app.core.logging
 import co.touchlab.kermit.LogWriter
 import co.touchlab.kermit.Logger
 import co.touchlab.kermit.Severity
+import kotlin.random.Random
+import kotlin.time.Clock
 
 internal enum class AppLogMode {
     Debug,
@@ -52,6 +54,16 @@ internal data class AppLoggingRuntime(
 internal object AppLogging {
     private val initLock = Any()
     private var initialized = false
+    private var activeSessionId: String? = null
+    private val fallbackSessionId: String by lazy {
+        buildAppLogSessionId(
+            epochMillis = Clock.System.now().toEpochMilliseconds(),
+            randomToken = Random.nextInt().toUInt(),
+        )
+    }
+
+    val sessionId: String
+        get() = activeSessionId ?: fallbackSessionId
 
     fun initialize(runtime: AppLoggingRuntime) {
         synchronized(initLock) {
@@ -59,6 +71,7 @@ internal object AppLogging {
                 return
             }
 
+            activeSessionId = runtime.sessionId
             Logger.setMinSeverity(runtime.policy.globalMinSeverity)
             Logger.setLogWriters(runtime.writers)
             runtime.installCrashHandler?.invoke()

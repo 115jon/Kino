@@ -1908,21 +1908,6 @@
         <item quantity="other">%d cím</item>
     </plurals>
     <string name="settings_advanced_section_diagnostics">DIAGNOSZTIKA</string>
-    <string name="settings_advanced_sentry_reports">Sentry összeomlási jelentések</string>
-    <string name="settings_advanced_sentry_reports_subtitle">Összeomlási és ANR (nem válaszoló app) jelentések küldése biztonságos környezeti adatokkal. Alapértelmezés szerint be van kapcsolva.</string>
-    <string name="sentry_enable_dialog_title">Bekapcsolja az összeomlási jelentéseket?</string>
-    <string name="sentry_enable_dialog_subtitle">Az összeomlási jelentések segítenek azonosítani az eszközspecifikus hibákat anélkül, hogy meg kellene ismételnie a hibát ADB logok mentésével.</string>
-    <string name="sentry_disable_dialog_title">Kikapcsolja az összeomlási jelentéseket?</string>
-    <string name="sentry_disable_dialog_subtitle">A jövőbeli összeomlások és a jelenlegi ANR hibák erről az eszközről nem lesznek jelentve. Ez jelentősen megnehezítheti az eszközspecifikus hibák javítását.</string>
-    <string name="sentry_help_title">Hogyan segít ez?</string>
-    <string name="sentry_help_body">A jelentések alkalmazásverzió, eszközmodell, Android-verzió és stack trace (hibakövetési fonal) alapján vannak csoportosítva, így a leggyakoribb valós összeomlások javíthatók először.</string>
-    <string name="sentry_sent_title">Elküldött adatok</string>
-    <string name="sentry_sent_body">Összeomlások, jelenlegi ANR-ek, stack trace-ek, alkalmazásverzió, build típusa, flavor, eszköz és OS metaadatok, valamint biztonságos hálózati morzsák (metódus, hoszt, elérés, státusz, időtartam és kivétel típusa).</string>
-    <string name="sentry_not_sent_title">Nem elküldött adatok</string>
-    <string name="sentry_not_sent_body">Jelszavak, hozzáférési tokenek, frissítési tokenek, kérések és válaszok törzsei, fejlécek, sütik, képernyőképek, nézethierarchia, munkamenet-visszajátszás, nyers diagnosztika, valamint a stream URL lekérdezési (query) vagy töredék (fragment) értékei.</string>
-    <string name="sentry_keep_enabled">Maradjon bekapcsolva</string>
-    <string name="sentry_turn_off">Kikapcsolás</string>
-    <string name="sentry_turn_on">Bekapcsolás</string>
     <string name="downloads_open_directory">Letöltési mappa megnyitása</string>
     <string name="downloads_open_directory_failed">Nem sikerült megnyitni a letöltési mappát</string>
     <string name="settings_card_depth_title">KÁRTYÁK MÉLYSÉG-EFFEKTUSA</string>

@@ -9,6 +9,8 @@ import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import co.touchlab.kermit.Logger
+import com.nuvio.app.core.diagnostics.CrashReporter
+import com.nuvio.app.core.diagnostics.DesktopRendererInfo
 import com.nuvio.app.core.logging.initializeDesktopAppLogging
 import com.nuvio.app.features.player.prewarmDesktopPlaybackBackend
 import com.nuvio.app.features.player.compose.configureWindowsComposeVideoRenderApi
@@ -20,8 +22,10 @@ import androidx.compose.ui.unit.dp
 import java.awt.Dimension
 import java.awt.Frame
 import java.awt.EventQueue
+import kotlinx.coroutines.delay
 
 private val DesktopMinimumInteractiveSize = 40.dp
+private const val RendererInfoCaptureDelayMs = 3_000L
 private val singleInstanceLogger = Logger.withTag("DesktopSingleInstance")
 
 internal fun restoredDesktopWindowState(extendedState: Int): Int =
@@ -94,6 +98,7 @@ fun main() {
         else -> Unit
     }
     if (!shouldStartDesktopApplication(instanceLaunch)) return
+    CrashReporter.start()
     val instanceCoordinator = (instanceLaunch as? DesktopInstanceLaunch.Primary)?.coordinator
 
     try {
@@ -123,6 +128,11 @@ fun main() {
 
                 LaunchedEffect(Unit) {
                     prewarmDesktopPlaybackBackend()
+                }
+
+                LaunchedEffect(window) {
+                    delay(RendererInfoCaptureDelayMs)
+                    DesktopRendererInfo.capture(window)
                 }
 
                 CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides DesktopMinimumInteractiveSize) {

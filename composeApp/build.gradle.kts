@@ -43,10 +43,10 @@ abstract class GenerateRuntimeConfigsTask : DefaultTask() {
     abstract val supabaseFallbackUrl: Property<String>
 
     @get:Input
-    abstract val sentryDsn: Property<String>
+    abstract val logsUrl: Property<String>
 
     @get:Input
-    abstract val sentryEnvironment: Property<String>
+    abstract val logsIngestKey: Property<String>
 
     @get:Input
     abstract val tmdbApiKey: Property<String>
@@ -74,13 +74,13 @@ abstract class GenerateRuntimeConfigsTask : DefaultTask() {
 
         outDir.resolve("com/nuvio/app/core/diagnostics").apply {
             mkdirs()
-            resolve("SentryConfig.kt").writeText(
+            resolve("LogbookConfig.kt").writeText(
                 """
                 |package com.nuvio.app.core.diagnostics
                 |
-                |object SentryConfig {
-                |    const val DSN = "${sentryDsn.get()}"
-                |    const val ENVIRONMENT = "${sentryEnvironment.get()}"
+                |internal object LogbookConfig {
+                |    const val URL = "${logsUrl.get()}"
+                |    const val INGEST_KEY = "${logsIngestKey.get()}"
                 |}
                 """.trimMargin()
             )
@@ -364,6 +364,7 @@ val iosDistributionSourceDir = if (iosDistribution == "full") {
 val iosFrameworkBundleId = "com.nuvio.media"
 val nuvioEngineAppleFramework = rootProject.file("../nuvio-engine/platform/apple/NuvioEngine.xcframework")
 val fullCommonSourceDir = project.file("src/fullCommonMain/kotlin")
+val jvmSharedSourceDir = project.file("src/jvmSharedMain/kotlin")
 val generatedRuntimeConfigDir = layout.buildDirectory.dir("generated/runtime-config/kotlin")
 val requestedGradleTasks = gradle.startParameter.taskNames.map { taskName ->
     taskName.substringAfterLast(':').lowercase()
@@ -431,15 +432,9 @@ val generateRuntimeConfigs = tasks.register<GenerateRuntimeConfigsTask>("generat
     supabaseUrl.set(runtimeConfigValueFromKey("NUVIO_SUPABASE_URL", fallbackKey = "SUPABASE_URL"))
     supabaseAnonKey.set(runtimeConfigValueFromKey("NUVIO_SUPABASE_ANON_KEY", fallbackKey = "SUPABASE_ANON_KEY"))
     supabaseFallbackUrl.set(runtimeConfigValue("NUVIO_SUPABASE_FALLBACK_URL"))
-    sentryDsn.set(runtimeConfigValue("SENTRY_DSN"))
+    logsUrl.set(runtimeConfigValue("LOGS_URL"))
+    logsIngestKey.set(runtimeConfigValue("LOGS_INGEST_KEY"))
     tmdbApiKey.set(runtimeConfigValue("TMDB_API_KEY"))
-    sentryEnvironment.set(
-        when {
-            requestedGradleTasks.any { "benchmark" in it } -> "benchmark"
-            requestedGradleTasks.any { "debug" in it } -> "debug"
-            else -> "production"
-        }
-    )
 }
 
 tasks.withType<KotlinCompilationTask<*>>().configureEach {
@@ -547,6 +542,7 @@ kotlin {
             kotlin.srcDir(generatedRuntimeConfigDir)
         }
         val desktopMain by getting {
+            kotlin.srcDir(jvmSharedSourceDir)
             resources.exclude("win32-x86-64/mpv.dll")
             if (isWindowsHost) {
                 resources.srcDir(layout.buildDirectory.dir("generated/windows-media-session"))
@@ -561,6 +557,7 @@ kotlin {
         }
         androidMain {
             kotlin.srcDir(project.file(androidDistributionSourceDir))
+            kotlin.srcDir(jvmSharedSourceDir)
             if (androidDistribution == "full") {
                 kotlin.srcDir(fullCommonSourceDir)
             }
@@ -578,7 +575,6 @@ kotlin {
                 // libass - atlas-based subtitle rendering (from NuvioMedia/nuvio-libass)
                 implementation(files("libs/nuvio-libass-release.aar"))
                 implementation(libs.ktor.client.okhttp)
-                implementation(libs.sentry.android)
                 implementation(libs.androidx.media3.exoplayer.hls)
                 implementation(libs.androidx.media3.exoplayer.dash)
                 implementation(libs.androidx.media3.exoplayer.smoothstreaming)
@@ -690,7 +686,7 @@ compose.desktop {
             packageVersion = releaseAppVersionName
             description = "Kino desktop streaming app"
             vendor = "Kino"
-            modules("java.net.http")
+            modules("java.net.http", "jdk.management")
             targetFormats(org.jetbrains.compose.desktop.application.dsl.TargetFormat.Dmg)
             macOS {
                 dockName = "Kino"
@@ -729,6 +725,19 @@ tasks.register<JavaExec>("runThemeHarness") {
     systemProperties(
         System.getProperties().stringPropertyNames()
             .filter { it.startsWith("kino.") || it.startsWith("skiko.") }
+            .associateWith(System::getProperty),
+    )
+}
+
+tasks.register<JavaExec>("runSendLogsHarness") {
+    description = "Sends one manual report to Logbook through the Send logs pipeline."
+    dependsOn(desktopTestCompilation.compileAllTaskName)
+    classpath(desktopTestCompilation.output.allOutputs, desktopTestCompilation.runtimeDependencyFiles)
+    mainClass.set("com.nuvio.app.harness.SendLogsHarnessKt")
+    jvmArgs(providers.gradleProperty("kino.harness.jvmArgs").orNull?.split(' ')?.filter(String::isNotBlank).orEmpty())
+    systemProperties(
+        System.getProperties().stringPropertyNames()
+            .filter { it.startsWith("kino.") }
             .associateWith(System::getProperty),
     )
 }
