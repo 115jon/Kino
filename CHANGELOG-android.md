@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.4.0](https://github.com/115jon/Kino/compare/android-v0.3.0...android-v0.4.0) (2026-11-02)
+
+
+### Features
+
+* **diagnostics:** ✨ send logs and crash reports to logbook ([418a7e0](https://github.com/115jon/Kino/commit/418a7e0aa65b809b4f9729c57fa297f81fb15cc5))
+* **diagnostics:** send logs and crash reports to Logbook ([0062f4e](https://github.com/115jon/Kino/commit/0062f4e462e1b1511f868f40c3c4d05aed0755cb))
+
+
+### Bug Fixes
+
+* **player:** 🐛 seek from the timeline only after a real scrub ([4c44b79](https://github.com/115jon/Kino/commit/4c44b79553000c7ec4b6a0cafc74fb489d9d4bfa))
+* **player:** 🐛 stop loads and back off when a provider returns 429 ([d7b01ac](https://github.com/115jon/Kino/commit/d7b01ac966a1c34dc2cb80da1d3732afb0c88775))
+* **player:** guard against unrequested backwards seeks and trace seek causes ([722cce6](https://github.com/115jon/Kino/commit/722cce65be4aaba8e9a0add34a4a684e6276e482))
+* **player:** stop loads and back off when a provider returns 429 ([01eccac](https://github.com/115jon/Kino/commit/01eccacd80ac6995cdb9a69aeab6e2e9a92ee10d))
+* **streams:** 🐛 coalesce duplicate addon requests ([25df975](https://github.com/115jon/Kino/commit/25df975cac867c57fa12444e1c741b26d6e237b3))
+* **sync:** 🐛 skip nuvio sync pushes without a signed-in session ([137e55a](https://github.com/115jon/Kino/commit/137e55a805ea31748df3d87f3e145ce27bc82d22))
+
 ## [0.3.0](https://github.com/115jon/Kino/compare/android-v0.2.24...android-v0.3.0) (2026-10-28)
 
 
