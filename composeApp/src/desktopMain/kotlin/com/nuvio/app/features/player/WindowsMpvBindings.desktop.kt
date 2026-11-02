@@ -57,6 +57,7 @@ internal const val MPV_EVENT_PROPERTY_CHANGE = 22
 internal const val MPV_EVENT_START_FILE = 6
 internal const val MPV_EVENT_END_FILE = 7
 internal const val MPV_EVENT_FILE_LOADED = 8
+internal const val MPV_EVENT_SEEK = 20
 internal const val MPV_EVENT_PLAYBACK_RESTART = 21
 internal const val MPV_FORMAT_STRING = 1
 internal const val MPV_FORMAT_FLAG = 3

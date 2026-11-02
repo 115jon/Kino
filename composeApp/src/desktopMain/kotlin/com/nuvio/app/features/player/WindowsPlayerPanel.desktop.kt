@@ -112,6 +112,7 @@ internal class WindowsPlayerPanel(
     }
     private val windowFocusListener = object : WindowAdapter() {
         override fun windowGainedFocus(e: WindowEvent) {
+            traceWindowsPlayerFocus("native", focused = true)
             onWindowFocusChanged(true, windowHandle())
             scheduleOverlayWindowBoundsUpdate()
             overlayWindow?.isVisible = true
@@ -121,6 +122,7 @@ internal class WindowsPlayerPanel(
         override fun windowLostFocus(e: WindowEvent) {
             SwingUtilities.invokeLater {
                 if (!isPlayerWindowActive()) {
+                    traceWindowsPlayerFocus("native", focused = false)
                     onWindowFocusChanged(false, windowHandle())
                     notifySurfaceExit()
                 }
@@ -130,6 +132,7 @@ internal class WindowsPlayerPanel(
     private val windowStateListener = object : WindowAdapter() {
         override fun windowStateChanged(e: WindowEvent) {
             val window = e.window
+            traceWindowsPlayerWindowState("native", e.oldState, e.newState)
             val isIconified = (e.newState and Frame.ICONIFIED) != 0
             if (!shouldRestoreWindowsFullscreen(fullscreenState.isActive(window), isIconified)) return
             SwingUtilities.invokeLater {

@@ -889,10 +889,11 @@ private fun TimelineProgressControls(
             onScrubChange(positionMs)
         },
         onValueChangeFinished = {
-            val positionMs = (dragPositionMs ?: displayedPositionMs).coerceIn(0L, durationMs)
-            pendingSeekPositionMs = positionMs
-            pendingSeekStartedAt = TimeSource.Monotonic.markNow()
-            onScrubFinished(positionMs)
+            timelineScrubCommitTarget(dragPositionMs, durationMs)?.let { positionMs ->
+                pendingSeekPositionMs = positionMs
+                pendingSeekStartedAt = TimeSource.Monotonic.markNow()
+                onScrubFinished(positionMs)
+            }
         },
         valueRange = 0f..durationMs.toFloat(),
     )

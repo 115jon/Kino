@@ -47,6 +47,9 @@ import com.nuvio.app.core.i18n.localizedEpisodeTitle
 
 internal val PlayerTimelineContentInset = 2.dp
 
+internal fun timelineScrubCommitTarget(scrubPositionMs: Long?, durationMs: Long): Long? =
+    scrubPositionMs?.coerceIn(0L, durationMs.coerceAtLeast(0L))
+
 @Composable
 internal fun PlayerTimelineDetails(
     title: String,
@@ -135,7 +138,7 @@ internal fun PlayerTimeline(
                 onScrubChange(position)
             },
             onValueChangeFinished = {
-                onScrubFinished((scrubPosition ?: displayedPositionMs).coerceIn(0L, durationMs))
+                timelineScrubCommitTarget(scrubPosition, durationMs)?.let(onScrubFinished)
                 scrubPosition = null
             },
             enabled = enabled && durationMs > 0L,

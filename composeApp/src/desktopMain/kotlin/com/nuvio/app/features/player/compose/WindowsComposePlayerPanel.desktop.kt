@@ -8,6 +8,8 @@ import com.nuvio.app.features.player.SwingStateNotifier
 import com.nuvio.app.features.player.WindowsPlaybackPanel
 import com.nuvio.app.features.player.WindowsPlayerWindowState
 import com.nuvio.app.features.player.shouldRestoreWindowsFullscreen
+import com.nuvio.app.features.player.traceWindowsPlayerFocus
+import com.nuvio.app.features.player.traceWindowsPlayerWindowState
 import com.sun.jna.Native
 import com.sun.jna.Pointer
 import java.awt.Frame
@@ -41,15 +43,18 @@ internal class WindowsComposePlayerPanel(
     )
     private val focusListener = object : WindowAdapter() {
         override fun windowGainedFocus(e: WindowEvent) {
+            traceWindowsPlayerFocus("compose", focused = true)
             onWindowFocusChanged(true, windowHandle())
         }
 
         override fun windowLostFocus(e: WindowEvent) {
+            traceWindowsPlayerFocus("compose", focused = false)
             onWindowFocusChanged(false, windowHandle())
         }
     }
     private val stateListener = object : WindowAdapter() {
         override fun windowStateChanged(e: WindowEvent) {
+            traceWindowsPlayerWindowState("compose", e.oldState, e.newState)
             val iconified = (e.newState and Frame.ICONIFIED) != 0
             if (!shouldRestoreWindowsFullscreen(fullscreenState.isActive(e.window), iconified)) return
             SwingUtilities.invokeLater { if (!disposed) fullscreenState.restore(e.window) }

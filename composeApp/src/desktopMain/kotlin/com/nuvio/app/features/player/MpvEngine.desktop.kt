@@ -35,6 +35,7 @@ internal class MpvEngine(
     val loadRequestGate = WindowsPlaybackLoadRequestGate()
     val playback = MpvPlaybackState()
     val properties = MpvPropertyCache()
+    val seekJournal = MpvSeekJournal()
 
     private val settled = MutableStateFlow(false)
 
@@ -175,6 +176,10 @@ internal class MpvEngine(
         forceResolve: Boolean = false,
         startPositionMs: Long? = null,
     ) {
+        desktopPlayerTrace(
+            "$tracePrefix load request cause=${mpvSeekCallSite()} host=${playbackUrlForLog(url)} " +
+                "startMs=${startPositionMs ?: 0L} forceResolve=$forceResolve",
+        )
         loader.load(url, audioUrl, headers, onCommitted, forceResolve, startPositionMs)
     }
 
@@ -186,35 +191,44 @@ internal class MpvEngine(
 
     fun restorePositionAfterLoad(loadGeneration: Long, positionSeconds: Double) {
         val expectedClient = client ?: return
+        val cause = mpvSeekCallSite()
         dispatcher.postDelayed(500) {
             withClient { current ->
                 if (current === expectedClient && playback.sourceGeneration == loadGeneration) {
-                    current.command("seek", String.format("%.3f", positionSeconds), "absolute")
+                    runSeek(current, "restore", cause, (positionSeconds * 1000).toLong(), "seek", mpvSeconds(positionSeconds), "absolute")
                 }
             }
         }
     }
 
     fun setPaused(paused: Boolean) {
-        setProperty("pause", if (paused) "yes" else "no")
+        val cause = mpvSeekCallSite()
+        postCommand { current ->
+            val wasPaused = current.getProperty("pause") == "yes"
+            val result = current.setProperty("pause", if (paused) "yes" else "no")
+            if (wasPaused != paused) desktopPlayerTrace("pause request paused=$paused cause=$cause result=$result")
+        }
     }
 
     fun togglePause() {
-        command("cycle", "pause")
+        val cause = mpvSeekCallSite()
+        postCommand { current ->
+            val result = current.command("cycle", "pause")
+            desktopPlayerTrace("pause toggle cause=$cause result=$result")
+        }
     }
 
     fun seekTo(positionMs: Long) {
-        val seconds = positionMs / 1000.0
+        val cause = mpvSeekCallSite()
         postCommand { current ->
-            val result = current.command("seek", String.format("%.3f", seconds), "absolute")
-            desktopPlayerTrace("seek command targetMs=$positionMs result=$result")
+            runSeek(current, "absolute", cause, positionMs, "seek", mpvSeconds(positionMs / 1000.0), "absolute")
         }
     }
 
     fun seekToKeyframe(positionMs: Long) {
-        val seconds = positionMs / 1000.0
+        val cause = mpvSeekCallSite()
         postCommand { current ->
-            val result = current.command("seek", String.format("%.3f", seconds), "absolute", "keyframes")
+            val result = runSeek(current, "keyframe", cause, positionMs, "seek", mpvSeconds(positionMs / 1000.0), "absolute", "keyframes")
             if (result == 0) {
                 playback.initialSeekRequestedAtMs = System.currentTimeMillis()
                 playback.initialSeekTargetMs = positionMs
@@ -223,13 +237,25 @@ internal class MpvEngine(
                 playback.initialSeekRequestedAtMs = 0L
                 playback.initialSeekTargetMs = 0L
             }
-            desktopPlayerTrace("keyframe seek command targetMs=$positionMs result=$result")
         }
     }
 
     fun seekBy(offsetMs: Long) {
-        val seconds = offsetMs / 1000.0
-        command("seek", String.format("%.3f", seconds), "relative")
+        val cause = mpvSeekCallSite()
+        postCommand { current ->
+            runSeek(current, "relative", cause, null, "seek", mpvSeconds(offsetMs / 1000.0), "relative+exact")
+        }
+    }
+
+    private fun runSeek(current: MpvClient, kind: String, cause: String, targetMs: Long?, vararg args: String): Int {
+        val fromMs = current.getProperty("time-pos")?.toDoubleOrNull()?.let { (it * 1000).toLong() }
+        val result = current.command(*args)
+        seekJournal.record(kind, cause, targetMs, fromMs)
+        desktopPlayerTrace(
+            "seek command kind=$kind cause=$cause fromMs=${fromMs ?: -1L} " +
+                "target=${targetMs ?: args.getOrNull(1)} generation=${playback.sourceGeneration} result=$result",
+        )
+        return result
     }
 
     fun setSpeed(speed: Float) {
@@ -444,6 +470,9 @@ internal class MpvEngine(
                         eventCount += 1
                     }
                     is MpvClientEvent.Other -> {
+                        if (event.id == MPV_EVENT_SEEK) {
+                            desktopPlayerTrace("mpv event seek generation=${playback.sourceGeneration} ${seekJournal.describeLastSeek()}")
+                        }
                         if (event.id == MPV_EVENT_PLAYBACK_RESTART && isActiveEntryCurrent()) {
                             onPlaybackRestart(playback.sourceGeneration)
                         }
@@ -470,3 +499,5 @@ internal fun mpvResizeModeOptions(resizeMode: PlayerResizeMode): List<Pair<Strin
     PlayerResizeMode.Fill -> listOf("panscan" to "1.0", "video-unscaled" to "no")
     PlayerResizeMode.Zoom -> listOf("panscan" to "0.0", "video-unscaled" to "downscale-big")
 }
+
+private fun mpvSeconds(seconds: Double): String = String.format(java.util.Locale.ROOT, "%.3f", seconds)

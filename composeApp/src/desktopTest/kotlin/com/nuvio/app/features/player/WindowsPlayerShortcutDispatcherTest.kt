@@ -85,6 +85,34 @@ class WindowsPlayerShortcutDispatcherTest {
     }
 
     @Test
+    fun `releases of consumed shortcuts never reach compose`() {
+        assertTrue(dispatcher.dispatchKeyEvent(keyEvent(KeyEvent.VK_LEFT)))
+        assertTrue(dispatcher.dispatchKeyEvent(keyEvent(KeyEvent.VK_LEFT, id = KeyEvent.KEY_RELEASED)))
+        assertTrue(dispatcher.dispatchKeyEvent(keyEvent(KeyEvent.VK_SPACE)))
+        assertTrue(dispatcher.dispatchKeyEvent(keyEvent(KeyEvent.VK_SPACE, id = KeyEvent.KEY_RELEASED)))
+        assertEquals(listOf<PlayerShortcut>(PlayerShortcut.Seek(-10_000L), PlayerShortcut.TogglePlayback), received)
+    }
+
+    @Test
+    fun `releases of keys the player ignored pass through`() {
+        val textField = TextInputComponent()
+        assertFalse(dispatcher.dispatchKeyEvent(keyEvent(KeyEvent.VK_TAB)))
+        assertFalse(dispatcher.dispatchKeyEvent(keyEvent(KeyEvent.VK_TAB, id = KeyEvent.KEY_RELEASED)))
+        assertFalse(dispatcher.dispatchKeyEvent(keyEvent(KeyEvent.VK_LEFT, source = textField)))
+        assertFalse(dispatcher.dispatchKeyEvent(keyEvent(KeyEvent.VK_LEFT, id = KeyEvent.KEY_RELEASED, source = textField)))
+        assertFalse(dispatcher.dispatchKeyEvent(keyEvent(KeyEvent.VK_HOME, id = KeyEvent.KEY_RELEASED)))
+        assertTrue(received.isEmpty())
+    }
+
+    @Test
+    fun `a key whose release was lost to another window fires again after reactivation`() {
+        dispatcher.dispatchKeyEvent(keyEvent(KeyEvent.VK_SPACE))
+        dispatcher.releaseHeldKeys()
+        dispatcher.dispatchKeyEvent(keyEvent(KeyEvent.VK_SPACE))
+        assertEquals(listOf<PlayerShortcut>(PlayerShortcut.TogglePlayback, PlayerShortcut.TogglePlayback), received)
+    }
+
+    @Test
     fun `unmapped keys pass through`() {
         assertFalse(dispatcher.dispatchKeyEvent(keyEvent(KeyEvent.VK_ENTER)))
         assertFalse(dispatcher.dispatchKeyEvent(keyEvent(KeyEvent.VK_TAB)))
